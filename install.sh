@@ -67,9 +67,19 @@ prepare_defaults() {
   export DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-$(rand_hex 18)}"
   export API_SERVER_KEY="${API_SERVER_KEY:-$(rand_hex 32)}"
   export BROWSER_TOKEN="${BROWSER_TOKEN:-$(rand_hex 32)}"
-  export BROWSER_CONCURRENT="${BROWSER_CONCURRENT:-2}"
-  export BROWSER_QUEUED="${BROWSER_QUEUED:-10}"
+  export BROWSER_CONCURRENT="${BROWSER_CONCURRENT:-6}"
+  export BROWSER_QUEUED="${BROWSER_QUEUED:-20}"
   export BROWSER_TIMEOUT_MS="${BROWSER_TIMEOUT_MS:-300000}"
+  [[ "$BROWSER_CONCURRENT" =~ ^[0-9]+$ ]] || fail "BROWSER_CONCURRENT must be numeric"
+  [[ "$BROWSER_QUEUED" =~ ^[0-9]+$ ]] || fail "BROWSER_QUEUED must be numeric"
+  if (( BROWSER_CONCURRENT < 6 )); then
+    warn "BROWSER_CONCURRENT=$BROWSER_CONCURRENT is too low for WebUI browser-tool workflows; raising to 6 to avoid CDP handshake queue timeouts."
+    export BROWSER_CONCURRENT=6
+  fi
+  if (( BROWSER_QUEUED < 20 )); then
+    warn "BROWSER_QUEUED=$BROWSER_QUEUED is low for WebUI browser-tool workflows; raising to 20."
+    export BROWSER_QUEUED=20
+  fi
   export BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"

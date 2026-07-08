@@ -36,6 +36,7 @@ hermes-webui
   - /workspace PVC
   - initContainer prepares /opt/data/webui ownership for the configured runtime UID/GID
   - initContainer copies Hermes Agent source into an emptyDir
+  - initContainer exposes Node + agent-browser from the Agent image for CDP browser tools
   - HERMES_WEBUI_AGENT_DIR=/home/hermeswebui/.hermes/hermes-agent
   - BROWSER_CDP_URL -> secret/hermes-browser-cdp
 
@@ -244,3 +245,15 @@ MIT. See [LICENCE](LICENCE).
 The Agent, Dashboard, and WebUI share the `hermes-home` PVC at `/opt/data`. Current `nousresearch/hermes-agent` images prepare that directory as UID/GID `10000`, so the installer defaults `HERMES_RUNTIME_UID=10000` and `HERMES_RUNTIME_GID=10000` and passes those values to the WebUI as `WANTED_UID` / `WANTED_GID`.
 
 If you pin images with different runtime ownership, set both variables explicitly in `hermes.env` before running `install.sh`.
+
+
+## WebUI browser tools and CDP
+
+The WebUI container also runs Hermes tools locally for WebUI chat sessions. It therefore needs the `agent-browser` controller even when an external Browserless/CDP endpoint is configured through `BROWSER_CDP_URL`.
+
+The installer prepares this by copying `node` from the Agent image into `/opt/data/node/bin` and linking `/opt/data/node_modules` to the mounted Agent source tree's `node_modules`. This makes `/opt/data/node_modules/.bin/agent-browser` available to the WebUI without installing Chromium locally; Browserless remains the actual browser backend.
+
+
+## Browserless concurrency
+
+WebUI browser-tool workflows can open several short-lived CDP sessions in one agent run. The installer enforces a minimum `BROWSER_CONCURRENT=6` and `BROWSER_QUEUED=20` even if lower values are provided, because `BROWSER_CONCURRENT=2` can cause Browserless queueing and Hermes-side `CDP call timed out during opening handshake` errors.

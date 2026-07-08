@@ -111,3 +111,20 @@ hermes model
 ```
 
 See `docs/codex-auth.md`.
+
+
+## WebUI CDP browser-tool dependency
+
+WebUI chat sessions execute Hermes tools inside the WebUI container. The installer therefore includes a `prepare-browser-cli` initContainer that makes Node and `agent-browser` available under `/opt/data/node/bin` and `/opt/data/node_modules/.bin`. If browser tools fail in WebUI with `agent-browser CLI not found`, rerun `./install.sh` and wait for the WebUI rollout.
+
+
+## Browserless resource knobs
+
+The installer enforces minimum Browserless concurrency values for reliable WebUI browser tools:
+
+```bash
+BROWSER_CONCURRENT=6
+BROWSER_QUEUED=20
+```
+
+Lower values can make Browserless queue CDP handshakes and produce `CDP call timed out ... opening handshake` during full-page screenshot runs.

@@ -339,6 +339,21 @@ spec:
         volumeMounts:
         - name: hermes-agent-src
           mountPath: /agent-src
+      - name: prepare-browser-cli
+        image: ${HERMES_AGENT_IMAGE}
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -eu
+          mkdir -p /opt/data/node/bin
+          cp /usr/local/bin/node /opt/data/node/bin/node
+          chmod 755 /opt/data/node/bin/node
+          ln -sfn /home/hermeswebui/.hermes/hermes-agent/node_modules /opt/data/node_modules
+          chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data/node
+        volumeMounts:
+        - name: home
+          mountPath: /opt/data
       containers:
       - name: hermes-webui
         image: ${HERMES_WEBUI_IMAGE}
@@ -359,6 +374,8 @@ spec:
           value: /home/hermeswebui/.hermes/hermes-agent
         - name: HERMES_WEBUI_AUTO_INSTALL
           value: "1"
+        - name: PATH
+          value: /opt/data/node/bin:/opt/data/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: HERMES_API_URL
           value: http://hermes-agent:8642
         - name: HERMES_API_KEY
