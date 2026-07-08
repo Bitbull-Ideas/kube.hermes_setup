@@ -1,0 +1,20 @@
+# local configuration / secrets
+hermes.env
+*.env
+*.secret
+*.token
+*.key
+*.kubeconfig
+kubeconfig
+
+# generated manifests and backups
+.rendered/
+backups/
+*.tgz
+*.tar.gz
+
+# editor/system
+.DS_Store
+.idea/
+.vscode/
+*.swp
