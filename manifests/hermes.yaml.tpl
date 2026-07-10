@@ -52,11 +52,60 @@ spec:
       containers:
       - name: init
         image: busybox:1.36
+        env:
+        - name: HERMES_BOOTSTRAP_MODE
+          value: "${HERMES_BOOTSTRAP_MODE}"
         command: ["sh", "-c"]
         args:
         - |
           set -eu
           mkdir -p /opt/data /workspace
+          bootstrap_copy_missing() {
+            src="$1"
+            dest="$2"
+            [ -e "$src" ] || return 0
+            if [ -d "$src" ]; then
+              mkdir -p "$dest"
+              find "$src" -mindepth 1 -print | while IFS= read -r item; do
+                rel="$(printf '%s\n' "$item" | sed "s#^$src/##")"
+                target="$dest/$rel"
+                if [ -d "$item" ]; then
+                  mkdir -p "$target"
+                elif [ ! -e "$target" ]; then
+                  mkdir -p "$(dirname "$target")"
+                  cp -a "$item" "$target"
+                fi
+              done
+            elif [ ! -e "$dest" ]; then
+              mkdir -p "$(dirname "$dest")"
+              cp -a "$src" "$dest"
+            fi
+          }
+          bootstrap_copy_overwrite() {
+            src="$1"
+            dest="$2"
+            [ -e "$src" ] || return 0
+            mkdir -p "$(dirname "$dest")"
+            if [ -d "$src" ]; then
+              mkdir -p "$dest"
+              cp -a "$src"/. "$dest"/
+            else
+              cp -a "$src" "$dest"
+            fi
+          }
+          if [ -f /bootstrap/bootstrap.tar.gz ] && [ "${HERMES_BOOTSTRAP_MODE}" != "disabled" ]; then
+            rm -rf /tmp/hermes-bootstrap
+            mkdir -p /tmp/hermes-bootstrap
+            tar -xzf /bootstrap/bootstrap.tar.gz -C /tmp/hermes-bootstrap
+            if [ "${HERMES_BOOTSTRAP_MODE}" = "overwrite" ]; then
+              bootstrap_copy_overwrite /tmp/hermes-bootstrap/opt-data /opt/data
+              bootstrap_copy_overwrite /tmp/hermes-bootstrap/workspace /workspace
+            else
+              bootstrap_copy_missing /tmp/hermes-bootstrap/opt-data /opt/data
+              bootstrap_copy_missing /tmp/hermes-bootstrap/workspace /workspace
+            fi
+            rm -rf /tmp/hermes-bootstrap
+          fi
           if [ ! -f /opt/data/config.yaml ]; then
             {
               printf '%s\n' 'provider: ${MODEL_PROVIDER}'
@@ -87,7 +136,14 @@ spec:
           mountPath: /opt/data
         - name: workspace
           mountPath: /workspace
+        - name: bootstrap
+          mountPath: /bootstrap
+          readOnly: true
       volumes:
+      - name: bootstrap
+        secret:
+          secretName: hermes-bootstrap-archive
+          optional: true
       - name: home
         persistentVolumeClaim:
           claimName: hermes-home

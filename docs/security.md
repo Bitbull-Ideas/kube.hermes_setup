@@ -110,3 +110,9 @@ The WebUI password is therefore the same value as `DASHBOARD_AUTH_PASSWORD`. `HE
 ## API server key length
 
 Hermes Agent refuses to start the API server when `API_SERVER_KEY` is a placeholder or shorter than 16 characters. `install.sh` therefore generates a strong replacement if a too-short value is inherited from the environment. Use a high-entropy value such as `openssl rand -hex 32` for explicit production configuration.
+
+## Bootstrap data
+
+`HERMES_BOOTSTRAP_DIR` can contain SOUL.md, memories, skills, plugins, cron jobs, `.env`, and optionally `auth.json`. Treat real bootstrap directories and `.rendered/bootstrap.tar.gz` as sensitive. The repo ignores local `bootstrap/` and `.rendered/`; commit only sanitized examples under `examples/bootstrap/`.
+
+`HERMES_BOOTSTRAP_INCLUDE_AUTH=false` is the default. Enable it only when you deliberately restore OAuth state from a protected source.

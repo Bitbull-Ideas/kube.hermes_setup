@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/hermes.env}"
 RENDER_DIR="$ROOT_DIR/.rendered"
 MANIFEST_OUT="$RENDER_DIR/hermes.yaml"
+BOOTSTRAP_ARCHIVE="$RENDER_DIR/bootstrap.tar.gz"
+BOOTSTRAP_STAGE="$RENDER_DIR/bootstrap-stage"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -59,6 +61,9 @@ prepare_defaults() {
   export HERMES_RUNTIME_UID="${HERMES_RUNTIME_UID:-10000}"
   export HERMES_RUNTIME_GID="${HERMES_RUNTIME_GID:-10000}"
   export HERMES_WEBUI_MAX_UPLOAD_MB="${HERMES_WEBUI_MAX_UPLOAD_MB:-220}"
+  export HERMES_BOOTSTRAP_DIR="${HERMES_BOOTSTRAP_DIR:-}"
+  export HERMES_BOOTSTRAP_MODE="${HERMES_BOOTSTRAP_MODE:-missing}"
+  export HERMES_BOOTSTRAP_INCLUDE_AUTH="${HERMES_BOOTSTRAP_INCLUDE_AUTH:-false}"
   export HERMES_AGENT_CPU_REQUEST="${HERMES_AGENT_CPU_REQUEST:-500m}"
   export HERMES_AGENT_MEMORY_REQUEST="${HERMES_AGENT_MEMORY_REQUEST:-1Gi}"
   export HERMES_AGENT_CPU_LIMIT="${HERMES_AGENT_CPU_LIMIT:-2}"
@@ -97,9 +102,68 @@ prepare_defaults() {
     warn "BROWSER_CONCURRENT=$BROWSER_CONCURRENT is the repo default/lab setting; full-page WebUI screenshot workflows can require a higher value if CDP handshakes queue."
   fi
   export BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
+  case "$HERMES_BOOTSTRAP_MODE" in
+    disabled|missing|overwrite) ;;
+    *) fail "HERMES_BOOTSTRAP_MODE must be one of: disabled, missing, overwrite" ;;
+  esac
+  if [[ -n "$HERMES_BOOTSTRAP_DIR" && "$HERMES_BOOTSTRAP_MODE" != "disabled" ]]; then
+    require_cmd tar
+    [[ -d "$HERMES_BOOTSTRAP_DIR" ]] || fail "HERMES_BOOTSTRAP_DIR does not exist or is not a directory: $HERMES_BOOTSTRAP_DIR"
+  fi
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
   [[ "$HERMES_WEBUI_MAX_UPLOAD_MB" =~ ^[0-9]+$ ]] || fail "HERMES_WEBUI_MAX_UPLOAD_MB must be numeric"
+}
+
+bootstrap_enabled() {
+  [[ -n "${HERMES_BOOTSTRAP_DIR:-}" && "${HERMES_BOOTSTRAP_MODE:-disabled}" != "disabled" ]]
+}
+
+copy_bootstrap_path() {
+  local src="$1" dest="$2"
+  [[ -e "$src" ]] || return 0
+  mkdir -p "$(dirname "$dest")"
+  if [[ -d "$src" ]]; then
+    mkdir -p "$dest"
+    cp -a "$src"/. "$dest"/
+  else
+    cp -a "$src" "$dest"
+  fi
+}
+
+create_bootstrap_archive() {
+  rm -f "$BOOTSTRAP_ARCHIVE"
+  rm -rf "$BOOTSTRAP_STAGE"
+  if ! bootstrap_enabled; then
+    return 0
+  fi
+
+  log "Preparing bootstrap archive from $HERMES_BOOTSTRAP_DIR"
+  mkdir -p "$BOOTSTRAP_STAGE/opt-data" "$BOOTSTRAP_STAGE/workspace"
+
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/SOUL.md" "$BOOTSTRAP_STAGE/opt-data/SOUL.md"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/config.yaml" "$BOOTSTRAP_STAGE/opt-data/config.yaml"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/.env" "$BOOTSTRAP_STAGE/opt-data/.env"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/memories" "$BOOTSTRAP_STAGE/opt-data/memories"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/skills" "$BOOTSTRAP_STAGE/opt-data/skills"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/plugins" "$BOOTSTRAP_STAGE/opt-data/plugins"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/cron" "$BOOTSTRAP_STAGE/opt-data/cron"
+  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/workspace" "$BOOTSTRAP_STAGE/workspace"
+
+  if [[ "$HERMES_BOOTSTRAP_INCLUDE_AUTH" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/auth.json" "$BOOTSTRAP_STAGE/opt-data/auth.json"
+  elif [[ -e "$HERMES_BOOTSTRAP_DIR/auth.json" ]]; then
+    warn "bootstrap/auth.json exists but HERMES_BOOTSTRAP_INCLUDE_AUTH is false; auth.json was not included."
+  fi
+
+  if ! find "$BOOTSTRAP_STAGE" -type f -print -quit | grep -q .; then
+    warn "HERMES_BOOTSTRAP_DIR is set but no supported bootstrap files were found."
+    rm -rf "$BOOTSTRAP_STAGE"
+    return 0
+  fi
+
+  tar -C "$BOOTSTRAP_STAGE" -czf "$BOOTSTRAP_ARCHIVE" .
+  chmod 600 "$BOOTSTRAP_ARCHIVE"
 }
 
 render_manifest() {
@@ -112,6 +176,12 @@ render_manifest() {
 create_namespace_and_secrets() {
   log "Creating namespace and secrets"
   kubectl create namespace "$HERMES_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+  if [[ -f "$BOOTSTRAP_ARCHIVE" ]]; then
+    kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-bootstrap-archive       --from-file=bootstrap.tar.gz="$BOOTSTRAP_ARCHIVE"       --dry-run=client -o yaml | kubectl apply -f -
+  else
+    kubectl -n "$HERMES_NAMESPACE" delete secret hermes-bootstrap-archive --ignore-not-found=true >/dev/null
+  fi
 
   if [[ "$ENABLE_TRAEFIK_BASIC_AUTH" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
     local basic_hash tmpdir
@@ -217,6 +287,7 @@ main() {
   load_env
   validate
   prepare_defaults
+  create_bootstrap_archive
   render_manifest
   write_generated_credentials
   create_namespace_and_secrets

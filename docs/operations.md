@@ -53,6 +53,40 @@ This includes OAuth state, sessions, skills, memories, workspace files, and WebU
 ./doctor.sh
 ```
 
+
+## Bootstrap agent configuration
+
+Use `HERMES_BOOTSTRAP_DIR` to seed SOUL, memory, skills, plugins, cron jobs, config, and workspace context into the persistent PVCs. This is useful for repeatable installations where the Agent should start with known behavior.
+
+```bash
+cp -a examples/bootstrap ./bootstrap
+$EDITOR ./bootstrap/SOUL.md
+$EDITOR ./bootstrap/memories/USER.md
+cat >> hermes.env <<'EOF'
+HERMES_BOOTSTRAP_DIR=./bootstrap
+HERMES_BOOTSTRAP_MODE=missing
+HERMES_BOOTSTRAP_INCLUDE_AUTH=false
+EOF
+./install.sh
+```
+
+Mapping:
+
+```text
+SOUL.md                  -> /opt/data/SOUL.md
+memories/USER.md         -> /opt/data/memories/USER.md
+memories/MEMORY.md       -> /opt/data/memories/MEMORY.md
+skills/                  -> /opt/data/skills/
+plugins/                 -> /opt/data/plugins/
+cron/                    -> /opt/data/cron/
+config.yaml              -> /opt/data/config.yaml
+.env                     -> /opt/data/.env
+workspace/               -> /workspace/
+auth.json                -> /opt/data/auth.json only with HERMES_BOOTSTRAP_INCLUDE_AUTH=true
+```
+
+Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite` only when you intentionally want the bootstrap source to replace existing files. Bootstrap data can contain personal data or credentials; keep real `bootstrap/` directories out of git.
+
 ## Password rotation
 
 `maintain.sh rotate-passwords` supports three explicit input modes:

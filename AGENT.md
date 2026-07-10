@@ -434,3 +434,7 @@ Deployment update strategy is `Recreate` for the four single-replica components.
 ### Dashboard `/files` workspace root
 
 The Dashboard file browser is controlled by `HERMES_DASHBOARD_FILES_ROOT`, while file tools use `HERMES_WRITE_SAFE_ROOT`. Upstream hosted/container mode locks Dashboard `/files` to `/opt/data`; this repo mounts the actual workspace at `/workspace`. Set `HERMES_DASHBOARD_FILES_ROOT=/workspace` on Dashboard and `HERMES_WRITE_SAFE_ROOT=/opt/data:/workspace` on Agent, Dashboard, and WebUI. If `/files` shows `403: Path outside managed files root`, check these env vars first.
+
+### Bootstrap feature
+
+`HERMES_BOOTSTRAP_DIR` packages a local directory into `.rendered/bootstrap.tar.gz` and applies it via Kubernetes Secret `hermes-bootstrap-archive`. The init job maps `SOUL.md`, `memories/`, `skills/`, `plugins/`, `cron/`, `config.yaml`, `.env`, and `workspace/` into `/opt/data` and `/workspace`. Default mode is `missing`; `overwrite` is destructive. `auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Never commit real `bootstrap/` content; only sanitized examples under `examples/bootstrap/`.

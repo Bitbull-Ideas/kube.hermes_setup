@@ -110,6 +110,8 @@ Important variables:
 | `HERMES_WEBUI_MAX_UPLOAD_MB` | WebUI upload cap in MiB, default `220` |
 | `HERMES_DASHBOARD_FILES_ROOT` | Dashboard `/files` root, set by manifest to `/workspace` |
 | `HERMES_WRITE_SAFE_ROOT` | Safe write roots, set by manifest to `/opt/data:/workspace` |
+| `HERMES_BOOTSTRAP_DIR` | Optional local bootstrap directory for SOUL.md, memories, skills, plugins, cron, config, and workspace files |
+| `HERMES_BOOTSTRAP_MODE` | `disabled`, `missing` (default), or `overwrite` |
 
 Secrets may be generated automatically by `install.sh` when variables are omitted. The generated/used initial values are written to `.rendered/generated-credentials.txt` with mode `0600`; this path is gitignored, but you should still move the values to a password manager and delete the file after installation.
 
@@ -147,6 +149,49 @@ BASIC_AUTH_PASSWORD='***' DASHBOARD_AUTH_PASSWORD='***' ./maintain.sh rotate-pas
 ```
 
 Use `--only-ingress`, `--only-dashboard`, `--skip-ingress`, and `--skip-dashboard` to choose exactly which passwords are changed. Production mode rejects weak passwords by default. Lab mode is explicit because accidental weak public credentials are how horror stories begin.
+
+
+## Bootstrap existing configuration
+
+You can seed a new or existing installation with agent configuration files by setting `HERMES_BOOTSTRAP_DIR` in `hermes.env` and rerunning `./install.sh`. The installer packages the local directory into `.rendered/bootstrap.tar.gz`, uploads it as the `hermes-bootstrap-archive` Kubernetes Secret, and the init job copies it into the persistent PVCs.
+
+Supported source layout:
+
+```text
+bootstrap/
+├── SOUL.md                       -> /opt/data/SOUL.md
+├── config.yaml                   -> /opt/data/config.yaml
+├── .env                          -> /opt/data/.env
+├── auth.json                     -> /opt/data/auth.json, only when explicitly enabled
+├── memories/USER.md              -> /opt/data/memories/USER.md
+├── memories/MEMORY.md            -> /opt/data/memories/MEMORY.md
+├── skills/<name>/SKILL.md        -> /opt/data/skills/<name>/SKILL.md
+├── plugins/                      -> /opt/data/plugins/
+├── cron/                         -> /opt/data/cron/
+└── workspace/AGENTS.md           -> /workspace/AGENTS.md
+```
+
+Example:
+
+```bash
+cp -a examples/bootstrap ./bootstrap
+# edit ./bootstrap/* for your installation
+cat >> hermes.env <<'EOF'
+HERMES_BOOTSTRAP_DIR=./bootstrap
+HERMES_BOOTSTRAP_MODE=missing
+HERMES_BOOTSTRAP_INCLUDE_AUTH=false
+EOF
+./install.sh
+./doctor.sh
+```
+
+Modes:
+
+- `missing` copies only files that do not already exist on the PVC. This is safest for upgrades.
+- `overwrite` replaces existing bootstrap-managed files/directories. Use deliberately.
+- `disabled` ignores `HERMES_BOOTSTRAP_DIR`.
+
+`auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Treat bootstrap archives as sensitive if they contain memories, `.env`, OAuth state, or private skills. The local `bootstrap/` and `.rendered/` paths are gitignored.
 
 ## Repository layout
 
