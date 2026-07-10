@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [v1.1.0] - 2026-07-10
+
+### Added
+
+- Adds opt-in bootstrap support through `HERMES_BOOTSTRAP_DIR` for `SOUL.md`, durable memories, skills, plugins, cron configuration, workspace files, and optional authentication state.
+- Adds a reusable universal systems-architect bootstrap profile covering platform operations, architecture, research, QA, and software development.
+- Exposes the mounted workspace through the Dashboard file browser and configures safe write roots for Agent, Dashboard, and WebUI.
+
+### Changed
+
+- Raises the default WebUI upload limit for large documents.
+- Tunes public-example resource requests and limits for practical lab deployments.
+
+### Upgrade notes
+
+- Bootstrap is opt-in. Use `HERMES_BOOTSTRAP_MODE=missing` for normal upgrades.
+- `HERMES_BOOTSTRAP_MODE=overwrite` replaces bootstrap-managed data and should be used only after review.
+
 ## [v1.0.0] - 2026-07-09
 
 ### Added
