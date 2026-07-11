@@ -218,3 +218,39 @@ HERMES_WRITE_SAFE_ROOT=/opt/data:/workspace
 ```
 
 Keep `HERMES_WRITE_SAFE_ROOT` on Agent, Dashboard, and WebUI so file tools use the same safe roots; keep `HERMES_DASHBOARD_FILES_ROOT` on Dashboard for the UI file browser.
+
+## Persistent Python addon packages
+
+Set `HERMES_ADDON_REQUIREMENTS` to install Python packages during `install.sh` without rebuilding the Agent image. The requirements file is packaged into the same init Secret mechanism as bootstrap data and installed into `HERMES_ADDON_VENV` on the `/opt/data` PVC.
+
+```bash
+HERMES_ADDON_REQUIREMENTS=./bootstrap/requirements.txt
+HERMES_ADDON_VENV=/opt/data/addon-venv
+ENV_FILE=./hermes.env ./install.sh
+```
+
+Operational properties:
+
+- Persistent: `/opt/data/addon-venv` survives Pod recreation.
+- Re-runnable: changing the requirements file and rerunning `install.sh` updates the venv.
+- Isolated: Hermes' own `/opt/hermes/.venv` remains first in `PATH`; do not install ad-hoc packages there.
+- Manual installs are supported:
+
+```bash
+kubectl -n <namespace> exec -it deploy/hermes-agent -- /bin/bash
+python3 -m venv /opt/data/addon-venv
+/opt/data/addon-venv/bin/pip install --upgrade pip
+/opt/data/addon-venv/bin/pip install <package>
+```
+
+Use absolute paths for the addon interpreter when required:
+
+```bash
+/opt/data/addon-venv/bin/python -c "import <package>; print('ok')"
+```
+
+If an interactive `kubectl exec` shell resets `PATH`, export the addon path manually for that shell:
+
+```bash
+export PATH=/opt/data/addon-venv/bin:$PATH
+```

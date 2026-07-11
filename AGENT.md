@@ -364,6 +364,18 @@ Redact tokens before sharing output.
 - Preserve Traefik BasicAuth as optional; do not make it mandatory again.
 - Preserve Dashboard/WebUI shared password behavior unless upstream WebUI adds a better first-class bootstrap API.
 
+
+## Persistent Python addon venv
+
+The installer supports opt-in Python addon packages without rebuilding the Agent image:
+
+- `HERMES_ADDON_REQUIREMENTS` points to a local requirements file on the operator machine.
+- `HERMES_ADDON_VENV` defaults to `/opt/data/addon-venv` and must remain under `/opt/data` for PVC persistence.
+- `install.sh` packages the requirements file into `hermes-bootstrap-archive`; the init job installs it into the addon venv.
+- The Agent container `PATH` includes `${HERMES_ADDON_VENV}/bin` after `/opt/hermes/.venv/bin` so console scripts are discoverable without shadowing Hermes' own Python runtime.
+
+Do not install extra packages into `/opt/hermes/.venv` for this feature; keep addon packages isolated or build a custom `HERMES_AGENT_IMAGE` for production-standard dependencies.
+
 ## When editing shell scripts
 
 - Keep `set -euo pipefail`.

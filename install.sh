@@ -64,6 +64,8 @@ prepare_defaults() {
   export HERMES_BOOTSTRAP_DIR="${HERMES_BOOTSTRAP_DIR:-}"
   export HERMES_BOOTSTRAP_MODE="${HERMES_BOOTSTRAP_MODE:-missing}"
   export HERMES_BOOTSTRAP_INCLUDE_AUTH="${HERMES_BOOTSTRAP_INCLUDE_AUTH:-false}"
+  export HERMES_ADDON_REQUIREMENTS="${HERMES_ADDON_REQUIREMENTS:-}"
+  export HERMES_ADDON_VENV="${HERMES_ADDON_VENV:-/opt/data/addon-venv}"
   export HERMES_AGENT_CPU_REQUEST="${HERMES_AGENT_CPU_REQUEST:-100m}"
   export HERMES_AGENT_MEMORY_REQUEST="${HERMES_AGENT_MEMORY_REQUEST:-256Mi}"
   export HERMES_AGENT_CPU_LIMIT="${HERMES_AGENT_CPU_LIMIT:-1}"
@@ -110,6 +112,11 @@ prepare_defaults() {
     require_cmd tar
     [[ -d "$HERMES_BOOTSTRAP_DIR" ]] || fail "HERMES_BOOTSTRAP_DIR does not exist or is not a directory: $HERMES_BOOTSTRAP_DIR"
   fi
+  if [[ -n "$HERMES_ADDON_REQUIREMENTS" ]]; then
+    require_cmd tar
+    [[ -f "$HERMES_ADDON_REQUIREMENTS" ]] || fail "HERMES_ADDON_REQUIREMENTS does not exist or is not a file: $HERMES_ADDON_REQUIREMENTS"
+  fi
+  [[ "$HERMES_ADDON_VENV" = /opt/data/* ]] || fail "HERMES_ADDON_VENV must be under /opt/data for PVC persistence"
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
   [[ "$HERMES_WEBUI_MAX_UPLOAD_MB" =~ ^[0-9]+$ ]] || fail "HERMES_WEBUI_MAX_UPLOAD_MB must be numeric"
@@ -117,6 +124,14 @@ prepare_defaults() {
 
 bootstrap_enabled() {
   [[ -n "${HERMES_BOOTSTRAP_DIR:-}" && "${HERMES_BOOTSTRAP_MODE:-disabled}" != "disabled" ]]
+}
+
+addon_requirements_enabled() {
+  [[ -n "${HERMES_ADDON_REQUIREMENTS:-}" ]]
+}
+
+archive_enabled() {
+  bootstrap_enabled || addon_requirements_enabled
 }
 
 copy_bootstrap_path() {
@@ -134,30 +149,37 @@ copy_bootstrap_path() {
 create_bootstrap_archive() {
   rm -f "$BOOTSTRAP_ARCHIVE"
   rm -rf "$BOOTSTRAP_STAGE"
-  if ! bootstrap_enabled; then
+  if ! archive_enabled; then
     return 0
   fi
 
-  log "Preparing bootstrap archive from $HERMES_BOOTSTRAP_DIR"
-  mkdir -p "$BOOTSTRAP_STAGE/opt-data" "$BOOTSTRAP_STAGE/workspace"
+  mkdir -p "$BOOTSTRAP_STAGE/opt-data" "$BOOTSTRAP_STAGE/workspace" "$BOOTSTRAP_STAGE/addons"
 
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/SOUL.md" "$BOOTSTRAP_STAGE/opt-data/SOUL.md"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/config.yaml" "$BOOTSTRAP_STAGE/opt-data/config.yaml"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/.env" "$BOOTSTRAP_STAGE/opt-data/.env"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/memories" "$BOOTSTRAP_STAGE/opt-data/memories"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/skills" "$BOOTSTRAP_STAGE/opt-data/skills"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/plugins" "$BOOTSTRAP_STAGE/opt-data/plugins"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/cron" "$BOOTSTRAP_STAGE/opt-data/cron"
-  copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/workspace" "$BOOTSTRAP_STAGE/workspace"
+  if bootstrap_enabled; then
+    log "Preparing bootstrap archive from $HERMES_BOOTSTRAP_DIR"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/SOUL.md" "$BOOTSTRAP_STAGE/opt-data/SOUL.md"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/config.yaml" "$BOOTSTRAP_STAGE/opt-data/config.yaml"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/.env" "$BOOTSTRAP_STAGE/opt-data/.env"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/memories" "$BOOTSTRAP_STAGE/opt-data/memories"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/skills" "$BOOTSTRAP_STAGE/opt-data/skills"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/plugins" "$BOOTSTRAP_STAGE/opt-data/plugins"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/cron" "$BOOTSTRAP_STAGE/opt-data/cron"
+    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/workspace" "$BOOTSTRAP_STAGE/workspace"
 
-  if [[ "$HERMES_BOOTSTRAP_INCLUDE_AUTH" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
-    copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/auth.json" "$BOOTSTRAP_STAGE/opt-data/auth.json"
-  elif [[ -e "$HERMES_BOOTSTRAP_DIR/auth.json" ]]; then
-    warn "bootstrap/auth.json exists but HERMES_BOOTSTRAP_INCLUDE_AUTH is false; auth.json was not included."
+    if [[ "$HERMES_BOOTSTRAP_INCLUDE_AUTH" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+      copy_bootstrap_path "$HERMES_BOOTSTRAP_DIR/auth.json" "$BOOTSTRAP_STAGE/opt-data/auth.json"
+    elif [[ -e "$HERMES_BOOTSTRAP_DIR/auth.json" ]]; then
+      warn "bootstrap/auth.json exists but HERMES_BOOTSTRAP_INCLUDE_AUTH is false; auth.json was not included."
+    fi
+  fi
+
+  if addon_requirements_enabled; then
+    log "Including addon Python requirements from $HERMES_ADDON_REQUIREMENTS"
+    copy_bootstrap_path "$HERMES_ADDON_REQUIREMENTS" "$BOOTSTRAP_STAGE/addons/requirements.txt"
   fi
 
   if ! find "$BOOTSTRAP_STAGE" -type f -print -quit | grep -q .; then
-    warn "HERMES_BOOTSTRAP_DIR is set but no supported bootstrap files were found."
+    warn "bootstrap/addon archive requested but no supported files were found."
     rm -rf "$BOOTSTRAP_STAGE"
     return 0
   fi

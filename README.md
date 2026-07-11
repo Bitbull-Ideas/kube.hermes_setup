@@ -112,6 +112,8 @@ Important variables:
 | `HERMES_WRITE_SAFE_ROOT` | Safe write roots, set by manifest to `/opt/data:/workspace` |
 | `HERMES_BOOTSTRAP_DIR` | Optional local bootstrap directory for SOUL.md, memories, skills, plugins, cron, config, and workspace files |
 | `HERMES_BOOTSTRAP_MODE` | `disabled`, `missing` (default), or `overwrite` |
+| `HERMES_ADDON_REQUIREMENTS` | Optional local `requirements.txt` installed into a persistent addon venv |
+| `HERMES_ADDON_VENV` | Persistent addon venv path, default `/opt/data/addon-venv` |
 
 Secrets may be generated automatically by `install.sh` when variables are omitted. The generated/used initial values are written to `.rendered/generated-credentials.txt` with mode `0600`; this path is gitignored, but you should still move the values to a password manager and delete the file after installation.
 
@@ -192,6 +194,51 @@ Modes:
 - `disabled` ignores `HERMES_BOOTSTRAP_DIR`.
 
 `auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Treat bootstrap archives as sensitive if they contain memories, `.env`, OAuth state, or private skills. The local `bootstrap/` and `.rendered/` paths are gitignored.
+
+## Persistent Python addon packages
+
+You can install additional Python CLI/tools without rebuilding the Agent image by pointing `HERMES_ADDON_REQUIREMENTS` at a local requirements file. The installer packages that file into the init Secret and the init job installs it into `HERMES_ADDON_VENV`, which must live under the persistent `/opt/data` PVC.
+
+Example:
+
+```bash
+cp examples/bootstrap/requirements.txt ./bootstrap/requirements.txt
+# edit ./bootstrap/requirements.txt, preferably with pinned versions
+cat >> hermes.env <<'EOF'
+HERMES_ADDON_REQUIREMENTS=./bootstrap/requirements.txt
+HERMES_ADDON_VENV=/opt/data/addon-venv
+EOF
+ENV_FILE=./hermes.env ./install.sh
+```
+
+The Agent container PATH includes the addon venv after Hermes' own venv:
+
+```text
+/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/addon-venv/bin:/opt/data/.local/bin:...
+```
+
+This makes console scripts installed by the requirements file available to Hermes terminal calls while keeping Hermes' own Python environment first. If you need the addon Python interpreter itself, call it explicitly:
+
+```bash
+/opt/data/addon-venv/bin/python -c "import requests; print(requests.__version__)"
+```
+
+Manual installs are also possible and persistent because the venv is on the PVC:
+
+```bash
+kubectl -n <namespace> exec -it deploy/hermes-agent -- /bin/bash
+python3 -m venv /opt/data/addon-venv
+/opt/data/addon-venv/bin/pip install --upgrade pip
+/opt/data/addon-venv/bin/pip install <package>
+```
+
+Some interactive shells reset `PATH`. If `echo $PATH` does not show the addon venv, either use absolute paths or export it for that shell:
+
+```bash
+export PATH=/opt/data/addon-venv/bin:$PATH
+```
+
+Do not mutate `/opt/hermes/.venv` or install ad-hoc packages into `/usr/local` if persistence matters. For production-standard system tools or OS packages, prefer a custom `HERMES_AGENT_IMAGE`.
 
 ## Repository layout
 

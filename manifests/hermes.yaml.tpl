@@ -51,10 +51,13 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
       containers:
       - name: init
-        image: busybox:1.36
+        image: ${HERMES_AGENT_IMAGE}
+        imagePullPolicy: Always
         env:
         - name: HERMES_BOOTSTRAP_MODE
           value: "${HERMES_BOOTSTRAP_MODE}"
+        - name: HERMES_ADDON_VENV
+          value: "${HERMES_ADDON_VENV}"
         command: ["sh", "-c"]
         args:
         - |
@@ -93,16 +96,23 @@ spec:
               cp -a "$src" "$dest"
             fi
           }
-          if [ -f /bootstrap/bootstrap.tar.gz ] && [ "${HERMES_BOOTSTRAP_MODE}" != "disabled" ]; then
+          if [ -f /bootstrap/bootstrap.tar.gz ]; then
             rm -rf /tmp/hermes-bootstrap
             mkdir -p /tmp/hermes-bootstrap
             tar -xzf /bootstrap/bootstrap.tar.gz -C /tmp/hermes-bootstrap
-            if [ "${HERMES_BOOTSTRAP_MODE}" = "overwrite" ]; then
-              bootstrap_copy_overwrite /tmp/hermes-bootstrap/opt-data /opt/data
-              bootstrap_copy_overwrite /tmp/hermes-bootstrap/workspace /workspace
-            else
-              bootstrap_copy_missing /tmp/hermes-bootstrap/opt-data /opt/data
-              bootstrap_copy_missing /tmp/hermes-bootstrap/workspace /workspace
+            if [ "${HERMES_BOOTSTRAP_MODE}" != "disabled" ]; then
+              if [ "${HERMES_BOOTSTRAP_MODE}" = "overwrite" ]; then
+                bootstrap_copy_overwrite /tmp/hermes-bootstrap/opt-data /opt/data
+                bootstrap_copy_overwrite /tmp/hermes-bootstrap/workspace /workspace
+              else
+                bootstrap_copy_missing /tmp/hermes-bootstrap/opt-data /opt/data
+                bootstrap_copy_missing /tmp/hermes-bootstrap/workspace /workspace
+              fi
+            fi
+            if [ -f /tmp/hermes-bootstrap/addons/requirements.txt ]; then
+              python3 -m venv "$HERMES_ADDON_VENV"
+              "$HERMES_ADDON_VENV/bin/pip" install --upgrade pip
+              "$HERMES_ADDON_VENV/bin/pip" install -r /tmp/hermes-bootstrap/addons/requirements.txt
             fi
             rm -rf /tmp/hermes-bootstrap
           fi
@@ -201,6 +211,10 @@ spec:
           value: /opt/data
         - name: HERMES_WRITE_SAFE_ROOT
           value: /opt/data:/workspace
+        - name: HERMES_ADDON_VENV
+          value: "${HERMES_ADDON_VENV}"
+        - name: PATH
+          value: /opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: API_SERVER_ENABLED
           value: "true"
         - name: API_SERVER_HOST
