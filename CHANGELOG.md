@@ -2,11 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
-## [v1.2.0] - 2026-07-10
+## [v1.2.0] - 2026-07-11
 
 ### Changed
 
 - Tunes installer and example resource defaults for small K3s/lab deployments: 100m CPU requests, 1 CPU limits, 256Mi Agent/WebUI memory requests, 96Mi Dashboard memory request, 128Mi Browserless memory request, and 1Gi memory limits.
+- Expands the bundled bootstrap `SOUL.md` browser/CDP guidance for direct CDP usage, screenshot validation, and clear fallback behavior when the default CDP endpoint is unavailable.
 
 ## [v1.1.0] - 2026-07-10
 
