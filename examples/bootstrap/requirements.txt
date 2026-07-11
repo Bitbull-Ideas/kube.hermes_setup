@@ -8,6 +8,6 @@ Markdown
 Pygments
 fpdf2
 pypdf
-Markdown
-Pygments
-fpdf2
+
+# personal
+pyvim
