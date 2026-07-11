@@ -2,3 +2,12 @@
 # Pin versions for reproducible installs.
 # Example:
 # six==1.17.0
+
+# skill: markdown-pdf
+Markdown
+Pygments
+fpdf2
+pypdf
+Markdown
+Pygments
+fpdf2
