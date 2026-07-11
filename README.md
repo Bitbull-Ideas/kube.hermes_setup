@@ -288,7 +288,7 @@ export PATH=/opt/data/addon-venv/bin:$PATH
 
 Do not mutate `/opt/hermes/.venv` or install ad-hoc packages into `/usr/local` if persistence matters. For production-standard system tools or OS packages, prefer a custom `HERMES_AGENT_IMAGE`.
 
-For a persistent Ansible control-node pattern, including mount locations and visible roles/collections paths under `/workspace/ansible`, see [`docs/ansible.md`](docs/ansible.md) and `examples/bootstrap/requirements-ansible.txt`.
+For a persistent Ansible control-node pattern, including mount locations and visible roles/collections paths under `/workspace/ansible`, see [`docs/ansible.md`](docs/ansible.md) and `examples/bootstrap/requirements.txt`.
 
 ## Repository layout
 

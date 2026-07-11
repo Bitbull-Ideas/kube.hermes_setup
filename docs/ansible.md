@@ -9,7 +9,7 @@ Copy the example bootstrap tree and point the installer at the Ansible requireme
 ```bash
 cp -a examples/bootstrap ./bootstrap
 cat >> hermes.env <<'EOF'
-HERMES_ADDON_REQUIREMENTS=./bootstrap/requirements-ansible.txt
+HERMES_ADDON_REQUIREMENTS=./bootstrap/requirements.txt
 HERMES_ADDON_VENV=/opt/data/addon-venv
 HERMES_BOOTSTRAP_DIR=./bootstrap
 HERMES_BOOTSTRAP_MODE=missing

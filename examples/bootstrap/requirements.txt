@@ -9,5 +9,44 @@ Pygments
 fpdf2
 pypdf
 
-# personal
+# personal tools
 pyvim
+
+# ansible env
+ansible==14.1.0
+requests
+urllib3
+certifi
+six
+pyvmomi
+lxml
+boto3
+botocore
+azure-identity
+azure-mgmt-compute
+azure-mgmt-network
+azure-mgmt-resource
+google-auth
+google-api-python-client
+kubernetes
+openshift
+docker
+openstacksdk
+hvac
+psycopg2-binary
+PyMySQL
+pymongo
+pika
+cryptography
+dnspython
+pynetbox
+proxmoxer
+ncclient
+netaddr
+infoblox-client
+requests-toolbelt
+vmware-vapi-common-client
+vmware-vapi-runtime
+vmware-vcenter
+git+https://github.com/vmware/vsphere-automation-sdk-python.git
+
