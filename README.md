@@ -28,6 +28,12 @@ hermes-agent
   - API server on 8642
   - BROWSER_CDP_URL -> secret/hermes-browser-cdp
 
+hermes-dashboard
+  - /opt/data PVC
+  - /workspace PVC
+  - Dashboard on 9119
+  - HERMES_DASHBOARD_FILES_ROOT=/workspace
+
 hermes-webui
   - /opt/data PVC
   - /workspace PVC
@@ -114,15 +120,12 @@ Secrets may be generated automatically by `install.sh` when variables are omitte
 
 ### Authentication layers
 
-There are two application authentication layers:
+Application authentication is intentionally simple:
 
-1. **Dashboard internal BasicAuth** inside Hermes Dashboard.
-   - Always configured by this installer.
-   - Uses `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASSWORD`.
-2. **WebUI built-in password auth** inside Hermes WebUI.
-   - Always configured by this installer.
-   - Uses the same password Secret as Dashboard: `HERMES_WEBUI_PASSWORD` is read from `secret/hermes-dashboard-auth:password`.
-   - This avoids the remote first-password setup gate without setting `HERMES_WEBUI_ONBOARDING_OPEN=1`.
+- Dashboard BasicAuth is always configured from `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASSWORD`.
+- WebUI password auth uses the same Kubernetes Secret (`secret/hermes-dashboard-auth:password`) via `HERMES_WEBUI_PASSWORD`.
+
+Edge authentication, if required, belongs in your Ingress/auth layer outside this installer.
 
 Password rotation has explicit input modes. Interactive runs prompt by default and do **not** silently reuse password values from `hermes.env`:
 
@@ -187,7 +190,7 @@ Modes:
 
 ## Persistent HOME and SSH keypair
 
-The Agent, Dashboard, and WebUI containers can use the persistent Hermes home PVC as their Unix home directory. By default the installer sets their process environment to:
+The Agent, Dashboard, and WebUI containers use the persistent Hermes home PVC as their Unix home directory. The installer sets:
 
 ```text
 HOME=/opt/data
@@ -195,7 +198,7 @@ XDG_CONFIG_HOME=/opt/data/.config
 XDG_CACHE_HOME=/opt/data/.cache
 ```
 
-This makes normal CLI state and OpenSSH defaults land on the `hermes-home` PVC instead of the ephemeral container filesystem. Agent/Dashboard/WebUI containers also use a UTF-8 locale so Python addon CLIs such as Ansible can start reliably. The init job also prepares:
+This keeps CLI state, OpenSSH defaults, cache/config files, and addon tooling on the `hermes-home` PVC instead of the ephemeral container filesystem. The init job also prepares:
 
 ```text
 /opt/data/.ssh/
@@ -259,7 +262,7 @@ EOF
 ENV_FILE=./hermes.env ./install.sh
 ```
 
-The Agent and Dashboard container PATH includes the addon venv after Hermes' own venv, and the WebUI container PATH includes it before its normal paths:
+The Agent and Dashboard container `PATH` values include the addon venv after Hermes' own venv, and the WebUI container `PATH` includes it before its normal paths:
 
 ```text
 # Agent/Dashboard
@@ -269,7 +272,7 @@ The Agent and Dashboard container PATH includes the addon venv after Hermes' own
 /opt/data/addon-venv/bin:/opt/data/uv/bin:/opt/data/node/bin:...
 ```
 
-This makes console scripts installed by the requirements file available to Hermes terminal calls while keeping Hermes' own Python environment first. If you need the addon Python interpreter itself, call it explicitly:
+This makes console scripts installed by the requirements file available to Hermes terminal calls while keeping Hermes' own Python environment first in Agent/Dashboard. If you need the addon Python interpreter itself, call it explicitly:
 
 ```bash
 /opt/data/addon-venv/bin/python -c "import requests; print(requests.__version__)"
@@ -350,17 +353,7 @@ See [docs/operations.md](docs/operations.md).
 ./doctor.sh
 ```
 
-Checks:
-
-- Kubernetes context
-- namespace/resources
-- pod readiness
-- service health
-- Ingress HTTP status
-- WebUI Agent source mount
-- Browserless/CDP wiring
-- NetworkPolicy reachability
-- Codex OAuth state presence
+Checks Kubernetes reachability, rollouts, internal service health, HOME/SSH/Ansible parity, WebUI agent wiring, Browserless/CDP wiring, upload limits, optional external Ingress status, and Codex OAuth state presence.
 
 ## Codex OAuth
 

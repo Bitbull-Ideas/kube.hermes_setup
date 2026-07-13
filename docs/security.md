@@ -31,7 +31,7 @@ ws://hermes-browser:3000/chromium?token=<redacted>
 
 Never print the full value in logs or docs.
 
-## Ingress authentication
+## Authentication
 
 The setup has two application auth layers:
 

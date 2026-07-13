@@ -114,7 +114,7 @@ set +a
 export WEBUI_HOST=hermes.example.com
 export DASHBOARD_HOST=hermes-admin.example.com
 export DASHBOARD_AUTH_PASSWORD='Strong-Test-Password-2!'
-export API_SERVER_KEY='test-api-key'
+export API_SERVER_KEY='test-api-key-1234567890'
 export BROWSER_TOKEN='test-browser-token'
 export BROWSER_CDP_URL='ws://hermes-browser:3000/chromium?token=test-browser-token'
 python3 scripts/render_template.py manifests/hermes.yaml.tpl "$out"
@@ -142,6 +142,10 @@ Do not require a live namespace for purely repo-local documentation/script synta
 - Do not commit generated files.
 - Commit and push repo fixes once validated unless the maintainer explicitly says not to.
 - Mention exact commit SHA in the final response.
+
+## Release preparation
+
+Preparing a release means updating `CHANGELOG.md`, validating render/syntax checks, and leaving the branch/PR ready to merge. Do not create or push Git tags unless the maintainer explicitly asks to tag after merge.
 
 ## Installer behavior that matters
 
@@ -194,7 +198,7 @@ Useful examples:
 DASHBOARD_AUTH_PASSWORD='...' ./maintain.sh rotate-passwords --from-env
 ```
 
-Generated values go to `.rendered/rotated-credentials-*.txt` with mode `0600`; never commit or print them.
+Generated password values go to `.rendered/rotated-credentials-*.txt` with mode `0600`; never commit or print them.
 
 ## Codex OAuth behavior
 
@@ -360,11 +364,12 @@ Redact tokens before sharing output.
 
 The Agent, Dashboard, and WebUI deployments set `HOME=/opt/data` and XDG dirs under `/opt/data` so CLI state and OpenSSH defaults persist on the `hermes-home` PVC. The init job prepares `/opt/data/.ssh` and generates an SSH keypair when `HERMES_SSH_SETUP=true` and the key is missing. Existing keys must be preserved; key generation is first-install/missing-only. Never commit private keys or real known_hosts/config data into public examples.
 
-Validation points:
+Validation points should cover Agent, Dashboard, and WebUI:
 
 ```bash
-kubectl -n <namespace> exec deploy/hermes-agent -- sh -lc 'tr "\0" "\n" < /proc/1/environ | grep -E "^(HOME|XDG_CONFIG_HOME|XDG_CACHE_HOME)="'
-kubectl -n <namespace> exec deploy/hermes-agent -- stat -c '%a %n' /opt/data/.ssh /opt/data/.ssh/id_ed25519 /opt/data/.ssh/id_ed25519.pub
+for app in hermes-agent hermes-dashboard hermes-webui; do
+  kubectl -n <namespace> exec deploy/$app -- sh -lc 'env | grep -E "^(HOME|XDG_CONFIG_HOME|XDG_CACHE_HOME|ANSIBLE_CONFIG)="; stat -c "%a %n" /opt/data/.ssh /opt/data/.ssh/id_ed25519 /opt/data/.ssh/id_ed25519.pub'
+done
 ```
 
 ## Persistent Python addon venv

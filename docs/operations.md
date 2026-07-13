@@ -89,10 +89,10 @@ Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite
 
 ## Password rotation
 
-`maintain.sh rotate-passwords` supports three explicit input modes:
+`maintain.sh rotate-passwords` rotates the shared Dashboard/WebUI password and supports three explicit input modes:
 
 1. **Interactive hidden prompts** with `--prompt` — default when stdin is a TTY.
-2. **Generated values** with `--generate` — writes new random values to `.rendered/rotated-credentials-*.txt`.
+2. **Generated value** with `--generate` — writes the new random value to `.rendered/rotated-credentials-*.txt`.
 3. **Environment variables** with `--from-env` — intended for automation/CI.
 
 Important: interactive rotation does **not** silently reuse password values from `hermes.env`. If a password is present in the env file and you want to apply exactly that value, say so explicitly with `--from-env`.
@@ -123,7 +123,7 @@ DASHBOARD_AUTH_USER=admin DASHBOARD_AUTH_PASSWORD='use-a-long-random-value' ./ma
 
 Production policy rejects weak passwords by default. Use `--lab`, `HERMES_PASSWORD_POLICY=lab`, or `HERMES_ALLOW_WEAK_PASSWORD=true` only for lab systems.
 
-Plaintext passwords are not printed for env/prompt mode. With `--generate`, the generated values are written to a gitignored `.rendered/rotated-credentials-*.txt` file with mode `0600`; move them to your password manager and delete the file.
+Plaintext passwords are not printed for env/prompt mode. With `--generate`, the generated value is written to a gitignored `.rendered/rotated-credentials-*.txt` file with mode `0600`; move it to your password manager and delete the file.
 
 ## Browser token rotation
 
@@ -245,7 +245,7 @@ export PATH=/opt/data/addon-venv/bin:/opt/data/uv/bin:$PATH
 
 ## Persistent HOME and SSH
 
-The Agent, Dashboard, and WebUI deployments use a persistent Unix home and SSH directory on the `hermes-home` PVC:
+Agent, Dashboard, and WebUI always use `/opt/data` as persistent Unix home on the `hermes-home` PVC:
 
 ```bash
 HERMES_SSH_SETUP=true

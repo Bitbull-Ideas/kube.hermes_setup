@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v1.2.2] - 2026-07-13
+
+### Added
+
+- Extends persistent HOME/XDG, SSH, addon Python, and Ansible runtime parity to the Dashboard container, matching Agent and WebUI behavior.
+- Extends `doctor.sh` to validate HOME/XDG, `ANSIBLE_CONFIG`, SSH key permissions, addon Python, and `ansible localhost -m ping` across Agent, Dashboard, and WebUI.
+
+### Changed
+
+- Simplifies authentication by removing the optional Traefik middleware BasicAuth layer; Dashboard and WebUI application auth remain configured by default.
+- Changes the default model to `gpt-5.6-luna`.
+- Makes persistent `HOME=/opt/data` and XDG directories the fixed default for Agent, Dashboard, and WebUI instead of a configurable `HERMES_HOME_AS_HOME` toggle.
+- Simplifies `maintain.sh rotate-passwords` to rotate the shared Dashboard/WebUI password only.
+- Keeps operator-managed `config.yaml` intact while replacing only the untouched Agent image default config during init.
+
 ## [v1.2.1] - 2026-07-11
 
 ### Added
