@@ -45,13 +45,28 @@ check_internal_health() {
 }
 
 check_browser_cdp() {
-  local pod timeout_seconds browser_pod cdp token pressure pressure_state running max_concurrent queued is_available
-  timeout_seconds="${DOCTOR_CDP_TIMEOUT_SECONDS:-15}"
+  local app pod env_cdp browser_pod cdp token pressure pressure_state running max_concurrent queued is_available timeout_seconds
+  timeout_seconds="${DOCTOR_CDP_TIMEOUT_SECONDS:-45}"
 
   browser_pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app=hermes-browser --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
   cdp="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-cdp -o jsonpath='{.data.BROWSER_CDP_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
   token="${cdp##*token=}"
-  if [[ -n "$browser_pod" && -n "$token" && "$token" != "$cdp" ]]; then
+
+  if [[ "$cdp" == ws://hermes-browser:3000/chromium\?token=* && -n "$token" && "$token" != "$cdp" ]]; then
+    ok "Browserless CDP Secret uses ws://hermes-browser:3000/chromium?token=<redacted>"
+  else
+    fail "Browserless CDP Secret must be ws://hermes-browser:3000/chromium?token=<redacted>"
+    return
+  fi
+
+  if kubectl -n "$HERMES_NAMESPACE" get svc hermes-browser >/dev/null 2>&1 && \
+     kubectl -n "$HERMES_NAMESPACE" get endpoints hermes-browser -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null | grep -q .; then
+    ok "Browserless Service has ready endpoints"
+  else
+    fail "Browserless Service has no ready endpoints"
+  fi
+
+  if [[ -n "$browser_pod" ]]; then
     pressure="$(timeout 8s kubectl -n "$HERMES_NAMESPACE" exec "$browser_pod" -- sh -lc 'TOKEN="$0"; wget -qO- "http://127.0.0.1:3000/pressure?token=$TOKEN"' "$token" 2>/dev/null || true)"
     if [[ -n "$pressure" ]]; then
       pressure_state="$(PRESSURE_JSON="$pressure" python3 - <<'PY'
@@ -66,36 +81,75 @@ PY
       read -r running max_concurrent queued is_available <<<"$pressure_state"
       if [[ "$is_available" == "true" ]]; then
         ok "browserless pressure available running=${running:-?} max=${max_concurrent:-?} queued=${queued:-?}"
-      fi
-      if [[ "${queued:-0}" =~ ^[0-9]+$ && "${queued:-0}" -gt 0 ]]; then
-        warn "browserless has queued CDP sessions; skipping active navigation test to avoid doctor hanging"
-        return 0
+      else
+        warn "browserless pressure not available running=${running:-?} max=${max_concurrent:-?} queued=${queued:-?}"
       fi
       if [[ "${max_concurrent:-}" =~ ^[0-9]+$ && "$max_concurrent" -lt 2 ]]; then
-        warn "browserless maxConcurrent=${max_concurrent}; skipping active navigation test because Hermes browser_navigate can open multiple CDP sessions"
-        return 0
+        warn "browserless maxConcurrent=${max_concurrent}; recommended minimum is 2 for Hermes browser workflows"
       fi
-      if [[ "${running:-}" =~ ^[0-9]+$ && "${max_concurrent:-}" =~ ^[0-9]+$ && "$max_concurrent" -gt 0 && "$running" -ge "$max_concurrent" ]]; then
-        warn "browserless is at concurrency limit (${running}/${max_concurrent}); skipping active navigation test"
-        return 0
-      fi
+    else
+      fail "browserless /pressure endpoint not reachable from browser pod"
     fi
+  else
+    fail "no running hermes-browser pod"
   fi
 
-  pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app=hermes-agent --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-  [[ -n "$pod" ]] || { fail "no running hermes-agent pod"; return; }
-  if timeout "${timeout_seconds}s" kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -lc '/opt/hermes/.venv/bin/python - <<PY
-from tools.browser_tool import _get_cdp_override, browser_navigate
-url=_get_cdp_override()
-assert url and "/chromium" in url
-r=browser_navigate("https://example.com", task_id="doctor-cdp")
-assert "Example Domain" in r and "cdp_override" in r
+  for app in hermes-agent hermes-dashboard hermes-webui; do
+    pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    [[ -n "$pod" ]] || { fail "no running $app pod for CDP check"; continue; }
+
+    env_cdp="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -lc 'printf %s "${BROWSER_CDP_URL:-}"' 2>/dev/null || true)"
+    if [[ "$env_cdp" == "$cdp" ]]; then
+      ok "$app BROWSER_CDP_URL matches Secret"
+    else
+      fail "$app BROWSER_CDP_URL missing or does not match Secret"
+      continue
+    fi
+
+    if timeout "${timeout_seconds}s" kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -lc '
+      set -eu
+      PY="$(command -v python3 || command -v python || true)"
+      [ -n "$PY" ] || PY="/opt/hermes/.venv/bin/python"
+      [ -x "$PY" ] || PY="/app/venv/bin/python"
+      "$PY" - <<"PY"
+import base64, os, socket, sys
+from urllib.parse import urlparse, parse_qs
+url=os.environ.get("BROWSER_CDP_URL", "").strip()
+if not url:
+    raise SystemExit("BROWSER_CDP_URL unset")
+p=urlparse(url)
+if p.scheme != "ws" or p.hostname != "hermes-browser" or p.port != 3000 or p.path != "/chromium":
+    raise SystemExit("invalid CDP URL shape")
+token=parse_qs(p.query).get("token", [""])[0]
+if not token:
+    raise SystemExit("missing token")
+# Browserless HTTP control endpoint: validates service DNS, TCP, token, and Browserless responsiveness.
+req=(f"GET /pressure?token={token} HTTP/1.1\r\nHost: {p.hostname}:3000\r\nConnection: close\r\n\r\n").encode()
+with socket.create_connection((p.hostname, p.port), timeout=10) as s:
+    s.settimeout(10)
+    s.sendall(req)
+    data=s.recv(256)
+if b" 200 " not in data.split(b"\r\n", 1)[0]:
+    raise SystemExit("pressure endpoint did not return HTTP 200")
+# Real WebSocket opening handshake against the configured /chromium CDP endpoint.
+key=base64.b64encode(os.urandom(16)).decode()
+path=p.path + "?" + p.query
+req=(f"GET {path} HTTP/1.1\r\nHost: {p.hostname}:3000\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode()
+with socket.create_connection((p.hostname, p.port), timeout=20) as s:
+    s.settimeout(20)
+    s.sendall(req)
+    data=s.recv(512)
+status=data.split(b"\r\n", 1)[0]
+if b" 101 " not in status:
+    raise SystemExit("websocket handshake failed: " + status.decode("latin1", "replace"))
 print("ok")
-PY' >/dev/null 2>&1; then
-    ok "browser CDP from hermes-agent"
-  else
-    fail "browser CDP from hermes-agent failed or timed out after ${timeout_seconds}s"
-  fi
+PY
+    ' >/dev/null 2>&1; then
+      ok "$app CDP HTTP control endpoint and WebSocket handshake"
+    else
+      fail "$app CDP HTTP control endpoint or WebSocket handshake failed/timed out after ${timeout_seconds}s"
+    fi
+  done
 }
 
 check_home_ssh() {

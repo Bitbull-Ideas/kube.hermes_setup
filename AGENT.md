@@ -22,7 +22,7 @@ Keep these defaults in source unless the maintainer explicitly asks otherwise:
 ```bash
 MODEL_PROVIDER=codex
 MODEL_NAME=gpt-5.6-luna
-BROWSER_CONCURRENT=1
+BROWSER_CONCURRENT=2
 BROWSER_QUEUED=10
 HERMES_RUNTIME_UID=10000
 HERMES_RUNTIME_GID=10000
@@ -225,7 +225,7 @@ Correct CDP URL shape:
 ws://hermes-browser:3000/chromium?token=[REDACTED]
 ```
 
-The `/chromium` path is required. Missing it commonly causes `400 Bad Request`.
+The `/chromium` path is required. Missing it commonly causes `400 Bad Request`. Browserless documents `/chromium` as the direct CDP path; this installer uses the self-hosted form `ws://hermes-browser:3000/chromium?token=<redacted>`.
 
 `BROWSER_CDP_URL` must be injected into:
 
@@ -261,28 +261,28 @@ while Agent-only CDP smoke tests pass.
 
 ## Browserless concurrency pitfall
 
-With repo default:
+Repo default is now:
 
 ```bash
-BROWSER_CONCURRENT=1
+BROWSER_CONCURRENT=2
 ```
 
-an active `browser_navigate()` health test can deadlock/queue behind itself because Hermes/agent-browser may open multiple CDP WebSockets for one navigation. `doctor.sh` therefore checks Browserless `/pressure` and skips active navigation when `maxConcurrent < 2`.
+Hermes/agent-browser may open multiple CDP WebSockets during one browser task. Keep Browserless concurrency at least 2 for practical WebUI screenshot/browser workflows; lower values can queue and cause `CDP call timed out during opening handshake`. `doctor.sh` checks Browserless `/pressure` before active browser tests.
 
 Expected doctor output in lab mode may include:
 
 ```text
-WARN browserless maxConcurrent=1; skipping active navigation test because Hermes browser_navigate can open multiple CDP sessions
+WARN browserless maxConcurrent=1; below recommended 2 for Hermes browser workflows
 ```
 
-That is not a failure. For real screenshot-heavy testing, increase concurrency intentionally:
+That warning is not a failure, but the default should remain 2 for real screenshot-heavy testing:
 
 ```bash
 BROWSER_CONCURRENT=2 ./install.sh
 ./doctor.sh
 ```
 
-If `hermes.env` still contains `BROWSER_CONCURRENT=1`, it can override shell assumptions depending on how the script is invoked. Check rendered Deployment env, not your memory. Memory lies. YAML lies more politely.
+If `hermes.env` still contains an older `BROWSER_CONCURRENT=1`, it overrides the new default. Check rendered Deployment env, not your memory. Memory lies. YAML lies more politely.
 
 
 ## WebUI upload limit pitfall

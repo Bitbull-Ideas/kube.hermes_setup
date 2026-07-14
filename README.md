@@ -397,12 +397,20 @@ If you pin images with different runtime ownership, set both variables explicitl
 
 The WebUI container also runs Hermes tools locally for WebUI chat sessions. It therefore needs the `agent-browser` controller even when an external Browserless/CDP endpoint is configured through `BROWSER_CDP_URL`.
 
+The installer uses Browserless' documented self-hosted CDP URL shape:
+
+```text
+ws://hermes-browser:3000/chromium?token=<redacted>
+```
+
+The URL is generated from `BROWSER_TOKEN`, stored in Secret `hermes-browser-cdp`, injected into Agent, Dashboard, and WebUI as `BROWSER_CDP_URL`, and persisted in `/opt/data/.env` by the init job. Browserless remains ClusterIP-only; the URL must not be placed in a public config or committed file. See the [Browserless connection URL documentation](https://docs.browserless.io/baas/connection-url-patterns).
+
 The installer prepares this by copying `node` from the Agent image into `/opt/data/node/bin` and linking `/opt/data/node_modules` to the mounted Agent source tree's `node_modules`. This makes `/opt/data/node_modules/.bin/agent-browser` available to the WebUI without installing Chromium locally; Browserless remains the actual browser backend.
 
 
 ## Browserless concurrency
 
-Repo defaults are intentionally lab-friendly: `BROWSER_CONCURRENT=1`, `BROWSER_QUEUED=10`, and `MODEL_NAME=gpt-5.6-luna`. For heavier WebUI screenshot/browser workflows, raise `BROWSER_CONCURRENT` if Browserless queueing causes `CDP call timed out during opening handshake`.
+Repo defaults are tuned for practical browser use: `BROWSER_CONCURRENT=2`, `BROWSER_QUEUED=10`, and `MODEL_NAME=gpt-5.6-luna`. Keep concurrency at least 2 for WebUI screenshot/browser workflows; lower values can queue and cause `CDP call timed out during opening handshake`.
 
 
 ## WebUI upload size
