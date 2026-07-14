@@ -99,13 +99,13 @@ prepare_defaults() {
     export API_SERVER_KEY="$(rand_hex 32)"
   fi
   export BROWSER_TOKEN="${BROWSER_TOKEN:-$(rand_hex 32)}"
-  export BROWSER_CONCURRENT="${BROWSER_CONCURRENT:-2}"
+  export BROWSER_CONCURRENT="${BROWSER_CONCURRENT:-4}"
   export BROWSER_QUEUED="${BROWSER_QUEUED:-10}"
   export BROWSER_TIMEOUT_MS="${BROWSER_TIMEOUT_MS:-300000}"
   [[ "$BROWSER_CONCURRENT" =~ ^[0-9]+$ ]] || fail "BROWSER_CONCURRENT must be numeric"
   [[ "$BROWSER_QUEUED" =~ ^[0-9]+$ ]] || fail "BROWSER_QUEUED must be numeric"
-  if (( BROWSER_CONCURRENT < 2 )); then
-    warn "BROWSER_CONCURRENT=$BROWSER_CONCURRENT is below the repo default 2; WebUI screenshot/browser workflows can queue and time out during CDP handshakes."
+  if (( BROWSER_CONCURRENT < 4 )); then
+    warn "BROWSER_CONCURRENT=$BROWSER_CONCURRENT is below the repo default 4; parallel WebUI screenshot/browser workflows can queue and time out during CDP handshakes."
   fi
   export BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
   case "$HERMES_BOOTSTRAP_MODE" in

@@ -22,7 +22,7 @@ Keep these defaults in source unless the maintainer explicitly asks otherwise:
 ```bash
 MODEL_PROVIDER=codex
 MODEL_NAME=gpt-5.6-luna
-BROWSER_CONCURRENT=2
+BROWSER_CONCURRENT=4
 BROWSER_QUEUED=10
 HERMES_RUNTIME_UID=10000
 HERMES_RUNTIME_GID=10000
@@ -264,10 +264,10 @@ while Agent-only CDP smoke tests pass.
 Repo default is now:
 
 ```bash
-BROWSER_CONCURRENT=2
+BROWSER_CONCURRENT=4
 ```
 
-Hermes/agent-browser may open multiple CDP WebSockets during one browser task. Keep Browserless concurrency at least 2 for practical WebUI screenshot/browser workflows; lower values can queue and cause `CDP call timed out during opening handshake`. `doctor.sh` checks Browserless `/pressure` before active browser tests.
+Hermes/agent-browser may open multiple CDP WebSockets during one browser task. Keep Browserless concurrency at least 4 for parallel WebUI screenshot/browser workflows; lower values can queue and cause `CDP call timed out during opening handshake`. `doctor.sh` checks Browserless `/pressure` before active browser tests.
 
 Expected doctor output in lab mode may include:
 
@@ -275,10 +275,10 @@ Expected doctor output in lab mode may include:
 WARN browserless maxConcurrent=1; below recommended 2 for Hermes browser workflows
 ```
 
-That warning is not a failure, but the default should remain 2 for real screenshot-heavy testing:
+That warning is not a failure, but the default should remain 4 for real screenshot-heavy testing:
 
 ```bash
-BROWSER_CONCURRENT=2 ./install.sh
+BROWSER_CONCURRENT=4 ./install.sh
 ./doctor.sh
 ```
 

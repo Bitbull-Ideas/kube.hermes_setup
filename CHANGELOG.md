@@ -18,7 +18,7 @@ All notable changes to this project are documented in this file.
 - Makes persistent `HOME=/opt/data` and XDG directories the fixed default for Agent, Dashboard, and WebUI instead of a configurable `HERMES_HOME_AS_HOME` toggle.
 - Simplifies `maintain.sh rotate-passwords` to rotate the shared Dashboard/WebUI password only.
 - Keeps operator-managed `config.yaml` intact while replacing only the untouched Agent image default config during init.
-- Sets the Browserless default concurrency to `BROWSER_CONCURRENT=2` and strengthens CDP reachability checks.
+- Sets the Browserless default concurrency to `BROWSER_CONCURRENT=4` and strengthens CDP reachability checks.
 - Documents and persists the Browserless CDP URL in the shared `/opt/data/.env` while retaining Secret-backed `BROWSER_CDP_URL` injection in Agent, Dashboard, and WebUI.
 
 ## [v1.2.1] - 2026-07-11

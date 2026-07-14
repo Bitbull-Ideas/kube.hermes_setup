@@ -410,7 +410,7 @@ The installer prepares this by copying `node` from the Agent image into `/opt/da
 
 ## Browserless concurrency
 
-Repo defaults are tuned for practical browser use: `BROWSER_CONCURRENT=2`, `BROWSER_QUEUED=10`, and `MODEL_NAME=gpt-5.6-luna`. Keep concurrency at least 2 for WebUI screenshot/browser workflows; lower values can queue and cause `CDP call timed out during opening handshake`.
+Repo defaults are tuned for practical browser use: `BROWSER_CONCURRENT=4`, `BROWSER_QUEUED=10`, and `MODEL_NAME=gpt-5.6-luna`. Keep concurrency at least 4 for parallel WebUI screenshot/browser workflows; lower values can queue and cause `CDP call timed out during opening handshake`.
 
 
 ## WebUI upload size

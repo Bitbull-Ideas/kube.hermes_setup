@@ -84,8 +84,8 @@ PY
       else
         warn "browserless pressure not available running=${running:-?} max=${max_concurrent:-?} queued=${queued:-?}"
       fi
-      if [[ "${max_concurrent:-}" =~ ^[0-9]+$ && "$max_concurrent" -lt 2 ]]; then
-        warn "browserless maxConcurrent=${max_concurrent}; recommended minimum is 2 for Hermes browser workflows"
+      if [[ "${max_concurrent:-}" =~ ^[0-9]+$ && "$max_concurrent" -lt 4 ]]; then
+        warn "browserless maxConcurrent=${max_concurrent}; recommended minimum is 4 for parallel Hermes browser workflows"
       fi
     else
       fail "browserless /pressure endpoint not reachable from browser pod"
