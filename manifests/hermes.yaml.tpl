@@ -79,6 +79,11 @@ spec:
           value: "${HERMES_SSH_KEY_TYPE}"
         - name: HERMES_SSH_KEY_PATH
           value: "${HERMES_SSH_KEY_PATH}"
+        - name: BROWSER_CDP_URL
+          valueFrom:
+            secretKeyRef:
+              name: hermes-browser-cdp
+              key: BROWSER_CDP_URL
         command: ["sh", "-c"]
         args:
         - |
@@ -186,6 +191,21 @@ spec:
             cp /opt/data/config.yaml "/opt/data/config.yaml.image-default-$(date -u +%Y%m%dT%H%M%SZ).bak"
             write_default_config
           fi
+          touch /opt/data/.env
+          if grep -q '^BROWSER_CDP_URL=' /opt/data/.env 2>/dev/null; then
+            tmp_env="/opt/data/.env.$$.tmp"
+            while IFS= read -r line || [ -n "$line" ]; do
+              case "$line" in
+                BROWSER_CDP_URL=*) printf '%s\n' "BROWSER_CDP_URL=${BROWSER_CDP_URL}" ;;
+                *) printf '%s\n' "$line" ;;
+              esac
+            done < /opt/data/.env > "$tmp_env"
+            cat "$tmp_env" > /opt/data/.env
+            rm -f "$tmp_env"
+          else
+            printf '%s\n' "BROWSER_CDP_URL=${BROWSER_CDP_URL}" >> /opt/data/.env
+          fi
+          chmod 600 /opt/data/.env
           if [ ! -f /opt/data/SOUL.md ]; then
             {
               printf '%s\n' 'You are Hermes Agent, an intelligent AI assistant. Be helpful, direct, technically precise, and security-conscious.'

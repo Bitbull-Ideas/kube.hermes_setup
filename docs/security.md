@@ -29,7 +29,7 @@ The expected redacted endpoint is:
 ws://hermes-browser:3000/chromium?token=<redacted>
 ```
 
-Never print the full value in logs or docs.
+This follows Browserless' documented direct CDP connection path. The endpoint is generated from `BROWSER_TOKEN`, stored in Secret `hermes-browser-cdp`, and injected into the three Hermes runtime containers. Never print the full value in logs or docs. See the [Browserless connection URL patterns](https://docs.browserless.io/baas/connection-url-patterns).
 
 ## Authentication
 
