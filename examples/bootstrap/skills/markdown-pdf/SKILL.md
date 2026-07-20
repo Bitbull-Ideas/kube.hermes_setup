@@ -175,7 +175,7 @@ python .../render_markdown_pdf.py report.md -o report.pdf \
 
 ```bash
 python .../render_markdown_pdf.py memo.md -o memo.pdf \
-  --no-cover --no-toc --title "Decision Memo"
+  --no-cover --title "Decision Memo"
 ```
 
 ### Branded output
