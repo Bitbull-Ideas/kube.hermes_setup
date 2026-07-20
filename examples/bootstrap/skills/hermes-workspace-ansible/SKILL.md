@@ -1,5 +1,5 @@
 ---
-name: hermes-ansible-workspace
+name: hermes-workspace-ansible
 description: Use when creating, modifying, testing, reviewing, or cleaning up Ansible automation in a workspace that contains an ansible/ directory. Keep all Ansible work contained there, record Python and collection dependencies, use the authorized SSH identity safely, and offer consent-based archival of completed project files.
 version: 1.0.0
 author: Hermes Agent
