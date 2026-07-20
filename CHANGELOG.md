@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v2.0.1] - 2026-07-20
+
+### Fixed
+
+- Neutralizes the reusable team-policy post-setup recipe by replacing repository-specific organization values with explicit `ASK_USER_AND_CHANGE` markers.
+- Requires Hermes to resolve every organization marker with the requesting user before installing the adapted policy.
+
+### Changed
+
+- Raises every bundled bootstrap skill version to `2.0.1` for the v2.0.1 release.
+
 ## [v2.0.0] - 2026-07-20
 
 ### Added

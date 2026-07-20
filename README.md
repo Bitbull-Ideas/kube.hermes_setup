@@ -1,6 +1,6 @@
 # kube.hermes_setup
 
-Current release: **v2.0.0** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
+Current release: **v2.0.1** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
 
 Production-oriented Kubernetes/K3s installer for a multi-container Hermes Agent stack:
 

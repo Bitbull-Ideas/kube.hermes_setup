@@ -1,7 +1,7 @@
 ---
 name: hermes-workspace-git
 description: Use when cloning, creating, modifying, reviewing, or cleaning up Git repositories in a Hermes workspace. Keep non-Ansible repositories under the workspace git/ directory, preserve repository boundaries and local instructions, and use consent-based cleanup and archival under git_archive/ after pull-request work is complete.
-version: 2.0.0
+version: 2.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]

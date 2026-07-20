@@ -1,7 +1,7 @@
 ---
 name: markdown-pdf
 description: "Use when creating a polished PDF from Markdown. Render Markdown with a print-focused HTML/CSS theme, cover page, metadata, table of contents, syntax-highlighted code, images, headers/footers, page numbers, and verified pagination."
-version: 2.0.0
+version: 2.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]

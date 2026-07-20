@@ -1,7 +1,7 @@
 ---
 name: github-setup-access
 description: Use when configuring GitHub access for a Hermes Kubernetes installation that should read public repositories and contribute pull requests without access to private repositories. Guide the user through a dedicated low-privilege GitHub account, a classic PAT limited to public_repo, secure placement in /opt/data/.env, and non-disclosing verification.
-version: 2.0.0
+version: 2.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux]
