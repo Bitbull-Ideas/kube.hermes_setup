@@ -8,7 +8,7 @@ platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [git, workspace, repositories, cleanup, archive, collaboration]
-    related_skills: [github-pr-workflow, github-repo-management, hermes-ansible-workspace]
+    related_skills: [github-pr-workflow, github-repo-management, hermes-workspace-ansible]
 ---
 
 # Hermes Workspace Git
@@ -65,7 +65,7 @@ Use `<workspace>/ansible/` only when the repository itself is primarily one of t
 - Ansible collection repository
 - Ansible inventory or automation repository
 
-Follow `hermes-ansible-workspace` for those repositories and archive them under `ansible_archive/`.
+Follow `hermes-workspace-ansible` for those repositories and archive them under `ansible_archive/`.
 
 ### All other Git repositories
 
@@ -291,7 +291,7 @@ Do not leave a duplicate in the old location. Report the correction explicitly.
 
 - [ ] Repository primary purpose was inspected and classified
 - [ ] Non-Ansible repository is under `<workspace>/git/<name>` while active
-- [ ] Ansible-native repositories remain governed by `hermes-ansible-workspace`
+- [ ] Ansible-native repositories remain governed by `hermes-workspace-ansible`
 - [ ] Workspace and repository instructions were read
 - [ ] Existing repository state and unrelated work were preserved
 - [ ] Repository-specific dependencies and artifacts stayed within its boundary
