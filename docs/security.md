@@ -104,6 +104,6 @@ Hermes Agent refuses to start the API server when `API_SERVER_KEY` is a placehol
 
 ## Bootstrap data
 
-`HERMES_BOOTSTRAP_DIR` can contain SOUL.md, memories, skills, plugins, cron jobs, `.env`, and optionally `auth.json`. Treat real bootstrap directories and `.rendered/bootstrap.tar.gz` as sensitive. The repo ignores local `bootstrap/` and `.rendered/`; commit only sanitized examples under `examples/bootstrap/`.
+`HERMES_BOOTSTRAP_DIR` can contain SOUL.md, memories, skills, plugins, cron jobs, `.env`, and optionally `auth.json`. Treat real bootstrap directories and `.rendered/bootstrap.tar.gz` as sensitive. The repo ignores local `bootstrap/` and `.rendered/`; commit sanitized examples under `examples/bootstrap-shared/` and `examples/bootstrap-profiles/`.
 
 `HERMES_BOOTSTRAP_INCLUDE_AUTH=false` is the default. Enable it only when you deliberately restore OAuth state from a protected source.

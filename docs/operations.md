@@ -59,10 +59,16 @@ This includes OAuth state, sessions, skills, memories, workspace files, and WebU
 Use `HERMES_BOOTSTRAP_DIR` to seed SOUL, memory, skills, plugins, cron jobs, config, and workspace context into the persistent PVCs. This is useful for repeatable installations where the Agent should start with known behavior.
 
 ```bash
-cp -a examples/bootstrap ./bootstrap
-$EDITOR ./bootstrap/SOUL.md
-$EDITOR ./bootstrap/memories/USER.md
-cat >> hermes.env <<'EOF'
+# Use a profile to bootstrap SOUL, memory, skills, and workspace
+echo 'HERMES_BOOTSTRAP_PROFILE=universal-system-architect' >> hermes.env
+
+# Or build a fully custom bootstrap directory from shared + profile:
+# cp -a examples/bootstrap-shared ./bootstrap
+# cp -a examples/bootstrap-profiles/YOUR_PROFILE/. ./bootstrap/
+$EDITOR ./bootstrap/*
+```
+
+This replaces `cp -a examples/bootstrap ./bootstrap` from earlier versions — the old single-tree layout was split into shared skills and profile-specific overlays.
 HERMES_BOOTSTRAP_DIR=./bootstrap
 HERMES_BOOTSTRAP_MODE=missing
 HERMES_BOOTSTRAP_INCLUDE_AUTH=false

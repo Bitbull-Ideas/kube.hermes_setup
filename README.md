@@ -113,6 +113,7 @@ Important variables:
 | `HERMES_WRITE_SAFE_ROOT` | Safe write roots, set by manifest to `/opt/data:/workspace` |
 | `HERMES_BOOTSTRAP_DIR` | Optional local bootstrap directory for SOUL.md, memories, skills, plugins, cron, config, and workspace files |
 | `HERMES_BOOTSTRAP_MODE` | `disabled`, `missing` (default), or `overwrite` |
+| `HERMES_BOOTSTRAP_PROFILE` | Prebuilt profile: `personal-assistant`, `universal-system-architect`, or leave empty |
 | `HERMES_ADDON_REQUIREMENTS` | Optional local `requirements.txt` installed into a persistent addon venv |
 | `HERMES_ADDON_PYTHON_VERSION` | Optional uv-managed addon Python version, default `3.13` |
 | `HERMES_SSH_SETUP` | Prepare `/opt/data/.ssh` with safe permissions, default `true` |
@@ -176,8 +177,14 @@ bootstrap/
 Example:
 
 ```bash
-cp -a examples/bootstrap ./bootstrap
-# edit ./bootstrap/* for your installation
+# Option A: use a prebuilt profile
+export HERMES_BOOTSTRAP_PROFILE=universal-system-architect
+echo 'HERMES_BOOTSTRAP_PROFILE=universal-system-architect' >> hermes.env
+
+# Option B: fully custom bootstrap directory
+# cp -a examples/bootstrap-shared ./bootstrap
+# cp -a examples/bootstrap-profiles/YOUR_PROFILE/. ./bootstrap/
+# $EDITOR ./bootstrap/*
 cat >> hermes.env <<'EOF'
 HERMES_BOOTSTRAP_DIR=./bootstrap
 HERMES_BOOTSTRAP_MODE=missing
@@ -302,7 +309,7 @@ export PATH=/opt/data/addon-venv/bin:$PATH
 
 Do not mutate `/opt/hermes/.venv` or install ad-hoc packages into `/usr/local` if persistence matters. If a previous install created `/opt/data/addon-venv` with system Python, rerunning the installer migrates it to a uv-managed venv so the same Python works from WebUI too. For production-standard system tools or OS packages, prefer a custom `HERMES_AGENT_IMAGE`.
 
-For a persistent Ansible control-node pattern, including mount locations and visible roles/collections paths under `/workspace/ansible`, see [`docs/ansible.md`](docs/ansible.md) and `examples/bootstrap/requirements.txt`.
+For a persistent Ansible control-node pattern, including mount locations and visible roles/collections paths under `/workspace/ansible`, see [`docs/ansible.md`](docs/ansible.md) and `examples/bootstrap-profiles/universal-system-architect/requirements.txt`.
 
 ## Repository layout
 

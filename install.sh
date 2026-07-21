@@ -27,7 +27,8 @@ write_generated_credentials() {
 
 load_env() {
   if [[ ! -f "$ENV_FILE" ]]; then
-    fail "Missing env file: $ENV_FILE. Copy examples/hermes.env.example to hermes.env first."
+    warn "Missing env file: $ENV_FILE. Using environment variables only."
+    return 0
   fi
   set -a
   # shellcheck disable=SC1090
@@ -62,6 +63,7 @@ prepare_defaults() {
   export HERMES_BOOTSTRAP_DIR="${HERMES_BOOTSTRAP_DIR:-}"
   export HERMES_BOOTSTRAP_MODE="${HERMES_BOOTSTRAP_MODE:-missing}"
   export HERMES_BOOTSTRAP_INCLUDE_AUTH="${HERMES_BOOTSTRAP_INCLUDE_AUTH:-false}"
+  export HERMES_BOOTSTRAP_PROFILE="${HERMES_BOOTSTRAP_PROFILE:-}"
   export HERMES_ADDON_REQUIREMENTS="${HERMES_ADDON_REQUIREMENTS:-}"
   # Hard-coded addon runtime facts. Keep these out of hermes.env examples unless the chart changes.
   export HERMES_ADDON_PYTHON_MODE="uv"
@@ -117,6 +119,12 @@ prepare_defaults() {
     require_cmd tar
     [[ -d "$HERMES_BOOTSTRAP_DIR" ]] || fail "HERMES_BOOTSTRAP_DIR does not exist or is not a directory: $HERMES_BOOTSTRAP_DIR"
   fi
+  if [[ -z "$HERMES_BOOTSTRAP_DIR" && -n "$HERMES_BOOTSTRAP_PROFILE" && "$HERMES_BOOTSTRAP_MODE" != "disabled" ]]; then
+    require_cmd tar
+    local composed
+    composed="$(profile_bootstrap_dir "$HERMES_BOOTSTRAP_PROFILE")"
+    export HERMES_BOOTSTRAP_DIR="$composed"
+  fi
   if [[ -n "$HERMES_ADDON_REQUIREMENTS" ]]; then
     require_cmd tar
     [[ -f "$HERMES_ADDON_REQUIREMENTS" ]] || fail "HERMES_ADDON_REQUIREMENTS does not exist or is not a file: $HERMES_ADDON_REQUIREMENTS"
@@ -140,6 +148,24 @@ bootstrap_enabled() {
 
 addon_requirements_enabled() {
   [[ -n "${HERMES_ADDON_REQUIREMENTS:-}" ]]
+}
+
+profile_bootstrap_dir() {
+  local prof="$1"
+  local shared="$ROOT_DIR/examples/bootstrap-shared"
+  local profiledir="$ROOT_DIR/examples/bootstrap-profiles/$prof"
+  [[ -d "$profiledir" ]] || fail "Unknown bootstrap profile: $prof. Available profiles: $(cd "$ROOT_DIR/examples/bootstrap-profiles" 2>/dev/null && printf '%s ' */ | tr -d '/')"
+  [[ -f "$profiledir/SOUL.md" ]] || fail "Profile $prof is missing SOUL.md"
+  [[ -f "$profiledir/memories/USER.md" ]] || warn "Profile $prof has no memories/USER.md"
+  local stage="$RENDER_DIR/bootstrap-profile/$prof"
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  if [[ -d "$shared" ]]; then
+    log "Composing bootstrap from shared layer + profile $prof"
+    cp -a "$shared"/. "$stage"/
+  fi
+  cp -a "$profiledir"/. "$stage"/
+  printf '%s' "$stage"
 }
 
 archive_enabled() {

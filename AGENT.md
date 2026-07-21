@@ -52,8 +52,9 @@ docs/operations.md                Day-2 runbook
 docs/security.md                  Security model and secret-handling rules
 docs/troubleshooting.md           Known failure modes and fixes
 docs/codex-auth.md                Manual Codex OAuth pairing
-examples/bootstrap/skills/        Sanitized reusable bootstrap skills
-examples/bootstrap/workspace/     Example workspace-level instructions
+examples/bootstrap-shared/skills/ Shared reusable skills for all profiles
+examples/bootstrap-shared/workspace/ Shared workspace instructions
+examples/bootstrap-profiles/      Profile-specific SOUL, memories, requirements, workspace
 ```
 
 Generated/local files that must not be committed:

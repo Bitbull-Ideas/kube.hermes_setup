@@ -7,11 +7,12 @@ This installer does not need a custom Agent image for a basic Ansible control se
 Copy the example bootstrap tree and point the installer at the Ansible requirements file:
 
 ```bash
-cp -a examples/bootstrap ./bootstrap
+cp -a examples/bootstrap-shared ./bootstrap
+cp -a examples/bootstrap-profiles/universal-system-architect/. ./bootstrap/
 cat >> hermes.env <<'EOF'
 HERMES_ADDON_REQUIREMENTS=./bootstrap/requirements.txt
 HERMES_ADDON_PYTHON_VERSION=3.13
-HERMES_BOOTSTRAP_DIR=./bootstrap
+HERMES_BOOTSTRAP_PROFILE=universal-system-architect
 HERMES_BOOTSTRAP_MODE=missing
 HERMES_SSH_SETUP=true
 EOF
@@ -19,6 +20,10 @@ ENV_FILE=./hermes.env ./install.sh
 ```
 
 The packages are installed into `/opt/data/addon-venv`, backed by a uv-managed Python runtime under `/opt/data/uv`. Both paths are PVC-backed and survive Pod recreation. Because the Python runtime is under `/opt/data`, the same Ansible CLI works from the `hermes-agent`, `hermes-dashboard`, and `hermes-webui` containers.
+
+When `HERMES_BOOTSTRAP_PROFILE=universal-system-architect` is set, `install.sh` automatically composes the bootstrap directory from the shared skills layer (`examples/bootstrap-shared/`) and the profile-specific overlay (`examples/bootstrap-profiles/universal-system-architect/`). The Ansible project files under `workspace/ansible/` are included from the profile.
+
+For a custom override without the profile system, copy the shared layer and desired profile manually, then point `HERMES_BOOTSTRAP_DIR` at the merged result.
 
 The installer also ensures this Ansible project directory exists on the shared workspace PVC, even when no bootstrap directory is provided:
 
