@@ -1,0 +1,14 @@
+# Optional Python addon packages installed into /opt/data/addon-venv when HERMES_ADDON_REQUIREMENTS points to this file.
+# Pin versions for reproducible installs.
+# Example:
+# six==1.17.0
+
+# skill: markdown-pdf
+Markdown
+Pygments
+fpdf2
+pypdf
+
+# personal tools
+pyvim
+
