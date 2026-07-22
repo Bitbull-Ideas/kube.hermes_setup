@@ -131,28 +131,28 @@ If access succeeds, verify the actual remote user and required privilege path be
 
 Give the user the matching **public** key and state which remote account needs access. Use an existing `.pub` file that corresponds to the selected private key, or derive only the public key with `ssh-keygen -y -f <private-key-path>`. Never display the private key.
 
-Provide installation help if needed. For root access, the user can run on the target console or through an already authorized administrator:
+Provide installation help if needed. The user can run this on the target console or through an already authorized administrator. It works for both root and named accounts:
 
 ```bash
-install -d -m 700 /root/.ssh
-PUBLIC_KEY='PASTE_THE_PUBLIC_KEY_HERE'
-grep -qxF "$PUBLIC_KEY" /root/.ssh/authorized_keys 2>/dev/null || printf '%s\n' "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
+USER='CHANGE_ME'
+KEY='PASTE_THE_PUBLIC_KEY_HERE'
+
+id -u "$USER" >/dev/null 2>&1 || { printf 'Unknown user: %s\n' "$USER" >&2; exit 1; }
+
+HOME_DIR="$(getent passwd "$USER" | cut -d: -f6)"
+GROUP="$(id -gn "$USER")"
+AUTHORIZED_KEYS="$HOME_DIR/.ssh/authorized_keys"
+
+install -d -m 700 -o "$USER" -g "$GROUP" "$HOME_DIR/.ssh"
+touch "$AUTHORIZED_KEYS"
+chown "$USER:$GROUP" "$AUTHORIZED_KEYS"
+chmod 600 "$AUTHORIZED_KEYS"
+
+grep -qxF "$KEY" "$AUTHORIZED_KEYS" ||
+  printf '%s\n' "$KEY" >> "$AUTHORIZED_KEYS"
 ```
 
-For a named non-root account, install the key in that user's home and set ownership:
-
-```bash
-TARGET_USER='CHANGE_ME'
-TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-install -d -m 700 -o "$TARGET_USER" -g "$TARGET_USER" "$TARGET_HOME/.ssh"
-PUBLIC_KEY='PASTE_THE_PUBLIC_KEY_HERE'
-touch "$TARGET_HOME/.ssh/authorized_keys"
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.ssh/authorized_keys"
-chmod 600 "$TARGET_HOME/.ssh/authorized_keys"
-grep -qxF "$PUBLIC_KEY" "$TARGET_HOME/.ssh/authorized_keys" || printf '%s\n' "$PUBLIC_KEY" >> "$TARGET_HOME/.ssh/authorized_keys"
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.ssh/authorized_keys"
-```
+Resolve the account's primary group instead of assuming it has the same name as the user. The final append preserves the existing file and adds the key only when an identical line is absent.
 
 Tell the user to verify the account name, home directory, SSH server configuration, and any centralized access-management policy before changing `authorized_keys`. After they grant access, retry the non-interactive connectivity check. Do not claim target verification until it succeeds.
 

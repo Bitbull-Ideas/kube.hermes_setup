@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 - Integrates the generic workspace manager with the existing Git and Ansible workspace skills by defining specialized placement precedence and preventing duplicate topic folders.
+- Replaces duplicate root/non-root SSH key installation recipes in the Ansible workspace skill with one idempotent account-aware example.
 - Updates the bootstrap workspace instructions, SOUL profile, README, and post-setup guidance to describe the combined workspace lifecycle.
 - Makes `personal-assistant` select `markdown-pdf` and `hermes-workspace-manager` without duplicating canonical skill sources, disable SSH setup by default, and activate its own addon requirements.
 - Makes `universal-system-architect` select all shared skills, enable SSH setup, and activate its Ansible-oriented addon requirements by default.
