@@ -2,13 +2,30 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/hermes.env}"
+# Rotation input passed explicitly in the process environment must survive
+# sourcing an env file that intentionally keeps generated values blank.
+PROCESS_DASHBOARD_AUTH_USER_SET="${DASHBOARD_AUTH_USER+x}"
+PROCESS_DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER-}"
+PROCESS_DASHBOARD_AUTH_PASSWORD_SET="${DASHBOARD_AUTH_PASSWORD+x}"
+PROCESS_DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD-}"
+PROCESS_BROWSER_TOKEN_SET="${BROWSER_TOKEN+x}"
+PROCESS_BROWSER_TOKEN="${BROWSER_TOKEN-}"
+DEFAULT_ENV_FILE="$ROOT_DIR/hermes.env"
+if [[ ! -f "$DEFAULT_ENV_FILE" && -f "$ROOT_DIR/current_config/hermes.env" ]]; then
+  DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"
+fi
+ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
 [[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
+[[ -z "$PROCESS_DASHBOARD_AUTH_USER_SET" ]] || DASHBOARD_AUTH_USER="$PROCESS_DASHBOARD_AUTH_USER"
+[[ -z "$PROCESS_DASHBOARD_AUTH_PASSWORD_SET" ]] || DASHBOARD_AUTH_PASSWORD="$PROCESS_DASHBOARD_AUTH_PASSWORD"
+[[ -z "$PROCESS_BROWSER_TOKEN_SET" ]] || BROWSER_TOKEN="$PROCESS_BROWSER_TOKEN"
 HERMES_NAMESPACE="${HERMES_NAMESPACE:-hermes}"
 HERMES_DASHBOARD_ENABLED="${HERMES_DASHBOARD_ENABLED:-true}"
 HERMES_WEBUI_ENABLED="${HERMES_WEBUI_ENABLED:-true}"
 HERMES_BROWSER_ENABLED="${HERMES_BROWSER_ENABLED:-true}"
 HERMES_RENDER_DIR="${HERMES_RENDER_DIR:-$ROOT_DIR/.rendered}"
+HERMES_RUNTIME_UID="${HERMES_RUNTIME_UID:-10000}"
+HERMES_RUNTIME_GID="${HERMES_RUNTIME_GID:-10000}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
@@ -106,6 +123,8 @@ JSON
 restore() {
   local in="${1:-}"
   [[ -f "$in" ]] || fail "backup file required"
+  [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
+  [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
   local deployments=() d
   mapfile -t deployments < <(enabled_write_deployments)
   log "Scaling down write-heavy deployments"
@@ -139,7 +158,7 @@ spec:
 JSON
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
   kubectl -n "$HERMES_NAMESPACE" cp "$in" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
-  kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c 'rm -rf /opt/data/* /workspace/*; tar xzf /tmp/hermes-backup.tgz -C /; chown -R 1000:1000 /opt/data /workspace || true'
+  kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null
   log "Scaling deployments up"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=1
@@ -241,7 +260,7 @@ Passwords controlled:
 
 Input modes:
   --prompt    Always ask with hidden interactive prompts. This is the default when stdin is a TTY.
-  --generate  Generate a new random password and write it to .rendered/rotated-credentials-*.txt.
+  --generate  Generate a new random password and write it to HERMES_RENDER_DIR/rotated-credentials-*.txt.
   --from-env  Read DASHBOARD_AUTH_PASSWORD from environment variables. Use this for CI/non-interactive automation.
 
 Important:

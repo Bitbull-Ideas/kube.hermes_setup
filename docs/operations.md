@@ -44,7 +44,7 @@ The archive contains:
 /workspace
 ```
 
-This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. Treat backups as sensitive.
+This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration.
 
 ## Restore
 
@@ -61,11 +61,24 @@ The recommended configuration lifecycle is:
 ```bash
 ./setup.sh
 # Later, after git pull:
-rm -rf current_config
 ./setup.sh --from-answers
 ```
 
-`current_config/` is disposable and contains the composed bootstrap, `hermes.env`, and installer artifacts. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves all answers, including secret-bearing answers, with mode `0600`. Both paths are Git-ignored. Bootstrap mode `missing` seeds absent PVC files and preserves later edits; `overwrite` replaces bootstrap-managed files on the next installer run.
+`current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves all answers, including secret-bearing answers, with mode `0600`. Both paths are Git-ignored. Bootstrap mode `missing` seeds absent PVC files and preserves later edits; `overwrite` replaces bootstrap-managed files on the next installer run.
+
+The operational scripts resolve configuration in this order: an explicit `ENV_FILE`, root `hermes.env` when it exists, then wizard-generated `current_config/hermes.env`. Therefore bare `./doctor.sh` and `./maintain.sh` commands work after the wizard while preserving compatibility with manual root configuration.
+
+## Initial generated credentials
+
+When the wizard password prompt is left empty, the password is not generated until `install.sh` runs. It is therefore intentionally absent from `hermes.env` and `configuration_answers`. The installer writes all generated and applied initial values to:
+
+```text
+current_config/artifacts/generated-credentials.txt
+```
+
+The path follows `HERMES_RENDER_DIR`; manual installations default to `.rendered/generated-credentials.txt`. The directory is mode `0700` and the file is mode `0600`. The file contains `DASHBOARD_AUTH_USER`, `DASHBOARD_AUTH_PASSWORD`, `API_SERVER_KEY`, and `BROWSER_TOKEN`; values for disabled components may be empty.
+
+Every installer run generates a new value for each still-empty secret variable, applies it to Kubernetes, and overwrites the capture file with the current applied values. Save required values in a password manager. If the local file was deleted, an authorized operator can recover the Dashboard/WebUI password from `secret/hermes-dashboard-auth`; avoid printing or sharing it except in a private terminal.
 
 Use `HERMES_BOOTSTRAP_DIR` to seed SOUL, memory, skills, plugins, cron jobs, config, and workspace context into the persistent PVCs. This is useful for repeatable installations where the Agent should start with known behavior.
 
@@ -110,10 +123,10 @@ Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite
 
 ## Password rotation
 
-`maintain.sh rotate-passwords` rotates the shared Dashboard/WebUI password and supports three explicit input modes:
+`maintain.sh rotate-passwords` rotates the shared password for the enabled Dashboard and/or WebUI components and supports three explicit input modes:
 
 1. **Interactive hidden prompts** with `--prompt` — default when stdin is a TTY.
-2. **Generated value** with `--generate` — writes the new random value to `.rendered/rotated-credentials-*.txt`.
+2. **Generated value** with `--generate` — writes the new random value to `$HERMES_RENDER_DIR/rotated-credentials-*.txt`.
 3. **Environment variables** with `--from-env` — intended for automation/CI.
 
 Important: interactive rotation does **not** silently reuse password values from `hermes.env`. If a password is present in the env file and you want to apply exactly that value, say so explicitly with `--from-env`.
@@ -144,7 +157,7 @@ DASHBOARD_AUTH_USER=admin DASHBOARD_AUTH_PASSWORD='use-a-long-random-value' ./ma
 
 Production policy rejects weak passwords by default. Use `--lab`, `HERMES_PASSWORD_POLICY=lab`, or `HERMES_ALLOW_WEAK_PASSWORD=true` only for lab systems.
 
-Plaintext passwords are not printed for env/prompt mode. With `--generate`, the generated value is written to a gitignored `.rendered/rotated-credentials-*.txt` file with mode `0600`; move it to your password manager and delete the file.
+Plaintext passwords are not printed for env/prompt mode. With `--generate`, the generated value is written under `HERMES_RENDER_DIR` with mode `0600`; this is `current_config/artifacts` for wizard installations and `.rendered` for manual defaults. Move it to your password manager and delete the file.
 
 ## Browser token rotation
 
@@ -193,11 +206,6 @@ HERMES_WEBUI_PASSWORD <- secret/hermes-dashboard-auth:password
 So the WebUI login password is the same value as `DASHBOARD_AUTH_PASSWORD`. This avoids the remote first-password setup gate safely because WebUI auth is enabled at startup. When `maintain.sh rotate-passwords` rotates the dashboard password, it also restarts `hermes-webui` so the env-backed Secret value is reloaded.
 
 
-## Doctor and Browserless concurrency
-
-With `BROWSER_CONCURRENT=4`, `doctor.sh` can perform active CDP checks while leaving capacity for parallel browser sessions. A single Hermes browser navigation may open multiple CDP WebSockets, so lower concurrency can queue behind itself. `BROWSER_QUEUED=10` bounds waiting sessions, and `BROWSER_TIMEOUT_MS=30000` limits one Browserless session to 30 seconds.
-
-
 ## WebUI upload size
 
 The installer sets:
@@ -216,7 +224,7 @@ The manifest resource requests/limits are configurable through `HERMES_*_CPU_REQ
 
 ## Deployment update strategy
 
-Deployment update strategy is `Recreate` for the four single-replica components. This avoids surge Pods during `install.sh`/secret refresh restarts, which can otherwise deadlock rollouts on small single-node K3s clusters with tight CPU requests.
+Deployment update strategy is `Recreate` for every enabled single-replica component. This avoids surge Pods during `install.sh`/secret refresh restarts, which can otherwise deadlock rollouts on small single-node K3s clusters with tight CPU requests.
 
 ### Dashboard workspace file browser
 
@@ -280,8 +288,7 @@ HERMES_SSH_KEY_PATH=/opt/data/.ssh/id_ed25519
 Operational behavior:
 
 - `HOME=/opt/data`, `XDG_CONFIG_HOME=/opt/data/.config`, and `XDG_CACHE_HOME=/opt/data/.cache` are set on Agent, Dashboard, and WebUI processes.
-- `/opt/data/.ssh` is created with mode `700`; `known_hosts` is created with mode `644`.
-- If `HERMES_SSH_SETUP=true`, the init job generates the key only when `HERMES_SSH_KEY_PATH` does not already exist. Existing keys are preserved.
+- If `HERMES_SSH_SETUP=true`, `/opt/data/.ssh` is created with mode `700`, `known_hosts` is created with mode `644`, and the init job generates the key only when `HERMES_SSH_KEY_PATH` does not already exist. Existing keys are preserved.
 - Private keys are forced to mode `600`; public keys are forced to mode `644`.
 
 Fetch the generated public key:

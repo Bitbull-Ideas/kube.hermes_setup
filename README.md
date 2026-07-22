@@ -30,13 +30,13 @@ hermes-agent
   - API server on 8642
   - BROWSER_CDP_URL -> secret/hermes-browser-cdp
 
-hermes-dashboard
+hermes-dashboard (optional)
   - /opt/data PVC
   - /workspace PVC
   - Dashboard on 9119
   - HERMES_DASHBOARD_FILES_ROOT=/workspace
 
-hermes-webui
+hermes-webui (optional)
   - /opt/data PVC
   - /workspace PVC
   - initContainer prepares /opt/data/webui ownership for the configured runtime UID/GID
@@ -45,7 +45,7 @@ hermes-webui
   - HERMES_WEBUI_AGENT_DIR=/home/hermeswebui/.hermes/hermes-agent
   - BROWSER_CDP_URL -> secret/hermes-browser-cdp
 
-hermes-browser
+hermes-browser (optional)
   - internal ClusterIP only
   - Browserless Chromium on 3000
   - token protected
@@ -76,10 +76,17 @@ cd kube.hermes_setup
 
 `setup.sh` runs the interactive configurator and optionally hands off to `install.sh`. It writes deployment settings to `current_config/hermes.env` and creates the native Agent configuration at `current_config/bootstrap/config.yaml`. The existing bootstrap mechanism installs that file as persistent `/opt/data/config.yaml`; normal Pod restarts do not remove it because `/opt/data` is backed by the `hermes-home` PVC. Generated artifacts stay below the Git-ignored `current_config/` directory. Answers are saved separately in the Git-ignored root file `configuration_answers` with mode `0600`.
 
+When the wizard generates the Dashboard/WebUI password, it is created by `install.sh`, not by the question phase. After installation, find the current generated and applied values here:
+
+```text
+current_config/artifacts/generated-credentials.txt
+```
+
+The wizard prints this exact path before and after installation. The file is mode `0600`; move its values into a password manager and delete it when no longer needed. A blank password remains blank in `current_config/hermes.env` and `configuration_answers`, so every later installer run generates and applies a new password and overwrites the capture file with the new current value.
+
 After pulling repository updates, rebuild clean generated configuration from the saved answers:
 
 ```bash
-rm -rf current_config
 ./setup.sh --from-answers
 ```
 
@@ -135,7 +142,13 @@ Important variables:
 | `HERMES_ANSIBLE_VERSION` | Exact `ansible` package version injected into generated requirements when setup is enabled; default `14.1.0` |
 | `HERMES_SSH_KEY_PATH` | SSH private key path under `/opt/data/.ssh`, default `/opt/data/.ssh/id_ed25519` |
 
-Secrets may be generated automatically by `install.sh` when variables are omitted. The generated/used initial values are written to `.rendered/generated-credentials.txt` with mode `0600`; this path is gitignored, but you should still move the values to a password manager and delete the file after installation.
+Secrets may be generated automatically by `install.sh` when variables are omitted. The generated and applied initial values are written with mode `0600` to `$HERMES_RENDER_DIR/generated-credentials.txt`. The wizard sets that directory to `current_config/artifacts`; a manual installation that does not set `HERMES_RENDER_DIR` uses `.rendered`. Both paths are Git-ignored. Move the values to a password manager and delete the file after installation.
+
+If the capture file was already deleted, the shared Dashboard/WebUI password can be recovered from the Kubernetes Secret by an authorized cluster operator. This command prints the password, so run it only in a private terminal and do not paste its output into logs or chat:
+
+```bash
+kubectl -n <namespace> get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+```
 
 ### Authentication layers
 
@@ -155,7 +168,7 @@ Password rotation has explicit input modes. Interactive runs prompt by default a
 # Dashboard + WebUI, lab password allowed, hidden prompt
 ./maintain.sh rotate-passwords --lab --prompt
 
-# Generate a random value and write it to .rendered/rotated-credentials-*.txt
+# Generate a random value under $HERMES_RENDER_DIR
 ./maintain.sh rotate-passwords --generate
 
 # Non-interactive / CI: explicitly read from environment variables
@@ -167,7 +180,7 @@ Production mode rejects weak passwords by default. Lab mode is explicit because 
 
 ## Bootstrap existing configuration
 
-You can seed a new or existing installation with agent configuration files by setting `HERMES_BOOTSTRAP_DIR` in `hermes.env` and rerunning `./install.sh`. The installer packages the local directory into `.rendered/bootstrap.tar.gz`, uploads it as the `hermes-bootstrap-archive` Kubernetes Secret, and the init job copies it into the persistent PVCs.
+You can seed a new or existing installation with agent configuration files by setting `HERMES_BOOTSTRAP_DIR` in `hermes.env` and rerunning `./install.sh`. The installer packages the local directory into `$HERMES_RENDER_DIR/bootstrap.tar.gz`, uploads it as the `hermes-bootstrap-archive` Kubernetes Secret, and the init job copies it into the persistent PVCs. The wizard sets `HERMES_RENDER_DIR=current_config/artifacts`; a manual installation defaults to `.rendered`.
 
 The preferred path is `HERMES_BOOTSTRAP_PROFILE`. Each profile has a `skills.txt` allowlist and `defaults.conf` defaults. Skills remain canonical under `examples/bootstrap-shared/skills/`; the installer copies only the selected skill directories into the generated archive. Markdown links cannot install a skill, and repository symlinks are avoided because Kubernetes Secret/tar portability is better with generated copies.
 
@@ -228,7 +241,7 @@ Modes:
 - `overwrite` replaces existing bootstrap-managed files/directories. Use deliberately.
 - `disabled` ignores `HERMES_BOOTSTRAP_DIR`.
 
-`auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Treat bootstrap archives as sensitive if they contain memories, `.env`, OAuth state, or private skills. The local `bootstrap/` and `.rendered/` paths are gitignored.
+`auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Treat bootstrap archives as sensitive if they contain memories, `.env`, OAuth state, or private skills. Local `bootstrap/`, `current_config/`, `configuration_answers`, and `.rendered/` paths are Git-ignored.
 
 The workspace skills are designed to be loaded together. `hermes-workspace-manager` supplies generic topic resolution and lifecycle rules; `hermes-workspace-git` routes Git repositories to `git/` and `git_archive/`, while `hermes-workspace-ansible` routes Ansible-native work to `ansible/` and `ansible_archive/`. A Git repository is the topic folder. For Ansible, the topic scope may be the shared `ansible/` root or an established project/subtree, and archival moves only approved completed paths. Neither workflow creates an additional generic topic copy.
 
@@ -242,14 +255,14 @@ XDG_CONFIG_HOME=/opt/data/.config
 XDG_CACHE_HOME=/opt/data/.cache
 ```
 
-This keeps CLI state, OpenSSH defaults, cache/config files, and addon tooling on the `hermes-home` PVC instead of the ephemeral container filesystem. The init job also prepares:
+This keeps CLI state, cache/config files, and addon tooling on the `hermes-home` PVC instead of the ephemeral container filesystem. When `HERMES_SSH_SETUP=true`, the init job also prepares:
 
 ```text
 /opt/data/.ssh/
 /opt/data/.ssh/known_hosts
 ```
 
-with safe permissions. When `HERMES_SSH_SETUP=true`, the init job creates the SSH keypair only if `HERMES_SSH_KEY_PATH` is missing. Existing keys are preserved; private keys are never copied from examples or the public repo.
+with safe permissions and creates the SSH keypair only if `HERMES_SSH_KEY_PATH` is missing. Existing keys are preserved; private keys are never copied from examples or the public repo.
 
 ```bash
 HERMES_SSH_SETUP=true
@@ -274,7 +287,7 @@ chmod 600 /opt/data/.ssh/id_ed25519
 chmod 644 /opt/data/.ssh/id_ed25519.pub
 ```
 
-Do not commit private keys into `bootstrap/` or the public repo. If you bootstrap SSH material manually, treat the generated `.rendered/bootstrap.tar.gz` and Kubernetes Secret as sensitive.
+Do not commit private keys into `bootstrap/` or the public repo. If you bootstrap SSH material manually, treat the generated `$HERMES_RENDER_DIR/bootstrap.tar.gz` and Kubernetes Secret as sensitive.
 
 ## Persistent Python addon packages
 
@@ -344,19 +357,28 @@ For a persistent Ansible control-node pattern, including mount locations and vis
 ```text
 .
 ├── README.md
+├── AGENTS.md
 ├── VERSION
 ├── LICENCE
+├── setup.sh                    # stable wizard entry point
+├── configure.sh                # interactive/replay configuration generator
 ├── install.sh                  # setup/install/upgrade apply
 ├── maintain.sh                 # backup, restore, upgrade, password rotation
 ├── doctor.sh                   # health checks and diagnostics
+├── scripts/                    # template and requirements helpers
+├── tests/                      # profile, wizard, and render matrices
 ├── examples/
-│   └── hermes.env.example
+│   ├── hermes.env.example
+│   ├── bootstrap-shared/
+│   └── bootstrap-profiles/
 ├── manifests/
 │   └── hermes.yaml.tpl         # Kubernetes manifest template
 └── docs/
+    ├── ansible.md
     ├── codex-auth.md
     ├── operations.md
-    └── security.md
+    ├── security.md
+    └── troubleshooting.md
 ```
 
 ## Install
@@ -371,8 +393,8 @@ $EDITOR hermes.env
 
 1. load `hermes.env`;
 2. validate required values;
-3. generate ephemeral secret values if missing;
-4. render `manifests/hermes.yaml.tpl` into `.rendered/hermes.yaml`;
+3. generate missing secret values and capture the applied values locally;
+4. render `manifests/hermes.yaml.tpl` into `$HERMES_RENDER_DIR/hermes.yaml`;
 5. create/update required Kubernetes Secrets;
 6. apply the manifest;
 7. wait for rollouts;
@@ -420,20 +442,15 @@ Back up `/opt/data` to preserve Codex auth across destructive rebuilds.
 ## Security model
 
 - Do not commit `hermes.env`.
-- Do not commit `.rendered/`.
+- Do not commit `current_config/`, `configuration_answers`, or `.rendered/`.
 - Do not put real `BROWSER_CDP_URL` values into `config.yaml`; it contains a token.
 - Browserless has no public Ingress.
 - Browserless access is token-protected and NetworkPolicy-restricted.
 - Dashboard has its own internal BasicAuth.
 
-## License
-
-MIT. See [LICENCE](LICENCE).
-
-
 ## Runtime UID/GID and shared PVC ownership
 
-The Agent, Dashboard, and WebUI share the `hermes-home` PVC at `/opt/data`. Current `nousresearch/hermes-agent` images prepare that directory as UID/GID `10000`, so the installer defaults `HERMES_RUNTIME_UID=10000` and `HERMES_RUNTIME_GID=10000` and passes those values to the WebUI as `WANTED_UID` / `WANTED_GID`.
+The Agent, Dashboard, and WebUI share the `hermes-home` PVC at `/opt/data`. The installer defaults `HERMES_RUNTIME_UID=10000` and `HERMES_RUNTIME_GID=10000`, uses init containers to prepare both PVC mount points with that ownership, and passes the same values to WebUI as `WANTED_UID` / `WANTED_GID`.
 
 If you pin images with different runtime ownership, set both variables explicitly in `hermes.env` before running `install.sh`.
 
@@ -483,3 +500,7 @@ The Dashboard `/files` view needs `HERMES_DASHBOARD_FILES_ROOT=/workspace`. This
 The repository history also records work produced through [`hermes-speedboat`](https://github.com/hermes-speedboat), including commits authored as **Hermes Bitbull**.
 
 These acknowledgements distinguish direct commit authorship from external inspiration.
+
+## License
+
+MIT. See [LICENCE](LICENCE).

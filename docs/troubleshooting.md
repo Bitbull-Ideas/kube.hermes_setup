@@ -1,5 +1,23 @@
 # Troubleshooting
 
+## Generated Dashboard/WebUI password cannot be found
+
+If the wizard password prompt was left empty, the question phase does not store a password in `current_config/hermes.env` or `configuration_answers`. `install.sh` generates and applies it later. For a wizard installation, check:
+
+```bash
+stat -c '%a %n' current_config/artifacts/generated-credentials.txt
+```
+
+Expected mode: `600`. The exact location is `$HERMES_RENDER_DIR/generated-credentials.txt`; manual installations without `HERMES_RENDER_DIR` use `.rendered/generated-credentials.txt`.
+
+Do not post the file contents. Move required values to a password manager. If the file no longer exists, an authorized cluster operator can recover the current Dashboard/WebUI password from `secret/hermes-dashboard-auth`. The following command prints the secret and must be used only in a private terminal:
+
+```bash
+kubectl -n <namespace> get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+```
+
+If both Dashboard and WebUI are disabled, no application password is generated and the `DASHBOARD_AUTH_PASSWORD` entry in the capture file is empty. If an empty password remains configured, each installer rerun generates a new value and overwrites the capture file with the currently applied value.
+
 ## WebUI loads but chat fails with `AIAgent not available`
 
 The WebUI needs local access to the Hermes Agent source tree.
@@ -85,7 +103,7 @@ Check ownership:
 kubectl -n "$HERMES_NAMESPACE" exec deploy/hermes-agent -- sh -lc 'id; ls -ldn /opt/data /workspace'
 ```
 
-Current Hermes Agent images commonly prepare `/opt/data` as `10000:10000`. The installer therefore defaults:
+The installer uses `10000:10000` as its default shared PVC ownership contract:
 
 ```bash
 HERMES_RUNTIME_UID=10000

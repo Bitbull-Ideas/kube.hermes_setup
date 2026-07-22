@@ -13,6 +13,33 @@ printf '\n\n\n\nn\nn\nn\nn\nn\n' | \
 grep -qx 'Bootstrap profile:' "$profile_output"
 grep -qx '  1) personal-assistant' "$profile_output"
 grep -qx '  2) universal-system-architect' "$profile_output"
+grep -Fqx "  Credentials after install: $TMP_DIR/profile-config/artifacts/generated-credentials.txt (mode 600)" "$profile_output"
+grep -Fqx '  Generated password note: it is written only after install; it is not stored in hermes.env or configuration_answers.' "$profile_output"
+
+# Operational scripts prefer an existing root hermes.env, then discover the
+# wizard-generated current_config/hermes.env when no root file exists.
+fallback_root="$TMP_DIR/env-fallback"
+mkdir -p "$fallback_root/current_config"
+cp "$ROOT_DIR/install.sh" "$ROOT_DIR/maintain.sh" "$ROOT_DIR/doctor.sh" "$fallback_root/"
+printf '%s\n' 'DASHBOARD_AUTH_PASSWORD=' 'BROWSER_TOKEN=' > "$fallback_root/current_config/hermes.env"
+resolved_env="$(HERMES_INSTALL_LIB_ONLY=true bash -c 'source "$1/install.sh"; printf "%s" "$ENV_FILE"' _ "$fallback_root")"
+[[ "$resolved_env" == "$fallback_root/current_config/hermes.env" ]]
+maintain_env="$(SCRIPT_ROOT="$fallback_root" bash -c 'set -- help; source "$SCRIPT_ROOT/maintain.sh" >/dev/null; printf "%s" "$ENV_FILE"')"
+[[ "$maintain_env" == "$fallback_root/current_config/hermes.env" ]]
+rotation_inputs="$(DASHBOARD_AUTH_PASSWORD='process-password' BROWSER_TOKEN='process-token' SCRIPT_ROOT="$fallback_root" bash -c 'set -- help; source "$SCRIPT_ROOT/maintain.sh" >/dev/null; printf "%s,%s" "$(secret_from_env DASHBOARD_AUTH_PASSWORD)" "$(secret_from_env BROWSER_TOKEN)"')"
+[[ "$rotation_inputs" == 'process-password,process-token' ]]
+for script in install.sh maintain.sh doctor.sh; do
+  grep -Fq 'DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"' "$fallback_root/$script"
+done
+grep -Fq 'chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace' "$ROOT_DIR/maintain.sh"
+! grep -Fq 'chown -R 1000:1000' "$ROOT_DIR/maintain.sh"
+grep -Fq 'find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +' "$ROOT_DIR/maintain.sh"
+touch "$fallback_root/hermes.env"
+resolved_env="$(HERMES_INSTALL_LIB_ONLY=true bash -c 'source "$1/install.sh"; printf "%s" "$ENV_FILE"' _ "$fallback_root")"
+[[ "$resolved_env" == "$fallback_root/hermes.env" ]]
+touch "$fallback_root/explicit.env"
+resolved_env="$(ENV_FILE="$fallback_root/explicit.env" HERMES_INSTALL_LIB_ONLY=true bash -c 'source "$1/install.sh"; printf "%s" "$ENV_FILE"' _ "$fallback_root")"
+[[ "$resolved_env" == "$fallback_root/explicit.env" ]]
 
 # configure.sh sources install.sh as a function library, but must not leak that
 # mode into the installer process selected at the final prompt.
@@ -100,6 +127,26 @@ source "$config_two/hermes.env"
 [[ "$MODEL_NAME" == openai/gpt-5.6 ]]
 grep -qx 'provider: openrouter' "$config_two/bootstrap/config.yaml"
 grep -qx 'model: openai/gpt-5.6' "$config_two/bootstrap/config.yaml"
+(
+  # shellcheck disable=SC1090
+  source "$config_two/hermes.env"
+  unset DASHBOARD_AUTH_PASSWORD API_SERVER_KEY BROWSER_TOKEN
+  export HERMES_INSTALL_LIB_ONLY=true
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/install.sh"
+  prepare_paths
+  prepare_defaults
+  write_generated_credentials
+  credentials="$config_two/artifacts/generated-credentials.txt"
+  [[ -f "$credentials" ]]
+  [[ "$(stat -c %a "$credentials")" == 600 ]]
+  [[ "$(cut -d= -f1 "$credentials" | paste -sd, -)" == 'DASHBOARD_AUTH_USER,DASHBOARD_AUTH_PASSWORD,API_SERVER_KEY,BROWSER_TOKEN' ]]
+  python3 - "$credentials" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+assert all("=" in line and line.split("=", 1)[1] for line in lines)
+PY
+)
 
 requirements="$TMP_DIR/requirements.txt"
 printf '%s\n' 'Markdown' 'ansible==14.1.0' > "$requirements"

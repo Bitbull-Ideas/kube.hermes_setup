@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 
 - Adds the `hermes-workspace-manager` bootstrap skill for topic-folder resolution, artifact containment, continuity, and explicit archival.
 - Adds declarative profile skill allowlists and profile environment defaults with operator overrides.
-- Adds an interactive `configure.sh` wizard that stores the complete selected bootstrap, `hermes.env`, and generated artifacts under the Git-ignored `current_config/` directory before handing off to `install.sh`.
+- Adds an interactive `configure.sh` wizard that stores the complete selected bootstrap and `hermes.env` under Git-ignored `current_config/`, then directs installer artifacts to `current_config/artifacts` during handoff.
 - Adds independently selectable Dashboard, WebUI, and Browser components while keeping Agent mandatory.
 - Adds versioned Ansible package installation through `HERMES_ANSIBLE_VERSION` whenever Ansible setup is enabled.
 - Generates native Hermes `config.yaml` from the wizard and injects it through bootstrap into persistent `/opt/data/config.yaml`.
@@ -22,6 +22,13 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Makes `install.sh`, `doctor.sh`, and `maintain.sh` automatically discover wizard-generated `current_config/hermes.env` when no root `hermes.env` or explicit `ENV_FILE` is present.
+- Preserves explicit `--from-env` password and browser-token rotation inputs when the active env file contains blank wizard placeholders.
+- Clears internal profile-requirements state before each installer default-resolution pass so sourced or inherited state cannot alter custom requirements.
+- Makes restore remove hidden as well as visible PVC entries and reapplies the configured runtime UID/GID instead of hard-coded `1000:1000` ownership.
+- Makes the wizard display the exact post-install credential path before handoff and explains that generated passwords are not stored in the answer or environment files.
+- Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
+- Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 - Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
 - Displays bootstrap profile choices on separate lines for terminal readability.
 - Reports the actual configured credential-capture path in the installer summary.

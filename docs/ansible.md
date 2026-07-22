@@ -60,7 +60,7 @@ or call `/opt/data/addon-venv/bin/ansible-playbook` explicitly.
 
 ## SSH and persistence
 
-The persistent HOME/SSH feature sets `HOME=/opt/data` for the Agent, Dashboard, and WebUI containers and prepares `/opt/data/.ssh`. With `HERMES_SSH_SETUP=true`, the init job creates `/opt/data/.ssh/id_ed25519` only if it is missing. Install the public key on managed hosts:
+The persistent HOME feature sets `HOME=/opt/data` for the Agent, Dashboard, and WebUI containers. With `HERMES_SSH_SETUP=true`, the init job prepares `/opt/data/.ssh` and creates `/opt/data/.ssh/id_ed25519` only if it is missing. Install the public key on managed hosts:
 
 ```bash
 kubectl -n <namespace> exec deploy/hermes-agent -- cat /opt/data/.ssh/id_ed25519.pub

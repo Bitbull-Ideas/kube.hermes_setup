@@ -2,7 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/hermes.env}"
+DEFAULT_ENV_FILE="$ROOT_DIR/hermes.env"
+if [[ ! -f "$DEFAULT_ENV_FILE" && -f "$ROOT_DIR/current_config/hermes.env" ]]; then
+  DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"
+fi
+ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
 [[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
 HERMES_BOOTSTRAP_PROFILE="${HERMES_BOOTSTRAP_PROFILE-personal-assistant}"
 if [[ -n "$HERMES_BOOTSTRAP_PROFILE" ]]; then

@@ -2,7 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/hermes.env}"
+DEFAULT_ENV_FILE="$ROOT_DIR/hermes.env"
+if [[ ! -f "$DEFAULT_ENV_FILE" && -f "$ROOT_DIR/current_config/hermes.env" ]]; then
+  DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"
+fi
+ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
 RENDER_DIR="${HERMES_RENDER_DIR:-$ROOT_DIR/.rendered}"
 MANIFEST_OUT="$RENDER_DIR/hermes.yaml"
 BOOTSTRAP_ARCHIVE="$RENDER_DIR/bootstrap.tar.gz"
@@ -70,6 +74,9 @@ validate() {
 }
 
 prepare_defaults() {
+  # Internal state from a previous sourced/library run must never influence the
+  # current requirements selection.
+  unset HERMES_PROFILE_REQUIREMENTS_SELECTED
   export HERMES_BOOTSTRAP_PROFILE="${HERMES_BOOTSTRAP_PROFILE-personal-assistant}"
   apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
   export HERMES_AGENT_ENABLED="${HERMES_AGENT_ENABLED:-true}"
@@ -431,7 +438,7 @@ Dashboard host:   ${DASHBOARD_HOST:-disabled}
 Browser enabled:  $HERMES_BROWSER_ENABLED
 Rendered file:    $MANIFEST_OUT
 
-Generated/used credentials were applied as Kubernetes Secrets only.
+Runtime credentials were applied through Kubernetes Secrets.
 A local credential capture file was written to $RENDER_DIR/generated-credentials.txt with mode 600.
 Move those values to your password manager and delete the file after use.
 

@@ -5,7 +5,8 @@
 Never commit:
 
 - `hermes.env`
-- rendered manifests under `.rendered/`
+- `configuration_answers`
+- generated configuration and artifacts under `current_config/` or `.rendered/`
 - backups
 - kubeconfigs
 - OAuth files such as `auth.json`
@@ -29,7 +30,7 @@ The expected redacted endpoint is:
 ws://hermes-browser:3000/chromium?token=<redacted>
 ```
 
-This follows Browserless' documented direct CDP connection path. The endpoint is generated from `BROWSER_TOKEN`, stored in Secret `hermes-browser-cdp`, and injected into the three Hermes runtime containers. Never print the full value in logs or docs. See the [Browserless connection URL patterns](https://docs.browserless.io/baas/connection-url-patterns).
+This follows Browserless' documented direct CDP connection path. The endpoint is generated from `BROWSER_TOKEN`, stored in Secret `hermes-browser-cdp`, and injected into each enabled Hermes runtime component. Never print the full value in logs or docs. See the [Browserless connection URL patterns](https://docs.browserless.io/baas/connection-url-patterns).
 
 ## Authentication
 
@@ -37,8 +38,8 @@ The setup has two application auth layers:
 
 | Layer | Scope | Controlled by | Notes |
 |---|---|---|---|
-| Hermes Dashboard BasicAuth | Dashboard application login | `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASSWORD` | Always configured |
-| Hermes WebUI password auth | WebUI application login | `HERMES_WEBUI_PASSWORD` from `secret/hermes-dashboard-auth:password` | Always configured |
+| Hermes Dashboard BasicAuth | Dashboard application login | `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASSWORD` | Configured when Dashboard is enabled |
+| Hermes WebUI password auth | WebUI application login | `HERMES_WEBUI_PASSWORD` from `secret/hermes-dashboard-auth:password` | Configured when WebUI is enabled |
 
 ## TLS
 
@@ -68,11 +69,11 @@ The scripts avoid passing plaintext passwords as command-line arguments to `open
 
 ## Local generated credential files
 
-`install.sh` writes `.rendered/generated-credentials.txt` with mode `0600` so operators can save generated initial values before deleting the file.
+`install.sh` writes `$HERMES_RENDER_DIR/generated-credentials.txt` with mode `0600` so operators can save generated initial values before deleting the file. Wizard installations use `current_config/artifacts`; manual installations default to `.rendered`. The file is created only when the installer runs, not when the wizard questions finish.
 
-`maintain.sh rotate-passwords --generate` writes `.rendered/rotated-credentials-*.txt` with mode `0600` for the same reason. Interactive rotation prompts by default and does not silently reuse password values from `hermes.env`; use `--from-env` explicitly for CI/env-driven changes.
+`maintain.sh rotate-passwords --generate` writes `$HERMES_RENDER_DIR/rotated-credentials-*.txt` with mode `0600` for the same reason. Interactive rotation prompts by default and does not silently reuse password values from `hermes.env`; use `--from-env` explicitly for CI/env-driven changes.
 
-`.rendered/` is gitignored. Treat these files as secrets and remove them after storing values in a password manager.
+`current_config/`, `configuration_answers`, and `.rendered/` are Git-ignored. Treat these files as secrets and remove credential captures after storing values in a password manager.
 
 
 
@@ -104,6 +105,6 @@ Hermes Agent refuses to start the API server when `API_SERVER_KEY` is a placehol
 
 ## Bootstrap data
 
-`HERMES_BOOTSTRAP_DIR` can contain SOUL.md, memories, skills, plugins, cron jobs, `.env`, and optionally `auth.json`. Treat real bootstrap directories and `.rendered/bootstrap.tar.gz` as sensitive. The repo ignores local `bootstrap/` and `.rendered/`; commit sanitized examples under `examples/bootstrap-shared/` and `examples/bootstrap-profiles/`.
+`HERMES_BOOTSTRAP_DIR` can contain SOUL.md, memories, skills, plugins, cron jobs, `.env`, and optionally `auth.json`. Treat real bootstrap directories and `$HERMES_RENDER_DIR/bootstrap.tar.gz` as sensitive. The repo ignores local `bootstrap/`, `current_config/`, `configuration_answers`, and `.rendered/`; commit sanitized examples under `examples/bootstrap-shared/` and `examples/bootstrap-profiles/`.
 
 `HERMES_BOOTSTRAP_INCLUDE_AUTH=false` is the default. Enable it only when you deliberately restore OAuth state from a protected source.

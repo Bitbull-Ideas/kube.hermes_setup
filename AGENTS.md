@@ -34,7 +34,7 @@ Rationale:
 
 - `gpt-5.6-luna` + `codex` is the preferred model/provider default.
 - Browserless concurrency `4` leaves capacity for parallel CDP checks and user sessions; keep docs and tests aligned with that default.
-- Runtime UID/GID `10000:10000` matches current Agent/Dashboard image behavior and prevents WebUI PVC permission failures.
+- Runtime UID/GID `10000:10000` is the manifest's shared PVC ownership contract across init containers and WebUI runtime mapping.
 
 ## Important files
 
@@ -155,7 +155,7 @@ Changes to profile composition, defaults, bootstrap archives, init behavior, SSH
 
 1. Start from a fresh disposable Linux VM. Record the OS, Kubernetes version, container images, repository commit, CPU, memory, storage, and ingress controller without publishing private hostnames or addresses.
 2. Install K3s, wait for the node, DNS, storage provisioner, metrics server, and Traefik to become ready, and use a lab-only TLS certificate whose names are public-safe placeholders in any committed report.
-3. Deploy `personal-assistant` from a clean namespace and PVCs. Require all four deployments and the init job to become ready, then run `doctor.sh`.
+3. Deploy `personal-assistant` from a clean namespace and PVCs with all optional components selected. Require all four deployments and the init job to become ready, then run `doctor.sh`.
 4. Verify the personal runtime has exactly `markdown-pdf` and `hermes-workspace-manager`, no generated SSH key, no `/workspace/ansible`, an empty `ANSIBLE_CONFIG`, and no Ansible package. Exercise the Markdown-to-PDF renderer and validate the produced PDF header, page count, and extracted text.
 5. Run the Hermes CLI directly in the Agent container (`hermes --version`) and exercise any changed interactive CLI path through a real TTY. Do not use `sh -lc` as proof of CLI absence because login shells can reset the image `PATH`.
 6. Use real Chromium against the deployed HTTPS ingress. Verify the login page, rejection of an invalid password, acceptance of the configured password, authenticated UI content, a clean authenticated browser console, and a visually inspected screenshot. Curl-only checks do not satisfy WebUI validation.
@@ -170,7 +170,7 @@ The PR description must distinguish static checks from live deployment, CLI, TLS
 
 ## Git workflow expectations
 
-- Work on `main` unless the maintainer asks for a branch.
+- Start from the current `origin/main`, but use a scoped branch and pull request for changes because `main` is protected.
 - Keep commits small and descriptive.
 - Do not commit generated files.
 - Commit and push repo fixes once validated unless the maintainer explicitly says not to.
@@ -184,9 +184,9 @@ Preparing a release means updating `CHANGELOG.md`, validating render/syntax chec
 
 `install.sh` must be re-runnable:
 
-- It loads `hermes.env` unless `ENV_FILE` points elsewhere.
+- It uses explicit `ENV_FILE` first, then root `hermes.env`, then wizard-generated `current_config/hermes.env`.
 - It creates/generates Kubernetes Secrets.
-- It renders `manifests/hermes.yaml.tpl` to `.rendered/hermes.yaml`.
+- It renders `manifests/hermes.yaml.tpl` to `$HERMES_RENDER_DIR/hermes.yaml` (`current_config/artifacts` for wizard installs, `.rendered` by manual default).
 - It deletes/recreates the one-shot `hermes-init-config` Job before apply. Kubernetes Jobs are immutable enough to make repeat applies painful otherwise.
 - It restarts deployments after refreshing Secret-backed env values because Kubernetes does not reload env vars into running Pods.
 
@@ -197,10 +197,10 @@ Keep this restart behavior. It prevents Browserless token mismatch and stale das
 There are two app auth layers:
 
 1. Dashboard internal BasicAuth.
-   - Always configured.
+   - Configured when Dashboard is enabled.
    - Uses `secret/hermes-dashboard-auth`.
 2. WebUI built-in password auth.
-   - Always configured by this installer.
+   - Configured when WebUI is enabled.
    - `HERMES_WEBUI_PASSWORD` is read from `secret/hermes-dashboard-auth:password`.
    - Therefore WebUI password == `DASHBOARD_AUTH_PASSWORD`.
 
@@ -231,7 +231,7 @@ Useful examples:
 DASHBOARD_AUTH_PASSWORD='...' ./maintain.sh rotate-passwords --from-env
 ```
 
-Generated password values go to `.rendered/rotated-credentials-*.txt` with mode `0600`; never commit or print them.
+Generated password values go to `$HERMES_RENDER_DIR/rotated-credentials-*.txt` with mode `0600`; never commit or print them. Wizard configuration resolves this to `current_config/artifacts`.
 
 ## Codex OAuth behavior
 
@@ -305,13 +305,14 @@ Hermes/agent-browser may open multiple CDP WebSockets during one browser task. K
 Expected doctor output in lab mode may include:
 
 ```text
-WARN browserless maxConcurrent=1; below recommended 2 for Hermes browser workflows
+WARN browserless maxConcurrent=1; recommended minimum is 4 for parallel Hermes browser workflows
 ```
 
 That warning is not a failure, but the default should remain 4 for real screenshot-heavy testing:
 
 ```bash
-BROWSER_CONCURRENT=4 ./install.sh
+# Set BROWSER_CONCURRENT=4 in the active hermes.env, then:
+./install.sh
 ./doctor.sh
 ```
 
@@ -395,7 +396,7 @@ Redact tokens before sharing output.
 
 ## Persistent HOME and SSH
 
-The Agent, Dashboard, and WebUI deployments set `HOME=/opt/data` and XDG dirs under `/opt/data` so CLI state and OpenSSH defaults persist on the `hermes-home` PVC. The init job prepares `/opt/data/.ssh` and generates an SSH keypair when `HERMES_SSH_SETUP=true` and the key is missing. Existing keys must be preserved; key generation is first-install/missing-only. Never commit private keys or real known_hosts/config data into public examples.
+The Agent, Dashboard, and WebUI deployments set `HOME=/opt/data` and XDG dirs under `/opt/data` so CLI state persists on the `hermes-home` PVC. When `HERMES_SSH_SETUP=true`, the init job prepares `/opt/data/.ssh` and generates an SSH keypair if the key is missing. Existing keys must be preserved; key generation is first-install/missing-only. Never commit private keys or real known_hosts/config data into public examples.
 
 Validation points should cover Agent, Dashboard, and WebUI:
 
@@ -481,7 +482,7 @@ The manifest resource requests/limits are configurable through `HERMES_*_CPU_REQ
 
 ## Deployment update strategy
 
-Deployment update strategy is `Recreate` for the four single-replica components. This avoids surge Pods during `install.sh`/secret refresh restarts, which can otherwise deadlock rollouts on small single-node K3s clusters with tight CPU requests.
+Deployment update strategy is `Recreate` for every enabled single-replica component. This avoids surge Pods during `install.sh`/secret refresh restarts, which can otherwise deadlock rollouts on small single-node K3s clusters with tight CPU requests.
 
 ### Dashboard `/files` workspace root
 
@@ -489,6 +490,6 @@ The Dashboard file browser is controlled by `HERMES_DASHBOARD_FILES_ROOT`, while
 
 ### Bootstrap feature
 
-`HERMES_BOOTSTRAP_DIR` packages a local directory into `.rendered/bootstrap.tar.gz` and applies it via Kubernetes Secret `hermes-bootstrap-archive`. `HERMES_BOOTSTRAP_PROFILE` composes one profile from `examples/bootstrap-shared/` plus its profile overlay. Each profile declares shared skill membership in `skills.txt` and environment defaults in `defaults.conf`; operator-set `HERMES_*` values override those defaults. The init job maps `SOUL.md`, `memories/`, `skills/`, `plugins/`, `cron/`, `config.yaml`, `.env`, and `workspace/` into `/opt/data` and `/workspace`. Default mode is `missing`; `overwrite` is destructive. `auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Never commit real bootstrap content; only sanitized examples under `examples/bootstrap-shared/` and `examples/bootstrap-profiles/`.
+`HERMES_BOOTSTRAP_DIR` packages a local directory into `$HERMES_RENDER_DIR/bootstrap.tar.gz` and applies it via Kubernetes Secret `hermes-bootstrap-archive`. `HERMES_BOOTSTRAP_PROFILE` composes one profile from `examples/bootstrap-shared/` plus its profile overlay. Each profile declares shared skill membership in `skills.txt` and environment defaults in `defaults.conf`; operator-set `HERMES_*` values override those defaults. The init job maps `SOUL.md`, `memories/`, `skills/`, `plugins/`, `cron/`, `config.yaml`, `.env`, and `workspace/` into `/opt/data` and `/workspace`. Default mode is `missing`; `overwrite` is destructive. `auth.json` is excluded unless `HERMES_BOOTSTRAP_INCLUDE_AUTH=true`. Never commit real bootstrap content; only sanitized examples under `examples/bootstrap-shared/` and `examples/bootstrap-profiles/`.
 
 For profile composition, `HERMES_ANSIBLE_SETUP=false` must also exclude a profile-provided `workspace/ansible` tree from the generated bootstrap. This filtering applies only to generated profile composition, not to an operator-owned custom `HERMES_BOOTSTRAP_DIR`, and it must never delete existing PVC data during a later non-destructive install.
