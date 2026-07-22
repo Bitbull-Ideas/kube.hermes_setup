@@ -42,6 +42,7 @@ ANSWERS_FILE="$(mkdir -p "$(dirname "$ANSWERS_FILE")" && cd "$(dirname "$ANSWERS
 export HERMES_INSTALL_LIB_ONLY=true
 # shellcheck source=install.sh
 source "$ROOT_DIR/install.sh"
+unset HERMES_INSTALL_LIB_ONLY
 
 prompt_value() {
   local label="$1" default="${2:-}" value
@@ -117,7 +118,10 @@ else
 
   HERMES_NAMESPACE="$(prompt_value 'Kubernetes namespace' 'hermes')"
   while true; do
-    read -r -p 'Bootstrap profile: 1) personal-assistant 2) universal-system-architect [1]: ' profile_choice
+    printf 'Bootstrap profile:\n'
+    printf '  1) personal-assistant\n'
+    printf '  2) universal-system-architect\n'
+    read -r -p 'Select profile [1]: ' profile_choice
     case "${profile_choice:-1}" in
       1|personal-assistant) HERMES_BOOTSTRAP_PROFILE=personal-assistant; break ;;
       2|universal-system-architect) HERMES_BOOTSTRAP_PROFILE=universal-system-architect; break ;;
@@ -221,6 +225,7 @@ RENDER_DIR="$CONFIG_DIR/artifacts"
 export HERMES_BOOTSTRAP_PROFILE HERMES_ANSIBLE_SETUP HERMES_SSH_SETUP
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 cp -a "$HERMES_BOOTSTRAP_DIR"/. "$CONFIG_DIR/bootstrap"/
+rm -rf "$RENDER_DIR/bootstrap-profile"
 HERMES_BOOTSTRAP_DIR="$CONFIG_DIR/bootstrap"
 HERMES_RENDER_DIR="$CONFIG_DIR/artifacts"
 
@@ -299,9 +304,9 @@ printf '  Components:  agent%s%s%s\n' \
 printf '  Ansible:     %s%s\n' "$HERMES_ANSIBLE_SETUP" "$([[ "$HERMES_ANSIBLE_SETUP" == true ]] && printf ' (%s)' "$HERMES_ANSIBLE_VERSION")"
 printf '  SSH keys:    %s\n\n' "$HERMES_SSH_SETUP"
 
-installer_cmd="ENV_FILE=$(printf '%q' "$ENV_OUT") $(printf '%q' "$ROOT_DIR/install.sh")"
+installer_cmd="HERMES_INSTALL_LIB_ONLY=false ENV_FILE=$(printf '%q' "$ENV_OUT") $(printf '%q' "$ROOT_DIR/install.sh")"
 if [[ "$RUN_INSTALLER" == true ]] && ask_yes_no 'Run install.sh now?' false; then
-  ENV_FILE="$ENV_OUT" "$ROOT_DIR/install.sh"
+  HERMES_INSTALL_LIB_ONLY=false ENV_FILE="$ENV_OUT" "$ROOT_DIR/install.sh"
 else
   printf 'Run the installer with:\n  %s\n' "$installer_cmd"
 fi

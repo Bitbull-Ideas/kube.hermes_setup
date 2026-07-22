@@ -22,6 +22,10 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
+- Displays bootstrap profile choices on separate lines for terminal readability.
+- Reports the actual configured credential-capture path in the installer summary.
+- Removes the temporary composed-profile stage after copying it into the canonical generated bootstrap directory.
 - Makes `HERMES_ANSIBLE_SETUP=false` exclude a profile-provided Ansible workspace from generated bootstrap content on fresh deployments.
 - Preserves an explicit `HERMES_ANSIBLE_CONFIG` override and makes diagnostics validate the configured path rather than requiring the default path.
 

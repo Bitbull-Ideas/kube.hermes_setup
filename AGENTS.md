@@ -2,7 +2,7 @@
 
 This file is for coding agents and human maintainers working on this repository. It captures project context, repository rules, validation commands, and hard-won pitfalls from real K3s/Hermes deployments.
 
-Public AGENTS.md guidance describes this kind of file as a "README for agents": keep it concrete, repo-local, testable, and focused on what future agents must not rediscover the painful way. This repository intentionally uses `AGENT.md` because the maintainer requested that filename; if your tool only auto-loads `AGENTS.md`, read this file manually before editing.
+Public `AGENTS.md` guidance describes this kind of file as a "README for agents": keep it concrete, repo-local, testable, and focused on what future agents must not rediscover the painful way. Tools that support repository-level agent instructions should load this file automatically.
 
 ## Repository purpose
 

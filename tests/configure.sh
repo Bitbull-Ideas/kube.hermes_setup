@@ -5,6 +5,25 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+profile_output="$TMP_DIR/profile-output"
+printf '\n\n\n\nn\nn\nn\nn\nn\n' | \
+  "$ROOT_DIR/configure.sh" --no-install \
+    --config-dir "$TMP_DIR/profile-config" \
+    --answers-file "$TMP_DIR/profile-answers" > "$profile_output"
+grep -qx 'Bootstrap profile:' "$profile_output"
+grep -qx '  1) personal-assistant' "$profile_output"
+grep -qx '  2) universal-system-architect' "$profile_output"
+
+# configure.sh sources install.sh as a function library, but must not leak that
+# mode into the installer process selected at the final prompt.
+if grep -A3 'source "$ROOT_DIR/install.sh"' "$ROOT_DIR/configure.sh" | grep -q '^unset HERMES_INSTALL_LIB_ONLY$'; then
+  :
+else
+  printf 'configure.sh does not clear installer library mode\n' >&2
+  exit 1
+fi
+grep -q 'HERMES_INSTALL_LIB_ONLY=false ENV_FILE=' "$ROOT_DIR/configure.sh"
+
 config_one="$TMP_DIR/current-one"
 answers_one="$TMP_DIR/answers-one"
 printf '\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
@@ -13,7 +32,7 @@ printf '\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
 [[ -f "$config_one/hermes.env" ]]
 [[ -f "$config_one/bootstrap/SOUL.md" ]]
 [[ -f "$config_one/bootstrap/config.yaml" ]]
-[[ -d "$config_one/artifacts/bootstrap-profile/personal-assistant" ]]
+[[ ! -e "$config_one/artifacts/bootstrap-profile" ]]
 [[ "$(stat -c %a "$config_one/hermes.env")" == 600 ]]
 [[ "$(stat -c %a "$answers_one")" == 600 ]]
 # shellcheck disable=SC1090

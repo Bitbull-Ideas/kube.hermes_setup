@@ -432,7 +432,7 @@ Browser enabled:  $HERMES_BROWSER_ENABLED
 Rendered file:    $MANIFEST_OUT
 
 Generated/used credentials were applied as Kubernetes Secrets only.
-A local credential capture file was written to .rendered/generated-credentials.txt with mode 600.
+A local credential capture file was written to $RENDER_DIR/generated-credentials.txt with mode 600.
 Move those values to your password manager and delete the file after use.
 
 Rotate later with:
