@@ -7,8 +7,10 @@ This installer does not need a custom Agent image for a basic Ansible control se
 The wizard enables the Ansible package, workspace seed, SSH key setup, and `ANSIBLE_CONFIG` together and asks for the package version:
 
 ```bash
-./setup.sh
+./configure.sh
 ```
+
+`setup.sh` remains a compatibility wrapper around `configure.sh`.
 
 For manual configuration, select any profile and enable Ansible explicitly:
 

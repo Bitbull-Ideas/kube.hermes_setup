@@ -17,15 +17,17 @@ All notable changes to this project are documented in this file.
 
 - Integrates the generic workspace manager with the existing Git and Ansible workspace skills by defining specialized placement precedence and preventing duplicate topic folders.
 - Replaces duplicate root/non-root SSH key installation recipes in the Ansible workspace skill with one idempotent account-aware example.
-- Updates the bootstrap workspace instructions, SOUL profile, README, and post-setup guidance to describe the combined workspace lifecycle.
+- Updates the bootstrap workspace instructions, SOUL profile, and README to describe the combined workspace lifecycle.
 - Makes `personal-assistant` select `markdown-pdf` and `hermes-workspace-manager` without duplicating canonical skill sources, disable SSH setup by default, and activate its own addon requirements.
 - Makes `universal-system-architect` select all shared skills, enable SSH setup, and activate its Ansible-oriented addon requirements by default.
-- Simplifies README from 506 lines to ~200 lines around the canonical `configure.sh` → customize `current_config` → `install.sh` workflow.
+- Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
 - Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
-- Consolidates `POST_SETUP.md` into the README profiles section and removes the standalone file.
+- Removes the standalone `POST_SETUP.md` recipe to keep the repository focused on deployment and operations.
+- Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
 
 ### Fixed
 
+- Corrects the production walkthrough's bootstrap refresh, answer replay, credential retention, backup validation, namespace deletion, rebuild, and restore semantics.
 - Makes `install.sh`, `doctor.sh`, and `maintain.sh` automatically discover wizard-generated `current_config/hermes.env` when no root `hermes.env` or explicit `ENV_FILE` is present.
 - Preserves explicit `--from-env` password and browser-token rotation inputs when the active env file contains blank wizard placeholders.
 - Clears internal profile-requirements state before each installer default-resolution pass so sourced or inherited state cannot alter custom requirements.

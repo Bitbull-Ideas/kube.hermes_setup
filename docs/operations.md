@@ -15,7 +15,7 @@
 
 ## Upgrade
 
-Pin image tags in `hermes.env`, then run:
+Pin image tags in `current_config/hermes.env`, then run:
 
 ```bash
 ./install.sh
@@ -44,9 +44,11 @@ The archive contains:
 /workspace
 ```
 
-This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration.
+This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. It does not include Kubernetes Secrets. Retain required credentials separately before namespace deletion. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration.
 
 ## Restore
+
+The namespace, Deployments, and PVCs must already exist. After namespace deletion, run `./install.sh` first to recreate them, then restore:
 
 ```bash
 ./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.tgz
@@ -59,12 +61,12 @@ This includes OAuth state, sessions, skills, memories, workspace files, and WebU
 The recommended configuration lifecycle is:
 
 ```bash
-./setup.sh
-# Later, after git pull:
-./setup.sh --from-answers
+./configure.sh --no-install
+# Later, only when intentionally regenerating from saved answers:
+./configure.sh --from-answers --no-install
 ```
 
-`current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves all answers, including secret-bearing answers, with mode `0600`. Both paths are Git-ignored. Bootstrap mode `missing` seeds absent PVC files and preserves later edits; `overwrite` replaces bootstrap-managed files on the next installer run.
+`setup.sh` remains a compatibility wrapper around `configure.sh`. `current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present, but it discards manual changes made after the wizard; reapply required customization before installing. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves all answers, including secret-bearing answers, with mode `0600`. Both paths are Git-ignored. Bootstrap mode `missing` seeds only absent PVC files; `overwrite` replaces same-path files and merges source directories, while destination-only entries remain until removed separately.
 
 The operational scripts resolve configuration in this order: an explicit `ENV_FILE`, root `hermes.env` when it exists, then wizard-generated `current_config/hermes.env`. Therefore bare `./doctor.sh` and `./maintain.sh` commands work after the wizard while preserving compatibility with manual root configuration.
 
@@ -93,7 +95,7 @@ echo 'HERMES_BOOTSTRAP_PROFILE=universal-system-architect' >> hermes.env
 # Or build a fully custom bootstrap directory from shared + profile:
 cp -a examples/bootstrap-shared ./bootstrap
 cp -a examples/bootstrap-profiles/personal-assistant/. ./bootstrap/
-$EDITOR ./bootstrap/*
+${EDITOR:-vi} ./bootstrap/SOUL.md
 cat >> hermes.env <<'EOF'
 HERMES_BOOTSTRAP_DIR=./bootstrap
 HERMES_BOOTSTRAP_MODE=missing
