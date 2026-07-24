@@ -685,6 +685,12 @@ spec:
           value: /home/hermeswebui/.hermes/hermes-agent
         - name: HERMES_WEBUI_AUTO_INSTALL
           value: "1"
+        # Recent hermes-agent rejects non-Nix wheel/sdist builds. The current
+        # WebUI startup script still installs the mounted Agent source through
+        # that path; this flag allows the supported container build path until
+        # WebUI's editable-install fix is available in a released image.
+        - name: HERMES_NIX_BUILD
+          value: "1"
         - name: HERMES_WEBUI_PASSWORD
           valueFrom:
             secretKeyRef:

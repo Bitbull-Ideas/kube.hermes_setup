@@ -27,6 +27,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Sets `HERMES_NIX_BUILD=1` for the current WebUI image so its Agent-source dependency installation remains compatible with recent Hermes Agent images that reject normal wheel/sdist builds; remove this compatibility setting after the upstream editable-install fix is released.
 - Preserves existing Dashboard/WebUI, API server, and Browserless credentials during ordinary reinstalls when configuration values are blank; explicit maintenance commands remain the rotation path.
 - Corrects the production walkthrough's bootstrap refresh, answer replay, credential retention, backup validation, namespace deletion, rebuild, and restore semantics.
 - Makes `install.sh`, `doctor.sh`, and `maintain.sh` automatically discover wizard-generated `current_config/hermes.env` when no root `hermes.env` or explicit `ENV_FILE` is present.

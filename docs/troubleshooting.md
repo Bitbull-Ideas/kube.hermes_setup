@@ -22,6 +22,13 @@ If both Dashboard and WebUI are disabled, no application password is generated a
 
 The WebUI needs local access to the Hermes Agent source tree.
 
+The current WebUI image installs the mounted Agent source during startup.
+Recent Hermes Agent images reject normal wheel/sdist builds, so the installer
+sets `HERMES_NIX_BUILD=1` for this compatibility path. Without it, WebUI can
+terminate during startup with `Building wheels or sdists for hermes-agent is
+not supported`. This setting is temporary until a WebUI image containing the
+upstream editable-install fix is released.
+
 This setup uses an initContainer to copy `/opt/hermes` from the agent image into an `emptyDir` mounted read-only at:
 
 ```text

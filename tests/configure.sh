@@ -183,11 +183,27 @@ export API_SERVER_KEY=test BROWSER_CONCURRENT=4 BROWSER_QUEUED=10 BROWSER_TIMEOU
 python3 "$ROOT_DIR/scripts/render_template.py" "$ROOT_DIR/manifests/hermes.yaml.tpl" "$rendered"
 python3 - "$rendered" <<'PY'
 import sys, yaml
-resources = {(d.get('kind'), d.get('metadata', {}).get('name')) for d in yaml.safe_load_all(open(sys.argv[1])) if d}
+documents = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+resources = {(d.get('kind'), d.get('metadata', {}).get('name')) for d in documents}
 assert ('Deployment', 'hermes-agent') in resources
 for name in ('hermes-dashboard', 'hermes-webui', 'hermes-browser'):
     assert ('Deployment', name) not in resources
     assert ('Service', name) not in resources
+PY
+
+rendered_all="$TMP_DIR/all-components.yaml"
+export HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true HERMES_BROWSER_ENABLED=true
+export WEBUI_HOST=webui.example.com DASHBOARD_HOST=dashboard.example.com
+python3 "$ROOT_DIR/scripts/render_template.py" "$ROOT_DIR/manifests/hermes.yaml.tpl" "$rendered_all"
+python3 - "$rendered_all" <<'PY'
+import sys, yaml
+for document in yaml.safe_load_all(open(sys.argv[1])):
+    if document and document.get('kind') == 'Deployment' and document.get('metadata', {}).get('name') == 'hermes-webui':
+        env = {item['name']: item.get('value') for item in document['spec']['template']['spec']['containers'][0]['env']}
+        assert env['HERMES_NIX_BUILD'] == '1'
+        break
+else:
+    raise AssertionError('hermes-webui Deployment missing')
 PY
 
 printf 'configure and component tests passed\n'
