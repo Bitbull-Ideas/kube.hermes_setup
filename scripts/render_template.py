@@ -11,6 +11,55 @@ if len(sys.argv) != 3:
 tpl = Path(sys.argv[1]).read_text()
 
 
+def reject_control_chars(name: str, value: str) -> None:
+    if any(ord(char) < 0x20 and char not in "\t" for char in value):
+        raise SystemExit(f"{name} contains a control character")
+    if "\n" in value or "\r" in value:
+        raise SystemExit(f"{name} must be a single-line value")
+
+
+def require_pattern(name: str, pattern: str, *, allow_empty: bool = False) -> None:
+    if name not in os.environ:
+        return
+    value = os.environ.get(name, "")
+    reject_control_chars(name, value)
+    if not value and allow_empty:
+        return
+    if not re.fullmatch(pattern, value):
+        raise SystemExit(f"invalid {name}")
+
+
+for env_name, env_value in os.environ.items():
+    if env_name.startswith("HERMES_") or env_name in {
+        "WEBUI_HOST", "DASHBOARD_HOST", "TLS_SECRET_NAME", "STORAGE_CLASS_NAME",
+        "INGRESS_CLASS_NAME", "TRAEFIK_ENTRYPOINT", "MODEL_PROVIDER", "MODEL_NAME",
+    }:
+        reject_control_chars(env_name, env_value)
+
+require_pattern("HERMES_NAMESPACE", r"[a-z0-9]([-a-z0-9]*[a-z0-9])?")
+for host_name in ("WEBUI_HOST", "DASHBOARD_HOST"):
+    require_pattern(host_name, r"[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?", allow_empty=True)
+require_pattern("TLS_SECRET_NAME", r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", allow_empty=True)
+require_pattern("STORAGE_CLASS_NAME", r"[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?", allow_empty=True)
+for image_name in ("HERMES_AGENT_IMAGE", "HERMES_WEBUI_IMAGE", "HERMES_BROWSER_IMAGE"):
+    require_pattern(image_name, r"[A-Za-z0-9._/@:-]+")
+for size_name in ("HERMES_HOME_STORAGE_SIZE", "HERMES_WORKSPACE_STORAGE_SIZE"):
+    require_pattern(size_name, r"[0-9]+([EPTGMK]i?)?")
+for boolean_name in (
+    "HERMES_AGENT_ENABLED", "HERMES_DASHBOARD_ENABLED", "HERMES_WEBUI_ENABLED",
+    "HERMES_BROWSER_ENABLED", "TLS_ENABLED", "HERMES_SSH_SETUP",
+    "HERMES_SSH_GENERATE_KEY", "HERMES_ANSIBLE_SETUP",
+):
+    require_pattern(boolean_name, r"(?:true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF)")
+for numeric_name in (
+    "HERMES_RUNTIME_UID", "HERMES_RUNTIME_GID", "HERMES_WEBUI_MAX_UPLOAD_MB",
+    "BROWSER_CONCURRENT", "BROWSER_QUEUED", "BROWSER_TIMEOUT_MS",
+):
+    require_pattern(numeric_name, r"[0-9]+")
+for path_name in ("HERMES_UV_DIR", "HERMES_ADDON_VENV", "HERMES_SSH_KEY_PATH"):
+    require_pattern(path_name, r"/[A-Za-z0-9._/@+-]+", allow_empty=True)
+
+
 def enabled(name: str, default: bool = True) -> bool:
     value = os.environ.get(name)
     if value is None:

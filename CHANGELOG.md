@@ -45,6 +45,7 @@ All notable changes to this project are documented in this file.
 - Ensures the wizard and installer never store or print plaintext credentials; successful operations provide Kubernetes Secret extraction commands instead.
 - Updates QA credential acceptance to require Secret-only storage and explicitly reject obsolete local credential-capture-file expectations.
 - Replaces executable `ENV_FILE` sourcing in installer, maintenance, and diagnostics with a non-executing parser for quoted `KEY=value` assignments; unsafe shell environment controls are rejected.
+- Validates values crossing YAML and embedded-shell boundaries, including Kubernetes names, hosts, image references, resource sizes, numeric settings, paths, and control-character rejection.
 - Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 - Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.

@@ -226,7 +226,18 @@ enabled_deployments() {
 validate() {
   require_cmd kubectl
   require_cmd openssl
+  local scalar scalar_name
+  for scalar_name in HERMES_NAMESPACE WEBUI_HOST DASHBOARD_HOST TLS_SECRET_NAME STORAGE_CLASS_NAME MODEL_PROVIDER MODEL_NAME HERMES_AGENT_IMAGE HERMES_WEBUI_IMAGE HERMES_BROWSER_IMAGE HERMES_SSH_KEY_PATH HERMES_UV_DIR HERMES_ADDON_VENV; do
+    scalar="${!scalar_name-}"
+    [[ "$scalar" != *$'\n'* && "$scalar" != *$'\r'* && "$scalar" != *$'\t'* ]] || fail "$scalar_name must not contain control characters"
+  done
   [[ -n "${HERMES_NAMESPACE:-}" ]] || fail "HERMES_NAMESPACE is required"
+  [[ "$HERMES_NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || fail "HERMES_NAMESPACE must be a DNS-compatible Kubernetes name"
+  [[ "${MODEL_PROVIDER:-}" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "MODEL_PROVIDER contains unsupported YAML characters"
+  [[ "${MODEL_NAME:-}" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "MODEL_NAME contains unsupported YAML characters"
+  for image in "$HERMES_AGENT_IMAGE" "$HERMES_WEBUI_IMAGE" "$HERMES_BROWSER_IMAGE"; do
+    [[ "$image" =~ ^[A-Za-z0-9._/@:-]+$ ]] || fail "container image reference contains unsupported YAML characters"
+  done
   is_truthy "$HERMES_AGENT_ENABLED" || fail "HERMES_AGENT_ENABLED must remain true; the Agent is mandatory"
   if is_truthy "$HERMES_WEBUI_ENABLED"; then
     [[ -n "${WEBUI_HOST:-}" ]] || fail "WEBUI_HOST is required when WebUI is enabled"

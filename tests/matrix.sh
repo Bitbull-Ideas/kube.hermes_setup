@@ -117,5 +117,17 @@ for profile in personal-assistant universal-system-architect; do
   done
 done
 
+injection_template="$TMP_DIR/injection-template.yaml"
+injection_output="$TMP_DIR/injection-output.yaml"
+printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: ${HERMES_NAMESPACE}\ndata:\n  value: "${MODEL_NAME}"\n' > "$injection_template"
+if HERMES_NAMESPACE=hermes MODEL_NAME=$'bad\n  injected: true' python3 "$ROOT_DIR/scripts/render_template.py" "$injection_template" "$injection_output" >/dev/null 2>&1; then
+  printf 'renderer accepted a multiline YAML value\n' >&2
+  exit 1
+fi
+if HERMES_NAMESPACE='hermes;touch' MODEL_NAME=valid python3 "$ROOT_DIR/scripts/render_template.py" "$injection_template" "$injection_output" >/dev/null 2>&1; then
+  printf 'renderer accepted an invalid namespace\n' >&2
+  exit 1
+fi
+
 printf 'matrix tests passed: %d component combinations, %d profile/Ansible/requirements combinations\n' \
   "$component_cases" "$profile_cases"
