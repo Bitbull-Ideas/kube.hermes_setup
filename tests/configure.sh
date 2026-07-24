@@ -97,6 +97,10 @@ touch "$config_one/stale-marker"
 [[ -f "$config_one/bootstrap/SOUL.md" ]]
 grep -qx 'provider: codex' "$config_one/bootstrap/config.yaml"
 
+reuse_output="$TMP_DIR/reuse-output"
+printf 'y\n' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" > "$reuse_output"
+grep -Fqx "Rebuilding current_config from $answers_one" "$reuse_output"
+
 unowned="$TMP_DIR/unowned"
 mkdir -p "$unowned"
 touch "$unowned/must-survive"
