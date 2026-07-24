@@ -18,7 +18,8 @@ The default ./current_config directory contains hermes.env, the fully composed
 bootstrap tree, and installer artifacts. The root-level configuration_answers
 file stores the answers with mode 0600. Both paths are excluded from Git.
 
-Use --from-answers to rebuild current_config after updating the repository.
+Use --from-answers to rebuild current_config after updating the repository
+without an interactive reuse question.
 EOF
 }
 
@@ -71,6 +72,12 @@ ask_yes_no() {
     esac
   done
 }
+
+if [[ "$FROM_ANSWERS" != true && -f "$ANSWERS_FILE" ]]; then
+  if ask_yes_no "Reuse existing configuration answers from $ANSWERS_FILE?" true; then
+    FROM_ANSWERS=true
+  fi
+fi
 
 validate_hostname() {
   [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && "$1" == *.* ]]
