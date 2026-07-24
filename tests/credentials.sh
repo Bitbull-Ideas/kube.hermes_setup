@@ -110,7 +110,6 @@ printf 'dashboard_user_sha=%s\n' "$(printf '%s' "$DASHBOARD_AUTH_USER" | sha256s
 printf 'api_sha=%s\n' "$(printf '%s' "$API_SERVER_KEY" | sha256sum | cut -d' ' -f1)" >> "$TMP_DIR/$TEST_LABEL.result"
 printf 'browser_sha=%s\n' "$(printf '%s' "$BROWSER_TOKEN" | sha256sum | cut -d' ' -f1)" >> "$TMP_DIR/$TEST_LABEL.result"
 printf 'cdp_sha=%s\n' "$(printf '%s' "$BROWSER_CDP_URL" | sha256sum | cut -d' ' -f1)" >> "$TMP_DIR/$TEST_LABEL.result"
-write_generated_credentials
 RUNNER
 }
 
@@ -138,10 +137,12 @@ grep -qx "$expected_process_sha" "$TMP_DIR/process-precedence.sha"
 reset_state
 run_resolver fresh
 grep -qx 'dashboard=generated api=generated browser=generated' "$TMP_DIR/fresh.sources"
-[[ -s "$TMP_DIR/render-fresh/generated-credentials.txt" ]]
-[[ "$(stat -c %a "$TMP_DIR/render-fresh/generated-credentials.txt")" == 600 ]]
-[[ "$(cut -d= -f1 "$TMP_DIR/render-fresh/generated-credentials.txt" | paste -sd, -)" == 'DASHBOARD_AUTH_USER,DASHBOARD_AUTH_PASSWORD,API_SERVER_KEY,BROWSER_TOKEN' ]]
+! compgen -G "$TMP_DIR/render-fresh/generated-credentials.txt" >/dev/null
 ! compgen -G "$TMP_DIR/render-fresh/.generated-credentials.*" >/dev/null
+touch "$TMP_DIR/render-fresh/generated-credentials.txt" "$TMP_DIR/render-fresh/rotated-credentials-old.txt"
+HERMES_INSTALL_LIB_ONLY=true HERMES_RENDER_DIR="$TMP_DIR/render-fresh" bash -c 'source "$1"; prepare_paths; remove_local_credential_captures' _ "$ROOT_DIR/install.sh"
+! compgen -G "$TMP_DIR/render-fresh/generated-credentials.txt" >/dev/null
+! compgen -G "$TMP_DIR/render-fresh/rotated-credentials-*.txt" >/dev/null
 
 # Existing Secrets: blank configuration reuses values without exposing them.
 reset_state
@@ -158,7 +159,7 @@ grep -q 'api_sha=' "$TMP_DIR/reuse.result"
 grep -q 'browser_sha=' "$TMP_DIR/reuse.result"
 expected_user_sha="$(printf '%s' existing-user | sha256sum | cut -d' ' -f1)"
 grep -qx "dashboard_user_sha=$expected_user_sha" "$TMP_DIR/reuse.result"
-[[ "$(cut -d= -f1 "$TMP_DIR/render-reuse/generated-credentials.txt" | paste -sd, -)" == 'DASHBOARD_AUTH_USER,DASHBOARD_AUTH_PASSWORD,API_SERVER_KEY,BROWSER_TOKEN' ]]
+! compgen -G "$TMP_DIR/render-reuse/generated-credentials.txt" >/dev/null
 expected_cdp_sha="$(printf '%s' 'ws://hermes-browser:3000/chromium?token=existing-browser-token' | sha256sum | cut -d' ' -f1)"
 grep -qx "cdp_sha=$expected_cdp_sha" "$TMP_DIR/reuse.result"
 cp "$TMP_DIR/reuse.result" "$TMP_DIR/reuse-first.result"

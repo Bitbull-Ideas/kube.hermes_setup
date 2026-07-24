@@ -31,7 +31,7 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 rand_hex() { openssl rand -hex "${1:-32}"; }
-credential_output_file() { mkdir -p "$HERMES_RENDER_DIR"; chmod 700 "$HERMES_RENDER_DIR"; printf "%s/rotated-credentials-%s.txt" "$HERMES_RENDER_DIR" "$(date -u +%Y%m%dT%H%M%SZ)"; }
+
 is_truthy() { [[ "${1:-}" =~ ^(1|true|TRUE|yes|YES|y|Y|on|ON)$ ]]; }
 enabled_deployments() {
   printf '%s\n' hermes-agent
@@ -260,7 +260,7 @@ Passwords controlled:
 
 Input modes:
   --prompt    Always ask with hidden interactive prompts. This is the default when stdin is a TTY.
-  --generate  Generate a new random password and write it to HERMES_RENDER_DIR/rotated-credentials-*.txt.
+  --generate  Generate a new random password and store it only in the Kubernetes Secret.
   --from-env  Read DASHBOARD_AUTH_PASSWORD from environment variables. Use this for CI/non-interactive automation.
 
 Important:
@@ -283,19 +283,11 @@ EOF
   fi
 
   local dashboard_user="${DASHBOARD_AUTH_USER:-admin}"
-  local dashboard_pass="" generated_file=""
-  if [[ "$input_mode" == "generate" ]]; then
-    generated_file="$(credential_output_file)"
-    umask 077
-    : > "$generated_file"
-  fi
+  local dashboard_pass=""
 
   case "$input_mode" in
     generate)
       dashboard_pass="$(rand_hex 18)"
-      printf 'DASHBOARD_AUTH_USER=%s
-DASHBOARD_AUTH_PASSWORD=%s
-' "$dashboard_user" "$dashboard_pass" >> "$generated_file"
       ;;
     env)
       dashboard_pass="$(secret_from_env DASHBOARD_AUTH_PASSWORD)"
@@ -323,12 +315,11 @@ Input mode:          $input_mode
 Dashboard/WebUI:     updated for dashboard user '$dashboard_user'; WebUI password uses the same secret
 
 Plaintext passwords were not printed. Store env-provided/generated values in your password manager.
+The generated password is stored only in Kubernetes Secret hermes-dashboard-auth.
+Extract it with:
+  kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
 For lab passwords use --lab or HERMES_PASSWORD_POLICY=lab explicitly.
 EOF
-  if [[ "$input_mode" == "generate" ]]; then
-    chmod 600 "$generated_file"
-    warn "--generate was used. Generated plaintext values were written to $generated_file (gitignored, mode 600). Move them to your password manager and delete the file."
-  fi
 }
 rotate_browser_token() {
   is_truthy "$HERMES_BROWSER_ENABLED" || fail "Browser component is disabled"

@@ -235,7 +235,7 @@ Useful examples:
 DASHBOARD_AUTH_PASSWORD='...' ./maintain.sh rotate-passwords --from-env
 ```
 
-Generated password values go to `$HERMES_RENDER_DIR/rotated-credentials-*.txt` with mode `0600`; never commit or print them. Wizard configuration resolves this to `current_config/artifacts`.
+Generated password values are stored only in Kubernetes Secrets; never commit or print them. Use the post-operation `kubectl` extraction command when an authorized operator needs the value.
 
 ## Codex OAuth behavior
 

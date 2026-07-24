@@ -47,7 +47,7 @@ current_config/
 configuration_answers       # wizard answers for intentional replay
 ```
 
-`current_config/` and `configuration_answers` are Git-ignored and can contain sensitive or personal data. The wizard writes `current_config/hermes.env` and `configuration_answers` with mode `0600`; generated credential captures also use mode `0600`.
+`current_config/` and `configuration_answers` are Git-ignored and can contain sensitive or personal data. The wizard writes `current_config/hermes.env` and `configuration_answers` with mode `0600`; plaintext credentials are not stored in either file.
 
 ### 2. Customize `current_config`
 
@@ -123,13 +123,13 @@ ENV_FILE=./current_config/hermes.env ./install.sh
 
 It validates settings, renders the manifest, creates the namespace and Secrets, applies resources, runs the bootstrap job, and waits for rollouts.
 
-`install.sh` records all credential values applied during every run in:
+`install.sh` applies credentials directly through Kubernetes Secrets and does not create a local credential file:
 
 ```text
-current_config/artifacts/generated-credentials.txt
+Kubernetes Secret `hermes-dashboard-auth` (extract with the command printed by `install.sh`)
 ```
 
-The file is mode `0600`. On the first installation, missing credentials are generated. On later installations, blank values reuse existing Kubernetes Secrets; explicit values override them. Move the values to a password manager and delete the file afterward. Use `maintain.sh` for deliberate rotation.
+On the first installation, missing credentials are generated directly into Kubernetes Secrets. On later installations, blank values reuse existing Kubernetes Secrets; explicit values override them. `install.sh` does not print or store plaintext credentials. Use the printed `kubectl` extraction command or `maintain.sh` for deliberate rotation.
 
 If using Codex, load the generated environment and complete OAuth pairing in an interactive shell:
 

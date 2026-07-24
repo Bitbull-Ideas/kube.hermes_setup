@@ -257,7 +257,6 @@ write_setting "$ENV_OUT" HERMES_BROWSER_ENABLED "$HERMES_BROWSER_ENABLED"
 write_setting "$ENV_OUT" WEBUI_HOST "$WEBUI_HOST"
 write_setting "$ENV_OUT" DASHBOARD_HOST "$DASHBOARD_HOST"
 write_setting "$ENV_OUT" DASHBOARD_AUTH_USER "$DASHBOARD_AUTH_USER"
-write_setting "$ENV_OUT" DASHBOARD_AUTH_PASSWORD "$DASHBOARD_AUTH_PASSWORD"
 write_setting "$ENV_OUT" MODEL_PROVIDER "$MODEL_PROVIDER"
 write_setting "$ENV_OUT" MODEL_NAME "$MODEL_NAME"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_PROFILE "$HERMES_BOOTSTRAP_PROFILE"
@@ -280,7 +279,6 @@ if [[ "$FROM_ANSWERS" != true ]]; then
   write_setting "$ANSWERS_FILE" WEBUI_HOST "$WEBUI_HOST"
   write_setting "$ANSWERS_FILE" DASHBOARD_HOST "$DASHBOARD_HOST"
   write_setting "$ANSWERS_FILE" DASHBOARD_AUTH_USER "$DASHBOARD_AUTH_USER"
-  write_setting "$ANSWERS_FILE" DASHBOARD_AUTH_PASSWORD "$DASHBOARD_AUTH_PASSWORD"
   write_setting "$ANSWERS_FILE" MODEL_PROVIDER "$MODEL_PROVIDER"
   write_setting "$ANSWERS_FILE" MODEL_NAME "$MODEL_NAME"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_SETUP "$HERMES_ANSIBLE_SETUP"
@@ -296,10 +294,7 @@ printf '  Environment: %s (mode 600)\n' "$ENV_OUT"
 printf '  Bootstrap:   %s (%s mode)\n' "$HERMES_BOOTSTRAP_DIR" "$HERMES_BOOTSTRAP_MODE"
 printf '  Agent config: %s -> /opt/data/config.yaml\n' "$HERMES_BOOTSTRAP_DIR/config.yaml"
 printf '  Artifacts:   %s\n' "$HERMES_RENDER_DIR"
-printf '  Credentials after install: %s/generated-credentials.txt (mode 600)\n' "$HERMES_RENDER_DIR"
-if [[ -z "$DASHBOARD_AUTH_PASSWORD" ]]; then
-  printf '  Generated password note: it is written only after install; it is not stored in hermes.env or configuration_answers.\n'
-fi
+printf '  Credentials: Kubernetes Secrets only; values are not stored locally or printed\n'
 printf '  Answers:     %s (mode 600)\n' "$ANSWERS_FILE"
 printf '  Components:  agent%s%s%s\n' \
   "$([[ "$HERMES_DASHBOARD_ENABLED" == true ]] && printf ', dashboard')" \
@@ -310,7 +305,7 @@ printf '  SSH keys:    %s\n\n' "$HERMES_SSH_SETUP"
 
 installer_cmd="HERMES_INSTALL_LIB_ONLY=false ENV_FILE=$(printf '%q' "$ENV_OUT") $(printf '%q' "$ROOT_DIR/install.sh")"
 if [[ "$RUN_INSTALLER" == true ]] && ask_yes_no 'Run install.sh now?' false; then
-  HERMES_INSTALL_LIB_ONLY=false ENV_FILE="$ENV_OUT" "$ROOT_DIR/install.sh"
+  HERMES_INSTALL_LIB_ONLY=false ENV_FILE="$ENV_OUT" DASHBOARD_AUTH_PASSWORD="$DASHBOARD_AUTH_PASSWORD" "$ROOT_DIR/install.sh"
 else
   printf 'Run the installer with:\n  %s\n' "$installer_cmd"
 fi
