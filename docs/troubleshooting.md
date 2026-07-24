@@ -2,21 +2,13 @@
 
 ## Generated Dashboard/WebUI password cannot be found
 
-If the wizard password prompt was left empty, the question phase does not store a password in `current_config/hermes.env` or `configuration_answers`. On the first installation, `install.sh` generates and applies it; on later installations it reuses the existing Kubernetes Secret. For a wizard installation, check:
-
-```bash
-stat -c '%a %n' current_config/artifacts/generated-credentials.txt
-```
-
-Expected mode: `600`. The exact location is `$HERMES_RENDER_DIR/generated-credentials.txt`; manual installations without `HERMES_RENDER_DIR` use `.rendered/generated-credentials.txt`.
-
-Do not post the file contents. Move required values to a password manager. If the file no longer exists, an authorized cluster operator can recover the current Dashboard/WebUI password from `secret/hermes-dashboard-auth`. The following command prints the secret and must be used only in a private terminal:
+The installer never stores or prints generated credentials locally. It applies them directly to Kubernetes Secrets. An authorized cluster operator can extract the current Dashboard/WebUI password in a private terminal:
 
 ```bash
 kubectl -n <namespace> get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
 ```
 
-If both Dashboard and WebUI are disabled, no application password is generated and the `DASHBOARD_AUTH_PASSWORD` entry in the capture file is empty. Use `maintain.sh rotate-passwords` for deliberate password changes.
+If both Dashboard and WebUI are disabled, no application password is generated. Use `maintain.sh rotate-passwords` for deliberate password changes.
 
 ## WebUI loads but chat fails with `AIAgent not available`
 

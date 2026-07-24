@@ -27,19 +27,6 @@ warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
 rand_hex() { openssl rand -hex "${1:-32}"; }
-write_generated_credentials() {
-  mkdir -p "$RENDER_DIR"
-  chmod 700 "$RENDER_DIR"
-  local out="$RENDER_DIR/generated-credentials.txt" tmp
-  tmp="$(mktemp "$RENDER_DIR/.generated-credentials.XXXXXX")"
-  chmod 600 "$tmp"
-  {
-    printf "DASHBOARD_AUTH_USER=%s\nDASHBOARD_AUTH_PASSWORD=%s\n" "$DASHBOARD_AUTH_USER" "$DASHBOARD_AUTH_PASSWORD"
-    printf "API_SERVER_KEY=%s\n" "$API_SERVER_KEY"
-    printf "BROWSER_TOKEN=%s\n" "$BROWSER_TOKEN"
-  } > "$tmp"
-  mv -f "$tmp" "$out"
-}
 
 load_env() {
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -582,8 +569,18 @@ Browser enabled:  $HERMES_BROWSER_ENABLED
 Rendered file:    $MANIFEST_OUT
 
 Runtime credentials were applied through Kubernetes Secrets.
-A local credential capture file was written to $RENDER_DIR/generated-credentials.txt with mode 600.
-Move those values to your password manager and delete the file after use.
+No credential values were stored locally or printed.
+Extract the Dashboard/WebUI password when needed with:
+
+  kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+
+Extract the API server key with:
+
+  kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.data.api-key}' | base64 -d; printf '\n'
+
+Extract the Browserless token with:
+
+  kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-token -o jsonpath='{.data.token}' | base64 -d; printf '\n'
 
 Rotate later with:
 
@@ -609,7 +606,6 @@ main() {
   create_bootstrap_archive
   render_manifest
   create_namespace_and_secrets
-  write_generated_credentials
   apply_and_wait
   print_summary
 }

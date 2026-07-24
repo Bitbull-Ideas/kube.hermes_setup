@@ -72,15 +72,13 @@ The operational scripts resolve configuration in this order: an explicit `ENV_FI
 
 ## Initial generated credentials
 
-When the wizard password prompt is left empty, the password is not generated until `install.sh` runs. It is therefore intentionally absent from `hermes.env` and `configuration_answers`. The installer writes all generated and applied initial values to:
+When the wizard password prompt is left empty, the password is generated only when `install.sh` runs. It is intentionally absent from `hermes.env` and `configuration_answers`. The installer applies generated and reused values directly to Kubernetes Secrets; it does not store or print plaintext credentials locally. Authorized operators can use the extraction commands printed in the installer summary, for example:
 
-```text
-current_config/artifacts/generated-credentials.txt
+```bash
+kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
 ```
 
-The path follows `HERMES_RENDER_DIR`; manual installations default to `.rendered/generated-credentials.txt`. The directory is mode `0700` and the file is mode `0600`. The file contains `DASHBOARD_AUTH_USER`, `DASHBOARD_AUTH_PASSWORD`, `API_SERVER_KEY`, and `BROWSER_TOKEN`; values for disabled components may be empty.
-
-On the first installation, missing credentials are generated. On later installations, blank values reuse existing Kubernetes Secrets; explicit non-empty values override them. Kubernetes lookup or malformed-Secret errors fail closed rather than rotating credentials implicitly. Use the maintenance rotation commands for deliberate changes. Save required values in a password manager. If the local file was deleted, an authorized operator can recover the Dashboard/WebUI password from `secret/hermes-dashboard-auth`; avoid printing or sharing it except in a private terminal.
+On the first installation, missing credentials are generated. On later installations, blank values reuse existing Kubernetes Secrets; explicit non-empty values override them. Kubernetes lookup or malformed-Secret errors fail closed rather than rotating credentials implicitly. Use the maintenance rotation commands for deliberate changes.
 
 Use `HERMES_BOOTSTRAP_DIR` to seed SOUL, memory, skills, plugins, cron jobs, config, and workspace context into the persistent PVCs. This is useful for repeatable installations where the Agent should start with known behavior.
 
@@ -128,7 +126,7 @@ Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite
 `maintain.sh rotate-passwords` rotates the shared password for the enabled Dashboard and/or WebUI components and supports three explicit input modes:
 
 1. **Interactive hidden prompts** with `--prompt` — default when stdin is a TTY.
-2. **Generated value** with `--generate` — writes the new random value to `$HERMES_RENDER_DIR/rotated-credentials-*.txt`.
+2. **Generated value** with `--generate` — stores the new random value only in the Kubernetes Secret.
 3. **Environment variables** with `--from-env` — intended for automation/CI.
 
 Important: interactive rotation does **not** silently reuse password values from `hermes.env`. If a password is present in the env file and you want to apply exactly that value, say so explicitly with `--from-env`.
@@ -159,7 +157,7 @@ DASHBOARD_AUTH_USER=admin DASHBOARD_AUTH_PASSWORD='use-a-long-random-value' ./ma
 
 Production policy rejects weak passwords by default. Use `--lab`, `HERMES_PASSWORD_POLICY=lab`, or `HERMES_ALLOW_WEAK_PASSWORD=true` only for lab systems.
 
-Plaintext passwords are not printed for env/prompt mode. With `--generate`, the generated value is written under `HERMES_RENDER_DIR` with mode `0600`; this is `current_config/artifacts` for wizard installations and `.rendered` for manual defaults. Move it to your password manager and delete the file.
+Plaintext passwords are not stored locally or printed for any rotation mode. The generated value is stored only in Kubernetes Secret `hermes-dashboard-auth`; the command to extract it is printed after a successful rotation.
 
 ## Browser token rotation
 

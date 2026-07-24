@@ -34,12 +34,12 @@ All notable changes to this project are documented in this file.
 - Preserves explicit `--from-env` password and browser-token rotation inputs when the active env file contains blank wizard placeholders.
 - Clears internal profile-requirements state before each installer default-resolution pass so sourced or inherited state cannot alter custom requirements.
 - Makes restore remove hidden as well as visible PVC entries and reapplies the configured runtime UID/GID instead of hard-coded `1000:1000` ownership.
-- Makes the wizard display the exact post-install credential path before handoff and explains that generated passwords are not stored in the answer or environment files.
+- Ensures the wizard and installer never store or print plaintext credentials; successful operations provide Kubernetes Secret extraction commands instead.
 - Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 - Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
 - Displays bootstrap profile choices on separate lines for terminal readability.
-- Reports the actual configured credential-capture path in the installer summary.
+
 - Removes the temporary composed-profile stage after copying it into the canonical generated bootstrap directory.
 - Makes `HERMES_ANSIBLE_SETUP=false` exclude a profile-provided Ansible workspace from generated bootstrap content on fresh deployments.
 - Preserves an explicit `HERMES_ANSIBLE_CONFIG` override and makes diagnostics validate the configured path rather than requiring the default path.

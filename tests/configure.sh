@@ -13,8 +13,7 @@ printf '\n\n\n\nn\nn\nn\nn\nn\n' | \
 grep -qx 'Bootstrap profile:' "$profile_output"
 grep -qx '  1) personal-assistant' "$profile_output"
 grep -qx '  2) universal-system-architect' "$profile_output"
-grep -Fqx "  Credentials after install: $TMP_DIR/profile-config/artifacts/generated-credentials.txt (mode 600)" "$profile_output"
-grep -Fqx '  Generated password note: it is written only after install; it is not stored in hermes.env or configuration_answers.' "$profile_output"
+grep -Fqx '  Credentials: Kubernetes Secrets only; values are not stored locally or printed' "$profile_output"
 
 # Operational scripts prefer an existing root hermes.env, then discover the
 # wizard-generated current_config/hermes.env when no root file exists.
@@ -140,16 +139,7 @@ grep -qx 'model: openai/gpt-5.6' "$config_two/bootstrap/config.yaml"
   API_SERVER_KEY='test-api-key-long-enough'
   BROWSER_TOKEN='test-browser-token'
   resolve_runtime_credentials
-  write_generated_credentials
-  credentials="$config_two/artifacts/generated-credentials.txt"
-  [[ -f "$credentials" ]]
-  [[ "$(stat -c %a "$credentials")" == 600 ]]
-  [[ "$(cut -d= -f1 "$credentials" | paste -sd, -)" == 'DASHBOARD_AUTH_USER,DASHBOARD_AUTH_PASSWORD,API_SERVER_KEY,BROWSER_TOKEN' ]]
-  python3 - "$credentials" <<'PY'
-import sys
-lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
-assert all("=" in line and line.split("=", 1)[1] for line in lines)
-PY
+  [[ ! -e "$config_two/artifacts/generated-credentials.txt" ]]
 )
 
 requirements="$TMP_DIR/requirements.txt"

@@ -67,13 +67,15 @@ HERMES_PASSWORD_POLICY=lab ./maintain.sh rotate-passwords
 
 The scripts avoid passing plaintext passwords as command-line arguments to `openssl` or `kubectl`.
 
-## Local generated credential files
+## Credential storage
 
-`install.sh` writes the effective applied values to `$HERMES_RENDER_DIR/generated-credentials.txt` with mode `0600` so operators can save initial values before deleting the file. Wizard installations use `current_config/artifacts`; manual installations default to `.rendered`. On later installs, blank values reuse existing Kubernetes Secrets; explicit values override them. The file is written after Secret application, not when the wizard questions finish.
+`install.sh` and generated-password rotation do not write plaintext credentials to local files and do not print credential values. Credentials are stored only in Kubernetes Secrets. Authorized operators can extract a value when needed, for example:
 
-`maintain.sh rotate-passwords --generate` writes `$HERMES_RENDER_DIR/rotated-credentials-*.txt` with mode `0600` for the same reason. Interactive rotation prompts by default and does not silently reuse password values from `hermes.env`; use `--from-env` explicitly for CI/env-driven changes.
+```bash
+kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+```
 
-`current_config/`, `configuration_answers`, and `.rendered/` are Git-ignored. Treat these files as secrets and remove credential captures after storing values in a password manager.
+`current_config/`, `configuration_answers`, and `.rendered/` remain Git-ignored because they can contain other sensitive configuration, but they must not be used as credential stores.
 
 
 
