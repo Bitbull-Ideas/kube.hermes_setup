@@ -87,6 +87,16 @@ backup() {
   [[ -n "$out" ]] || fail "backup path required"
   mkdir -p "$(dirname "$out")"
   checksum="${out}.sha256"
+  backup_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  }
+  backup_on_exit() {
+    local status=$?
+    backup_cleanup
+    trap - EXIT
+    exit "$status"
+  }
+  trap backup_on_exit EXIT
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   cat <<JSON | kubectl apply -f - >/dev/null
 apiVersion: v1
@@ -117,7 +127,8 @@ JSON
   kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; tar czf /tmp/hermes-backup.tgz -C / opt/data workspace; chmod 600 /tmp/hermes-backup.tgz'
   kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$out" -c backup >/dev/null
   chmod 600 "$out"
-  kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null
+  trap - EXIT
+  backup_cleanup
   sha256sum "$out" > "$checksum"
   chmod 600 "$checksum"
   sha256sum -c "$checksum"
@@ -129,8 +140,26 @@ restore() {
   [[ -f "$in" ]] || fail "backup file required"
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
-  local deployments=() d
+  local deployments=() d replicas
   mapfile -t deployments < <(enabled_write_deployments)
+  declare -A original_replicas=()
+  for d in "${deployments[@]}"; do
+    replicas="$(kubectl -n "$HERMES_NAMESPACE" get deploy "$d" -o jsonpath='{.spec.replicas}')"
+    original_replicas["$d"]="${replicas:-1}"
+  done
+  restore_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+    for d in "${deployments[@]}"; do
+      kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}" >/dev/null 2>&1 || true
+    done
+  }
+  restore_on_exit() {
+    local status=$?
+    restore_cleanup
+    trap - EXIT
+    exit "$status"
+  }
+  trap restore_on_exit EXIT
   log "Scaling down write-heavy deployments"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
@@ -163,11 +192,16 @@ JSON
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
   kubectl -n "$HERMES_NAMESPACE" cp "$in" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
-  kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null
+  trap - EXIT
+  restore_cleanup
   log "Scaling deployments up"
-  kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=1
   for d in "${deployments[@]}"; do
-    kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
+    kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}"
+  done
+  for d in "${deployments[@]}"; do
+    if [[ "${original_replicas[$d]}" -gt 0 ]]; then
+      kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
+    fi
   done
 }
 

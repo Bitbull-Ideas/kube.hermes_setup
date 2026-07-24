@@ -38,8 +38,9 @@ All notable changes to this project are documented in this file.
 - Adds image-specific Kubernetes security contexts: RuntimeDefault seccomp and disabled ServiceAccount-token automounting for all workloads; no privilege escalation for application containers; numeric non-root Browserless with all capabilities dropped.
 - Adds a live-tested security exception for current Agent/Dashboard/WebUI root-start initialization and privileged init-container volume preparation.
 - Moves Browserless token rotation from `kubectl --from-literal` process arguments to mode-restricted temporary files passed with `--from-file`, with cleanup traps.
-- Adds `ERR` cleanup traps for all installer and maintenance temporary Secret staging directories, including failed Kubernetes Secret-apply paths.
+- Adds cleanup traps for all installer and maintenance temporary Secret staging directories, including failed Kubernetes Secret-apply paths.
 - Protects backup archives and generated SHA-256 checksum files with mode `0600`.
+- Adds backup/restore cleanup traps and restores each enabled deployment to its original replica count after success or failure.
 - Ensures the wizard offers configurable Agent, WebUI, and Browserless image references while retaining `latest` as the default.
 - Ensures the wizard and installer never store or print plaintext credentials; successful operations provide Kubernetes Secret extraction commands instead.
 - Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
