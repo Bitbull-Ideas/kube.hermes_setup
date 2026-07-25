@@ -53,6 +53,7 @@ All notable changes to this project are documented in this file.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 - Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
 - Displays bootstrap profile choices on separate lines for terminal readability.
+- Keeps the configuration wizard interactive when reusing `configuration_answers`: `y` pre-seeds saved non-secret answers, `n` uses built-in defaults, and blank passwords are never stored or offered as defaults.
 
 - Removes the temporary composed-profile stage after copying it into the canonical generated bootstrap directory.
 - Makes `HERMES_ANSIBLE_SETUP=false` exclude a profile-provided Ansible workspace from generated bootstrap content on fresh deployments.
