@@ -5,3 +5,4 @@ hermes-workspace-ansible
 hermes-workspace-git
 hermes-workspace-manager
 markdown-pdf
+hermes-log-watchdog
