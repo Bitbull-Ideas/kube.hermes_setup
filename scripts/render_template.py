@@ -50,6 +50,7 @@ require_pattern("TLS_SECRET_NAME", r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", allow_empty
 require_pattern("STORAGE_CLASS_NAME", r"[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?", allow_empty=True)
 for image_name in ("HERMES_AGENT_IMAGE", "HERMES_WEBUI_IMAGE", "HERMES_BROWSER_IMAGE"):
     require_pattern(image_name, r"[A-Za-z0-9._/@:-]+")
+require_pattern("HERMES_IMAGE_PULL_POLICY", r"IfNotPresent|Always")
 for size_name in ("HERMES_HOME_STORAGE_SIZE", "HERMES_WORKSPACE_STORAGE_SIZE"):
     require_pattern(size_name, r"[0-9]+([EPTGMK]i?)?")
 for boolean_name in (

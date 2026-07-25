@@ -195,7 +195,7 @@ Keep ignore rules conservative. The watchdog is only useful if it still reports 
 
 See also `references/prompt-safety-and-noise-patterns.md` for prompt-safety redaction patterns and recurring benign/noisy log classes.
 See `references/common-error-patterns.md` for a catalog of frequently seen log warnings with root-cause analysis and step-by-step resolutions (Copilot classic PAT, Firecrawl credits exhausted, Telegram reconnect, system-prompt-null, hardline-block false positives, and more).
-See `references/mcp-http-log-patterns.md` for diagnosing repeated HTTP MCP connection failures such as Graylog `400 Bad Request`, protocol-version mismatches, and missing `mcp.client.streamable_http` support.
+The watchdog analyzes local Hermes logs only. It does not configure or diagnose external MCP or other remote logging systems.
 
 1. **Raw log examples can trip the cron prompt-injection scanner.** The watchdog embeds examples into an LLM prompt. If logs contain strings such as `/etc/sudoers`, `/etc/sudoers.d/...`, `visudo`, or `authorized_keys`, the assembled cron prompt can be blocked even though the watchdog is only reporting logs. Sanitize these substrings before printing counters/examples; do not broadly ignore all security-related warnings.
 

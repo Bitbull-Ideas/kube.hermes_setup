@@ -15,6 +15,8 @@ kubeconfig
 backups/
 *.tgz
 *.tar.gz
+*.age
+*.sha256
 
 # editor/system
 .DS_Store

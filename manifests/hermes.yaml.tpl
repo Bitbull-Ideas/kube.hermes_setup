@@ -54,7 +54,7 @@ spec:
       containers:
       - name: init
         image: ${HERMES_AGENT_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         env:
         - name: HERMES_BOOTSTRAP_MODE
           value: "${HERMES_BOOTSTRAP_MODE}"
@@ -156,7 +156,14 @@ spec:
               mkdir -p "$HERMES_UV_DIR/bin" "$UV_PYTHON_INSTALL_DIR" "$UV_CACHE_DIR" /opt/data/.local/bin
               if [ ! -x "$HERMES_UV_DIR/bin/uv" ]; then
                 command -v curl >/dev/null 2>&1 || { echo "curl is required to install uv" >&2; exit 1; }
-                curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="$HERMES_UV_DIR/bin" sh
+                command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum is required to verify uv" >&2; exit 1; }
+                UV_INSTALLER_URL="https://github.com/astral-sh/uv/releases/download/0.11.32/uv-installer.sh"
+                UV_INSTALLER_SHA256="43aff33a967fe40e8c17949d8c85c65bc43f3b5c94742393c957f56ab5ba80f4"
+                UV_INSTALLER_PATH="/tmp/hermes-uv-installer.sh"
+                curl -fsSL "$UV_INSTALLER_URL" -o "$UV_INSTALLER_PATH"
+                printf '%s  %s\n' "$UV_INSTALLER_SHA256" "$UV_INSTALLER_PATH" | sha256sum -c -
+                UV_INSTALL_DIR="$HERMES_UV_DIR/bin" sh "$UV_INSTALLER_PATH"
+                rm -f "$UV_INSTALLER_PATH"
               fi
               export PATH="$HERMES_UV_DIR/bin:$PATH"
               uv --version
@@ -364,7 +371,7 @@ spec:
       containers:
       - name: hermes-agent
         image: ${HERMES_AGENT_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         securityContext:
           allowPrivilegeEscalation: false
         command: ["/init", "/opt/hermes/docker/main-wrapper.sh"]
@@ -502,7 +509,7 @@ spec:
       containers:
       - name: hermes-dashboard
         image: ${HERMES_AGENT_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         securityContext:
           allowPrivilegeEscalation: false
         command: ["/init", "/opt/hermes/docker/main-wrapper.sh"]
@@ -643,7 +650,7 @@ spec:
           mountPath: /workspace
       - name: copy-agent-source
         image: ${HERMES_AGENT_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         command: ["/bin/sh", "-c"]
         args:
         - >-
@@ -656,7 +663,7 @@ spec:
           mountPath: /agent-src
       - name: prepare-browser-cli
         image: ${HERMES_AGENT_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         command: ["/bin/sh", "-c"]
         args:
         - |
@@ -672,7 +679,7 @@ spec:
       containers:
       - name: hermes-webui
         image: ${HERMES_WEBUI_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         securityContext:
           allowPrivilegeEscalation: false
         ports:
@@ -812,7 +819,7 @@ spec:
       containers:
       - name: chromium
         image: ${HERMES_BROWSER_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: ${HERMES_IMAGE_PULL_POLICY}
         securityContext:
           runAsUser: 999
           runAsGroup: 999

@@ -6,7 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Adds the `hermes-workspace-manager` bootstrap skill for topic-folder resolution, artifact containment, continuity, and explicit archival.
+- Adds encrypted full-rollback snapshots: repository-owned Kubernetes resources, application Secrets, normalized metadata, and the exact K3s server version are stored inside the age archive. `restore --full` recreates an absent Namespace and enforces K3s/version/Namespace gates by default; `--force` overrides all compatibility and targeting gates while retaining data-integrity and API failures.
+- Adds `restore --full --dry-run` preflight output without Kubernetes or PVC changes.
+- Adds configurable `HERMES_IMAGE_PULL_POLICY` with `IfNotPresent` default and explicit `Always` option.
+- Adds isolated backup-helper regression tests and removes the setup-irrelevant remote logging reference.
 - Adds declarative profile skill allowlists and profile environment defaults with operator overrides.
 - Adds an interactive `configure.sh` wizard that stores the complete selected bootstrap and `hermes.env` under Git-ignored `current_config/`, then directs installer artifacts to `current_config/artifacts` during handoff.
 - Adds independently selectable Dashboard, WebUI, and Browser components while keeping Agent mandatory.
@@ -22,7 +25,7 @@ All notable changes to this project are documented in this file.
 - Makes `universal-system-architect` select all shared skills, enable SSH setup, and activate its Ansible-oriented addon requirements by default.
 - Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
 - Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
-- Removes the standalone `POST_SETUP.md` recipe to keep the repository focused on deployment and operations.
+- Keeps the shared `POST_SETUP.md` operator hint for optional post-install cron and delivery-channel configuration.
 - Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
 
 ### Fixed
@@ -42,11 +45,12 @@ All notable changes to this project are documented in this file.
 - Protects backup archives and generated SHA-256 checksum files with mode `0600`.
 - Adds backup/restore cleanup traps and restores each enabled deployment to its original replica count after success or failure.
 - Ensures the wizard offers configurable Agent, WebUI, and Browserless image references while retaining `latest` as the default.
-- Ensures the wizard and installer never store or print plaintext credentials; successful operations provide Kubernetes Secret extraction commands instead.
+- Ensures the wizard and installer never store or print plaintext credentials; authorized retrieval uses `./maintain.sh show-passwords`.
 - Updates QA credential acceptance to require Secret-only storage and explicitly reject obsolete local credential-capture-file expectations.
 - Replaces executable `ENV_FILE` sourcing in installer, maintenance, and diagnostics with a non-executing parser for quoted `KEY=value` assignments; unsafe shell environment controls are rejected.
 - Changes the default model provider from `codex` to `openai-codex` across the wizard, installer defaults, example configuration, generated config tests, and maintainer documentation; provider-specific Codex OAuth instructions remain unchanged.
 - Adds `maintain.sh show-passwords`, which retrieves and decodes the three Kubernetes credential Secrets for an authorized administrator; it does not write them to local files.
+- Replaces installer and documentation-specific `kubectl` Secret extraction commands with the single `./maintain.sh show-passwords` administrator workflow.
 - Uses native cryptographic password generation via `openssl rand -base64` for generated Dashboard/WebUI passwords; API keys and Browserless tokens remain hex secrets, and no MD5-based generation is used.
 - Validates values crossing YAML and embedded-shell boundaries, including Kubernetes names, hosts, image references, resource sizes, numeric settings, paths, and control-character rejection.
 - Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.

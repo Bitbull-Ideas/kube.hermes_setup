@@ -13,7 +13,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
-printf '\n\n\n\nn\nn\nn\nn\nn\n' | \
+printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
     --answers-file "$TMP_DIR/profile-answers" > "$profile_output"
@@ -51,6 +51,9 @@ grep -Fq 'trap '\''rm -rf -- "$dash_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap '\''rm -rf -- "$secret_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap backup_on_exit EXIT' "$ROOT_DIR/maintain.sh"
 grep -Fq 'show-passwords) show_passwords' "$ROOT_DIR/maintain.sh"
+! grep -Fq 'get secret hermes-dashboard-auth -o jsonpath' "$ROOT_DIR/install.sh"
+! grep -Fq 'get secret hermes-api-server -o jsonpath' "$ROOT_DIR/install.sh"
+! grep -Fq 'get secret hermes-browser-token -o jsonpath' "$ROOT_DIR/install.sh"
 grep -Fq 'show_secret_value "Dashboard/WebUI password" hermes-dashboard-auth password' "$ROOT_DIR/maintain.sh"
 grep -Fq 'show_secret_value "API server key" hermes-api-server api-key' "$ROOT_DIR/maintain.sh"
 grep -Fq 'show_secret_value "Browserless token" hermes-browser-token token' "$ROOT_DIR/maintain.sh"
@@ -92,7 +95,7 @@ grep -q 'HERMES_INSTALL_LIB_ONLY=false ENV_FILE=' "$ROOT_DIR/configure.sh"
 
 config_one="$TMP_DIR/current-one"
 answers_one="$TMP_DIR/answers-one"
-printf '\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
+printf '\n\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
   "$ROOT_DIR/setup.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 
 [[ -f "$config_one/hermes.env" ]]
@@ -114,6 +117,7 @@ source "$config_one/hermes.env"
 [[ "$HERMES_BOOTSTRAP_MODE" == overwrite ]]
 [[ "$MODEL_PROVIDER" == openai-codex ]]
 [[ "$MODEL_NAME" == gpt-5.6-luna ]]
+[[ "$HERMES_IMAGE_PULL_POLICY" == IfNotPresent ]]
 python3 - "$config_one/bootstrap/config.yaml" <<'PY'
 import sys, yaml
 config = yaml.safe_load(open(sys.argv[1]))
@@ -139,8 +143,11 @@ touch "$config_one/stale-marker"
 grep -qx 'provider: openai-codex' "$config_one/bootstrap/config.yaml"
 
 reuse_output="$TMP_DIR/reuse-output"
-printf 'y\n\n\n\n\n\n\n\n\n\n\n\n\n\ny\n' | \
-  "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" > "$reuse_output" 2>&1
+initial_reuse_config="$TMP_DIR/initial-reuse"
+python3 - <<'PY' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$initial_reuse_config" --answers-file "$answers_one" > "$reuse_output" 2>&1
+print("y")
+print("\n" * 15, end="")
+PY
 grep -Fq 'Configuration created.' "$reuse_output"
 
 # Verify Y pre-seeds non-secret answers while blank input accepts them.
@@ -164,6 +171,7 @@ values = {
     "HERMES_AGENT_IMAGE": "agent:reuse",
     "HERMES_WEBUI_IMAGE": "webui:reuse",
     "HERMES_BROWSER_IMAGE": "browser:reuse",
+    "HERMES_IMAGE_PULL_POLICY": "Always",
     "HERMES_ANSIBLE_SETUP": "false",
     "HERMES_ANSIBLE_VERSION": "",
     "HERMES_SSH_SETUP": "true",
@@ -186,7 +194,7 @@ PY
 reuse_config="$TMP_DIR/current-reuse"
 python3 - <<'PY' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$reuse_config" --answers-file "$answers_reuse" >/dev/null 2>&1
 print("y")
-print("\n" * 17, end="")
+print("\n" * 18, end="")
 PY
 # shellcheck disable=SC1090
 source "$reuse_config/hermes.env"
@@ -196,6 +204,7 @@ source "$reuse_config/hermes.env"
 [[ "$WEBUI_HOST" == webui.reuse.example && "$DASHBOARD_HOST" == dashboard.reuse.example ]]
 [[ "$DASHBOARD_AUTH_USER" == reuse-admin ]]
 [[ "$MODEL_PROVIDER" == reuse-provider && "$MODEL_NAME" == reuse-model ]]
+[[ "$HERMES_IMAGE_PULL_POLICY" == Always ]]
 [[ "$HERMES_ANSIBLE_SETUP" == false && "$HERMES_SSH_SETUP" == true ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 
@@ -210,7 +219,7 @@ fi
 
 config_two="$TMP_DIR/current-two"
 answers_two="$TMP_DIR/answers-two"
-printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\n' | \
+printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_two" --answers-file "$answers_two" >/dev/null
 # shellcheck disable=SC1090
 source "$config_two/hermes.env"
@@ -227,6 +236,7 @@ DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 [[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 [[ "$MODEL_PROVIDER" == openrouter ]]
 [[ "$MODEL_NAME" == openai/gpt-5.6 ]]
+[[ "$HERMES_IMAGE_PULL_POLICY" == IfNotPresent ]]
 grep -qx 'provider: openrouter' "$config_two/bootstrap/config.yaml"
 grep -qx 'model: openai/gpt-5.6' "$config_two/bootstrap/config.yaml"
 (

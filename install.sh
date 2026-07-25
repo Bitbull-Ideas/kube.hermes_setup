@@ -234,7 +234,7 @@ validate() {
   require_cmd kubectl
   require_cmd openssl
   local scalar scalar_name
-  for scalar_name in HERMES_NAMESPACE WEBUI_HOST DASHBOARD_HOST TLS_SECRET_NAME STORAGE_CLASS_NAME MODEL_PROVIDER MODEL_NAME HERMES_AGENT_IMAGE HERMES_WEBUI_IMAGE HERMES_BROWSER_IMAGE HERMES_SSH_KEY_PATH HERMES_UV_DIR HERMES_ADDON_VENV; do
+  for scalar_name in HERMES_NAMESPACE WEBUI_HOST DASHBOARD_HOST TLS_SECRET_NAME STORAGE_CLASS_NAME MODEL_PROVIDER MODEL_NAME HERMES_AGENT_IMAGE HERMES_WEBUI_IMAGE HERMES_BROWSER_IMAGE HERMES_IMAGE_PULL_POLICY HERMES_SSH_KEY_PATH HERMES_UV_DIR HERMES_ADDON_VENV; do
     scalar="${!scalar_name-}"
     [[ "$scalar" != *$'\n'* && "$scalar" != *$'\r'* && "$scalar" != *$'\t'* ]] || fail "$scalar_name must not contain control characters"
   done
@@ -242,6 +242,7 @@ validate() {
   [[ "$HERMES_NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || fail "HERMES_NAMESPACE must be a DNS-compatible Kubernetes name"
   [[ "${MODEL_PROVIDER:-}" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "MODEL_PROVIDER contains unsupported YAML characters"
   [[ "${MODEL_NAME:-}" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "MODEL_NAME contains unsupported YAML characters"
+  [[ "${HERMES_IMAGE_PULL_POLICY:-}" == IfNotPresent || "${HERMES_IMAGE_PULL_POLICY:-}" == Always ]] || fail "HERMES_IMAGE_PULL_POLICY must be IfNotPresent or Always"
   for image in "$HERMES_AGENT_IMAGE" "$HERMES_WEBUI_IMAGE" "$HERMES_BROWSER_IMAGE"; do
     [[ "$image" =~ ^[A-Za-z0-9._/@:-]+$ ]] || fail "container image reference contains unsupported YAML characters"
   done
@@ -274,6 +275,7 @@ prepare_defaults() {
   export HERMES_AGENT_IMAGE="${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}"
   export HERMES_WEBUI_IMAGE="${HERMES_WEBUI_IMAGE:-ghcr.io/nesquena/hermes-webui:latest}"
   export HERMES_BROWSER_IMAGE="${HERMES_BROWSER_IMAGE:-ghcr.io/browserless/chromium:latest}"
+  export HERMES_IMAGE_PULL_POLICY="${HERMES_IMAGE_PULL_POLICY:-IfNotPresent}"
   export HERMES_HOME_STORAGE_SIZE="${HERMES_HOME_STORAGE_SIZE:-10Gi}"
   export HERMES_WORKSPACE_STORAGE_SIZE="${HERMES_WORKSPACE_STORAGE_SIZE:-20Gi}"
   export HERMES_RUNTIME_UID="${HERMES_RUNTIME_UID:-10000}"
@@ -627,18 +629,10 @@ Browser enabled:  $HERMES_BROWSER_ENABLED
 Rendered file:    $MANIFEST_OUT
 
 Runtime credentials were applied through Kubernetes Secrets.
-No credential values were stored locally or printed.
-Extract the Dashboard/WebUI password when needed with:
+No credential values were stored locally or printed during installation.
+Show the credentials later, when needed, with the administrator-only maintenance command:
 
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
-
-Extract the API server key with:
-
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.data.api-key}' | base64 -d; printf '\n'
-
-Extract the Browserless token with:
-
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-token -o jsonpath='{.data.token}' | base64 -d; printf '\n'
+  ./maintain.sh show-passwords
 
 Rotate later with:
 

@@ -62,7 +62,7 @@ Terminate TLS at your Ingress controller. This template supports Ingress TLS ref
 
 ## Backups
 
-Backups include OAuth state and possibly user/session data. Store them encrypted and restrict access. `maintain.sh backup` creates both the archive and its SHA-256 checksum with mode `0600`.
+Backups include OAuth state and possibly user/session data. `maintain.sh backup` creates an `age`-encrypted archive and a SHA-256 checksum, both with mode `0600`. The encrypted metadata preserves the installer ENV, saved non-secret answers, generated bootstrap inputs, the exact K3s server version, and a normalized snapshot of repository-owned Kubernetes resources. The snapshot includes the four application Secrets required for a full rollback; their values remain encrypted and are never printed. Restore validates the archive before changing the namespace. Without `--force`, `restore --full` enforces K3s identity, exact version, and Namespace matching. `--force` overrides those compatibility/targeting gates, but never cryptographic, archive, schema, API, or apply failures.
 
 ## Password policy
 
@@ -84,10 +84,10 @@ The scripts avoid passing plaintext passwords as command-line arguments to `open
 
 ## Credential storage
 
-`install.sh` and generated-password rotation do not write plaintext credentials to local files and do not print credential values. Credentials are stored only in Kubernetes Secrets. Authorized operators can extract a value when needed, for example:
+`install.sh` and generated-password rotation do not write plaintext credentials to local files and do not print credential values. Credentials are stored only in Kubernetes Secrets. Authorized operators can retrieve the current values when needed, for example:
 
 ```bash
-kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+./maintain.sh show-passwords
 ```
 
 `current_config/`, `configuration_answers`, and `.rendered/` remain Git-ignored because they can contain other sensitive configuration, but they must not be used as credential stores.

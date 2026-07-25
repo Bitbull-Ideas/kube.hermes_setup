@@ -114,10 +114,11 @@ python3 -m py_compile scripts/render_template.py scripts/prepare_requirements.py
 ./tests/configure.sh
 ./tests/matrix.sh
 ./tests/credentials.sh
+./tests/backup.sh
 rm -rf scripts/__pycache__
 ```
 
-When bootstrap skills change, also verify that every `SKILL.md` starts with YAML frontmatter, has matching `name` and directory values, contains a non-empty body, and that every `metadata.hermes.related_skills` reference to another bundled skill resolves.
+When bootstrap skills change, verify that every `SKILL.md` starts with YAML frontmatter, has matching `name` and directory values, contains a non-empty body, and that each `metadata.hermes.related_skills` entry is classified as `bundled`, `external-runtime`, or `optional-reference`. Only entries classified as `bundled` must resolve under the repository's bootstrap skill tree.
 
 Render validation:
 
@@ -235,7 +236,7 @@ Useful examples:
 DASHBOARD_AUTH_PASSWORD='...' ./maintain.sh rotate-passwords --from-env
 ```
 
-Generated password values are stored only in Kubernetes Secrets; never commit or print them. Use the post-operation `kubectl` extraction command when an authorized operator needs the value.
+Generated password values are stored only in Kubernetes Secrets; never commit or print them. Use `./maintain.sh show-passwords` from a trusted administrator terminal when the current values are needed.
 
 ## Codex OAuth behavior
 

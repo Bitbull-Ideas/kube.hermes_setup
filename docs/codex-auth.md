@@ -52,11 +52,11 @@ Expected:
 Use `maintain.sh backup` before destructive operations:
 
 ```bash
-./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).tgz
+./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).age
 ```
 
 Restore later:
 
 ```bash
-./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.tgz
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age
 ```

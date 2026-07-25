@@ -34,28 +34,98 @@ For a pull-latest style restart:
 
 ```bash
 mkdir -p backups
-./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).tgz
+./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).age
 ```
 
-The archive contains:
+The archive is encrypted with `age`. Install it on Fedora/RHEL hosts with:
+
+```bash
+dnf install age
+```
+
+By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`.
+
+## Extracting backup components
+
+`extract` writes selected backup content to a new or empty local directory. It never changes Kubernetes resources or PVCs:
+
+```bash
+./maintain.sh extract backup.age \
+  --output-dir ./recovery \
+  --component bootstrap
+```
+
+Supported components are:
 
 ```text
-/opt/data
-/workspace
+data       opt/data and workspace
+config     hermes.env, configuration_answers, backup-info.txt
+bootstrap  the saved bootstrap directory
+full       all currently supported components
 ```
 
-This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. It does not include Kubernetes Secrets. Retain required credentials separately before namespace deletion. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration. The backup archive and checksum are written with mode `0600`.
+Examples:
+
+```bash
+./maintain.sh extract backup.age --output-dir ./recovery --component data
+./maintain.sh extract backup.age --output-dir ./recovery --component config
+./maintain.sh extract backup.age --output-dir ./recovery --component bootstrap
+./maintain.sh extract backup.age --output-dir ./recovery --full
+./maintain.sh extract backup.age --output-dir ./recovery --full --dry-run
+```
+
+The output directory must be empty unless `--dry-run` is used. Existing files are never overwritten. The `full` extraction includes the encrypted snapshot metadata; use it only in a mode-0700 recovery directory because it contains base64-encoded Kubernetes Secret data. Full rollback should normally use `restore --full` rather than manually applying extracted resources.
+
+For bootstrap recovery, review the extracted files first and then apply them through the normal installer path, for example:
+
+```bash
+HERMES_BOOTSTRAP_DIR=./recovery/bootstrap \
+ENV_FILE=./recovery/hermes.env \
+./install.sh
+```
+
+Password input for extraction:
+
+```bash
+./maintain.sh extract backup.age --output-dir ./recovery --full --password-prompt
+printf '%s\n' "$BACKUP_PASSWORD" | ./maintain.sh extract backup.age --output-dir ./recovery --full --password-stdin
+./maintain.sh extract backup.age --output-dir ./recovery --full --password-file /secure/hermes-backup.pass
+```
+
+`--dry-run` decrypts and validates the archive, checks the destination, and reports the selected mode without writing files.
+
 
 ## Restore
 
-The namespace, Deployments, and PVCs must already exist. After namespace deletion, run `./install.sh` first to recreate them, then restore:
+A normal restore requires the Namespace, Deployments, and PVCs to exist and restores only the encrypted PVC payload:
 
 ```bash
-./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.tgz
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age
 ./doctor.sh
 ```
 
-The helper Pod is removed on success or failure, and enabled write-heavy Deployments return to their original desired replica counts.
+For rollback after the Namespace or installation has been removed, use full mode:
+
+```bash
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age --full
+```
+
+The backup contains a normalized, encrypted snapshot of the repository-owned Namespace, PVCs, Hermes workloads, Services, Jobs, Ingresses, NetworkPolicies, Middleware, ServiceAccounts, and application Secrets. Full mode recreates the Namespace if absent, applies those resources and Secrets, then restores the PVC payload.
+
+Before applying anything, use:
+
+```bash
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age \
+  --full --dry-run --password-file /secure/hermes-backup.pass
+```
+
+Full mode requires a readable Kubernetes API server, but `--force` overrides all compatibility and targeting policy gates: missing/unknown backup K3s version, non-K3s detection, K3s version mismatch, and configured-vs-backup Namespace mismatch. With a Namespace mismatch, the restore targets the Namespace recorded in the backup. `--force` does not bypass cryptographic, archive, snapshot-schema, Kubernetes API, or resource-application failures:
+
+```bash
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age --full --force
+```
+
+The helper Pod is removed on success or failure, and restored write-capable Deployments return to their snapshot replica counts. Local `hermes.env`, answers, and bootstrap metadata are not silently written into the host checkout; review them through `extract --component config|bootstrap`.
 
 ## Bootstrap agent configuration
 
@@ -75,10 +145,10 @@ The operational scripts resolve configuration in this order: an explicit `ENV_FI
 
 ## Initial generated credentials
 
-When the wizard password prompt is left empty, the password is generated only when `install.sh` runs. It is intentionally absent from `hermes.env` and `configuration_answers`. The installer applies generated and reused values directly to Kubernetes Secrets; it does not store or print plaintext credentials locally. Authorized operators can use the extraction commands printed in the installer summary, for example:
+When the wizard password prompt is left empty, the password is generated only when `install.sh` runs. It is intentionally absent from `hermes.env` and `configuration_answers`. The installer applies generated and reused values directly to Kubernetes Secrets; it does not store or print plaintext credentials locally. Authorized operators can retrieve all configured credentials with:
 
 ```bash
-kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+./maintain.sh show-passwords
 ```
 
 On the first installation, missing credentials are generated. On later installations, blank values reuse existing Kubernetes Secrets; explicit non-empty values override them. Kubernetes lookup or malformed-Secret errors fail closed rather than rotating credentials implicitly. Use the maintenance rotation commands for deliberate changes.
@@ -170,7 +240,7 @@ DASHBOARD_AUTH_USER=admin DASHBOARD_AUTH_PASSWORD='use-a-long-random-value' ./ma
 
 Production policy rejects weak passwords by default. Use `--lab`, `HERMES_PASSWORD_POLICY=lab`, or `HERMES_ALLOW_WEAK_PASSWORD=true` only for lab systems.
 
-Plaintext passwords are not stored locally or printed for any rotation mode. The generated value is stored only in Kubernetes Secret `hermes-dashboard-auth`; the command to extract it is printed after a successful rotation.
+Plaintext passwords are not stored locally or printed for any rotation mode. The generated value is stored only in Kubernetes Secret `hermes-dashboard-auth`. Use `./maintain.sh show-passwords` from a trusted administrator terminal when the current values are needed.
 
 ## Browser token rotation
 
