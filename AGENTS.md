@@ -20,7 +20,7 @@ The repo is template-driven. It must remain safe for public GitHub: no real host
 Keep these defaults in source unless the maintainer explicitly asks otherwise:
 
 ```bash
-MODEL_PROVIDER=codex
+MODEL_PROVIDER=openai-codex
 MODEL_NAME=gpt-5.6-luna
 BROWSER_CONCURRENT=4
 BROWSER_QUEUED=10
@@ -32,7 +32,7 @@ HERMES_WEBUI_MAX_UPLOAD_MB=220
 
 Rationale:
 
-- `gpt-5.6-luna` + `codex` is the preferred model/provider default.
+- `gpt-5.6-luna` + `openai-codex` is the preferred model/provider default.
 - Browserless concurrency `4` leaves capacity for parallel CDP checks and user sessions; keep docs and tests aligned with that default.
 - Runtime UID/GID `10000:10000` is the manifest's shared PVC ownership contract across init containers and WebUI runtime mapping.
 

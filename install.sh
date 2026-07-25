@@ -315,7 +315,7 @@ prepare_defaults() {
   export HERMES_BROWSER_CPU_LIMIT="${HERMES_BROWSER_CPU_LIMIT:-1}"
   export HERMES_BROWSER_MEMORY_LIMIT="${HERMES_BROWSER_MEMORY_LIMIT:-1Gi}"
   export STORAGE_CLASS_NAME="${STORAGE_CLASS_NAME:-}"
-  export MODEL_PROVIDER="${MODEL_PROVIDER:-codex}"
+  export MODEL_PROVIDER="${MODEL_PROVIDER:-openai-codex}"
   export MODEL_NAME="${MODEL_NAME:-gpt-5.6-luna}"
   if is_truthy "$HERMES_DASHBOARD_ENABLED" || is_truthy "$HERMES_WEBUI_ENABLED"; then
     if [[ -n "${DASHBOARD_AUTH_USER:-}" ]]; then

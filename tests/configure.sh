@@ -99,12 +99,12 @@ source "$config_one/hermes.env"
 [[ "$HERMES_ANSIBLE_VERSION" == 13.4.0 ]]
 [[ "$HERMES_SSH_SETUP" == true ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == overwrite ]]
-[[ "$MODEL_PROVIDER" == codex ]]
+[[ "$MODEL_PROVIDER" == openai-codex ]]
 [[ "$MODEL_NAME" == gpt-5.6-luna ]]
 python3 - "$config_one/bootstrap/config.yaml" <<'PY'
 import sys, yaml
 config = yaml.safe_load(open(sys.argv[1]))
-assert config["provider"] == "codex"
+assert config["provider"] == "openai-codex"
 assert config["model"] == "gpt-5.6-luna"
 assert config["terminal"]["cwd"] == "/workspace"
 assert config["gateway"] == {"host": "0.0.0.0", "port": 8642}
@@ -116,14 +116,14 @@ PY
   prepare_paths
   prepare_defaults
   create_bootstrap_archive
-  tar -xOf "$BOOTSTRAP_ARCHIVE" ./opt-data/config.yaml | grep -qx 'provider: codex'
+  tar -xOf "$BOOTSTRAP_ARCHIVE" ./opt-data/config.yaml | grep -qx 'provider: openai-codex'
 )
 
 touch "$config_one/stale-marker"
 "$ROOT_DIR/setup.sh" --from-answers --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 [[ ! -e "$config_one/stale-marker" ]]
 [[ -f "$config_one/bootstrap/SOUL.md" ]]
-grep -qx 'provider: codex' "$config_one/bootstrap/config.yaml"
+grep -qx 'provider: openai-codex' "$config_one/bootstrap/config.yaml"
 
 reuse_output="$TMP_DIR/reuse-output"
 printf 'y\n' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" > "$reuse_output"
@@ -197,7 +197,7 @@ export HERMES_RUNTIME_UID=10000 HERMES_RUNTIME_GID=10000 HERMES_AGENT_IMAGE=agen
 export HERMES_BOOTSTRAP_MODE=missing HERMES_ADDON_PYTHON_MODE=uv HERMES_UV_DIR=/opt/data/uv HERMES_ADDON_VENV=/opt/data/addon-venv HERMES_ADDON_PYTHON_VERSION=3.13
 export HERMES_SSH_SETUP=false HERMES_SSH_GENERATE_KEY=false HERMES_SSH_KEY_TYPE=ed25519 HERMES_SSH_KEY_PATH=/opt/data/.ssh/id_ed25519
 export BROWSER_CDP_URL=ws://hermes-browser:3000/chromium HERMES_ANSIBLE_SETUP=false HERMES_ANSIBLE_CONFIG=
-export MODEL_PROVIDER=codex MODEL_NAME=test HERMES_WEBUI_MAX_UPLOAD_MB=220
+export MODEL_PROVIDER=openai-codex MODEL_NAME=test HERMES_WEBUI_MAX_UPLOAD_MB=220
 export HERMES_AGENT_CPU_REQUEST=100m HERMES_AGENT_MEMORY_REQUEST=256Mi HERMES_AGENT_CPU_LIMIT=1 HERMES_AGENT_MEMORY_LIMIT=1Gi
 export HERMES_DASHBOARD_CPU_REQUEST=100m HERMES_DASHBOARD_MEMORY_REQUEST=96Mi HERMES_DASHBOARD_CPU_LIMIT=1 HERMES_DASHBOARD_MEMORY_LIMIT=1Gi
 export HERMES_WEBUI_CPU_REQUEST=100m HERMES_WEBUI_MEMORY_REQUEST=256Mi HERMES_WEBUI_CPU_LIMIT=1 HERMES_WEBUI_MEMORY_LIMIT=1Gi
