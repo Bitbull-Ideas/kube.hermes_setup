@@ -188,7 +188,7 @@ sha256sum -c "$backup.sha256"
 stat -c '%a %n' "$backup" "$backup.sha256"  # both must be 600
 ```
 
-The encrypted archive contains both PVC filesystems plus local reconstruction metadata when available:
+The encrypted archive contains both PVC filesystems, local reconstruction metadata, and (for full rollback) a normalized snapshot of the repository-owned Kubernetes resources:
 
 ```text
 opt/data
@@ -196,39 +196,38 @@ workspace
 metadata/hermes.env
 metadata/configuration_answers
 metadata/bootstrap/
+metadata/kubernetes/cluster-version.txt
+metadata/kubernetes/resources.json
 ```
 
-It can include OAuth state, sessions, skills, memories, WebUI state, and workspace data. It does **not** contain Kubernetes Secrets. The metadata is used to recreate the deployment with the repository templates; old rendered Kubernetes manifests are not applied automatically. Before namespace deletion, retain the encrypted archive, checksum, and passphrase separately.
+`resources.json` contains the Namespace, Hermes PVCs, Deployments, Services, Jobs, Ingresses, NetworkPolicies, Middleware, ServiceAccounts, and the four repository-owned application Secrets. It is inside the age-encrypted archive; Secret values are never printed. Live-cluster metadata such as UIDs, resource versions, managed fields, creation timestamps, and status are removed before storage.
 
 ### 7. Delete and rebuild
 
 > **Destructive:** deleting the namespace deletes its Deployments, Services, Secrets, Ingresses, Jobs, and PVC objects. Underlying PV data behavior depends on the storage class and PV reclaim policy; never rely on retained storage. Verify the backup first.
 
-Keep the repository, `current_config/`, `configuration_answers`, encrypted backup, checksum file, passphrase, and required credentials. Use the explicit namespace from `current_config/hermes.env` or pass it directly:
+Keep the repository, encrypted backup, checksum file, and passphrase separately. If the namespace is deleted, do not reinstall first when a matching full snapshot exists. Use a dry-run, then restore the Namespace, resources, Secrets, and PVC payload directly:
 
 ```bash
-kubectl delete namespace <namespace>
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age \
+  --full --dry-run --password-file /secure/hermes-backup.pass
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age \
+  --full --password-file /secure/hermes-backup.pass
+./doctor.sh
 ```
 
-Before reinstalling, retain the credential values separately. If the recreated namespace has no Secrets, the installer generates new values for blank settings; if Secrets are retained, blank settings reuse them. Explicitly restore known values in `current_config/hermes.env` when you require deterministic credentials across a destructive rebuild. Keep the file mode `0600`. Depending on the storage backend and reclaim policy, the mounted volumes may be fresh or may contain retained data; restore clears their mounted contents before extracting the backup.
-
-```bash
-chmod 600 current_config/hermes.env
-./install.sh
-```
+The full restore refuses unless the API server is K3s with the exact version recorded in the backup. Use `--force` only after reviewing a version mismatch. If the backup predates resource snapshots, use the documented `extract` path and reinstall manually; it cannot perform a full rollback.
 
 ### 8. Restore
 
-Restore only after `install.sh` has recreated the namespace, Deployments, and PVCs:
+A normal restore requires `install.sh` to have recreated the Namespace, Deployments, and PVCs and restores only the encrypted `opt/data` and `workspace` payload:
 
 ```bash
 ./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age
 ./doctor.sh
 ```
 
-Restore scales the enabled write-heavy deployments down, clears visible and hidden entries on both PVCs, decrypts and validates the archive, extracts only the `opt/data` and `workspace` payload into the PVCs, reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID`, removes the helper Pod, and restores each deployment's original desired replica count. The encrypted metadata remains local for rebuilding configuration; it is not copied into the PVC root.
-
-To extract backup content locally without changing Kubernetes or PVCs, use an explicit output directory and component:
+For a deleted Namespace or installation, use `restore --full` as described above. It applies only the normalized repository-owned resources from the encrypted snapshot and never applies local configuration files automatically.
 
 ```bash
 ./maintain.sh extract ./backups/hermes-YYYYmmddTHHMMSSZ.age \

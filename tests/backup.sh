@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Purpose: Verify encrypted backup helper contracts without a Kubernetes cluster.
-# Scope: Test age passphrase delivery through a PTY, password-file permissions, and
-#        restore archive path/link validation using local temporary fixtures.
+# Scope: Test age passphrase delivery through a PTY, password-file permissions, strict
+#        restore archive validation, Kubernetes snapshot normalization, full-restore dry-run,
+#        K3s version mismatch refusal, and explicit --force handling.
 # Requirements: Bash, Python 3, tar, sha256sum, and repository scripts.
 # Usage: ./tests/backup.sh
 # Exit status: 0 means all backup contracts passed; non-zero identifies a failure.
@@ -77,5 +78,62 @@ if HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1/maintain.sh"; validate_back
   printf 'archive symlink unexpectedly accepted\n' >&2
   exit 1
 fi
+
+mkdir -p "$TMP_DIR/raw"
+cat > "$TMP_DIR/raw/namespace.json" <<'JSON'
+{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"bob","uid":"drop-me"},"status":{"phase":"Active"}}
+JSON
+for resource in pvc deployment service job ingress networkpolicy serviceaccount middleware; do
+  cat > "$TMP_DIR/raw/$resource.json" <<JSON
+{"apiVersion":"v1","kind":"${resource^}","metadata":{"name":"hermes-$resource","namespace":"bob","uid":"drop-me","resourceVersion":"drop-me"},"spec":{},"status":{"phase":"drop-me"}}
+JSON
+done
+cat > "$TMP_DIR/raw/secret.json" <<'JSON'
+{"apiVersion":"v1","kind":"Secret","metadata":{"name":"hermes-dashboard-auth","namespace":"bob","uid":"drop-me"},"data":{"password":"REDACTED-TEST-DATA"}}
+JSON
+cat > "$TMP_DIR/raw/cluster-version.txt" <<'EOF'
+v1.31.0+k3s1
+EOF
+python3 "$ROOT_DIR/scripts/kube_snapshot.py" snapshot "$TMP_DIR/raw" "$TMP_DIR/resources.json" bob
+python3 "$ROOT_DIR/scripts/kube_snapshot.py" split "$TMP_DIR/resources.json" "$TMP_DIR/namespace.json" "$TMP_DIR/resources-list.json"
+python3 - "$TMP_DIR/resources.json" "$TMP_DIR/resources-list.json" <<'PY'
+import json, sys
+snapshot = json.load(open(sys.argv[1]))
+resources = json.load(open(sys.argv[2]))
+assert len(snapshot['items']) == 10
+assert resources['items']
+assert all('uid' not in item.get('metadata', {}) for item in snapshot['items'])
+assert all('status' not in item for item in snapshot['items'])
+assert any(item['kind'] == 'Secret' for item in snapshot['items'])
+PY
+
+rm -f "$TMP_DIR/archive-root/opt/data/link"
+mkdir -p "$TMP_DIR/full-root/metadata/kubernetes"
+cp -a "$TMP_DIR/archive-root/." "$TMP_DIR/full-root/"
+cp "$TMP_DIR/resources.json" "$TMP_DIR/full-root/metadata/kubernetes/resources.json"
+printf 'v1.31.0+k3s1\n' > "$TMP_DIR/full-root/metadata/kubernetes/cluster-version.txt"
+tar -czf "$TMP_DIR/full.tgz" -C "$TMP_DIR/full-root" opt/data workspace metadata
+cat > "$TMP_DIR/bin/kubectl" <<'KUBECTL'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == version ]]; then
+  printf '{"serverVersion":{"gitVersion":"%s"}}\n' "${FAKE_K3S_VERSION:-v1.31.0+k3s1}"
+elif [[ "$1" == get && "$2" == namespace ]]; then
+  printf 'namespace/bob\n'
+fi
+KUBECTL
+chmod 700 "$TMP_DIR/bin/kubectl"
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --password-file "$TMP_DIR/password"
+if PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.32.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --password-file "$TMP_DIR/password" > "$TMP_DIR/mismatch.out" 2>&1; then
+  printf 'K3s version mismatch unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'K3s version mismatch' "$TMP_DIR/mismatch.out"
+if PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" > "$TMP_DIR/non-k3s.out" 2>&1; then
+  printf 'non-K3s server unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'requires K3s' "$TMP_DIR/non-k3s.out"
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.32.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" >/dev/null
 
 printf 'encrypted backup helper tests passed\n'

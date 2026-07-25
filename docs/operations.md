@@ -74,7 +74,7 @@ Examples:
 ./maintain.sh extract backup.age --output-dir ./recovery --full --dry-run
 ```
 
-The output directory must be empty unless `--dry-run` is used. Existing files are never overwritten. `--component credentials` and Kubernetes-resource extraction are not implemented because the current backup format deliberately contains neither credential values nor a Kubernetes resource snapshot.
+The output directory must be empty unless `--dry-run` is used. Existing files are never overwritten. The `full` extraction includes the encrypted snapshot metadata; use it only in a mode-0700 recovery directory because it contains base64-encoded Kubernetes Secret data. Full rollback should normally use `restore --full` rather than manually applying extracted resources.
 
 For bootstrap recovery, review the extracted files first and then apply them through the normal installer path, for example:
 
@@ -97,14 +97,35 @@ printf '%s\n' "$BACKUP_PASSWORD" | ./maintain.sh extract backup.age --output-dir
 
 ## Restore
 
-The namespace, Deployments, and PVCs must already exist. After namespace deletion, run `./install.sh` first to recreate them, then restore:
+A normal restore requires the Namespace, Deployments, and PVCs to exist and restores only the encrypted PVC payload:
 
 ```bash
 ./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age
 ./doctor.sh
 ```
 
-The helper Pod is removed on success or failure, and enabled write-heavy Deployments return to their original desired replica counts.
+For rollback after the Namespace or installation has been removed, use full mode:
+
+```bash
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age --full
+```
+
+The backup contains a normalized, encrypted snapshot of the repository-owned Namespace, PVCs, Hermes workloads, Services, Jobs, Ingresses, NetworkPolicies, Middleware, ServiceAccounts, and application Secrets. Full mode recreates the Namespace if absent, applies those resources and Secrets, then restores the PVC payload.
+
+Before applying anything, use:
+
+```bash
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age \
+  --full --dry-run --password-file /secure/hermes-backup.pass
+```
+
+Full mode requires the target API server to be K3s and its exact `serverVersion.gitVersion` to match the encrypted backup metadata. It refuses a missing/non-K3s server or version mismatch. Use `--force` only after compatibility review to override a version mismatch; it does not bypass the K3s requirement:
+
+```bash
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age --full --force
+```
+
+The helper Pod is removed on success or failure, and restored write-capable Deployments return to their snapshot replica counts. Local `hermes.env`, answers, and bootstrap metadata are not silently written into the host checkout; review them through `extract --component config|bootstrap`.
 
 ## Bootstrap agent configuration
 

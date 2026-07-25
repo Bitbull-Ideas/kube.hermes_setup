@@ -6,7 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Adds explicit local backup extraction with `extract BACKUP.age --output-dir PATH --component data|config|bootstrap|full`, dry-run inspection, and prompt/stdin/password-file passphrase modes.
+- Adds encrypted full-rollback snapshots: repository-owned Kubernetes resources, application Secrets, normalized metadata, and the exact K3s server version are stored inside the age archive. `restore --full` recreates an absent Namespace and refuses non-K3s or mismatched server versions unless `--force` is explicit.
+- Adds `restore --full --dry-run` preflight output without Kubernetes or PVC changes.
 - Adds configurable `HERMES_IMAGE_PULL_POLICY` with `IfNotPresent` default and explicit `Always` option.
 - Adds isolated backup-helper regression tests and removes the setup-irrelevant remote logging reference.
 - Adds declarative profile skill allowlists and profile environment defaults with operator overrides.

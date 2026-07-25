@@ -135,7 +135,8 @@ Usage:
   ./maintain.sh restart
   ./maintain.sh upgrade
   ./maintain.sh backup <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
-  ./maintain.sh restore <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
+  ./maintain.sh restore <backup.age> [--full] [--dry-run] [--force]
+      [--password-prompt|--password-file PATH|--password-stdin]
   ./maintain.sh extract <backup.age> --output-dir PATH [--component data|config|bootstrap|full]
       [--password-prompt|--password-file PATH|--password-stdin] [--dry-run]
   ./maintain.sh show-passwords
@@ -253,8 +254,29 @@ spec:
 JSON
 }
 
+snapshot_kubernetes_state() {
+  local raw_dir="$1" snapshot="$2" version_json="$3" resource
+  mkdir -p "$raw_dir"
+  kubectl version -o json > "$version_json" || fail 'Unable to read Kubernetes server version'
+  python3 - "$version_json" "$raw_dir/cluster-version.txt" <<'PY'
+import json, sys
+from pathlib import Path
+data = json.loads(Path(sys.argv[1]).read_text())
+version = data.get('serverVersion', {}).get('gitVersion', '')
+if not version or '+k3s' not in version:
+    raise SystemExit('Kubernetes server is not a K3s version; full rollback requires a K3s server')
+Path(sys.argv[2]).write_text(version + '\\n')
+PY
+  kubectl get namespace "$HERMES_NAMESPACE" -o json > "$raw_dir/namespace.json"
+  for resource in pvc deployment service job ingress networkpolicy serviceaccount secret; do
+    kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json --ignore-not-found > "$raw_dir/$resource.json" || true
+  done
+  kubectl -n "$HERMES_NAMESPACE" get middleware -o json --ignore-not-found > "$raw_dir/middleware.json" || true
+  python3 "$ROOT_DIR/scripts/kube_snapshot.py" snapshot "$raw_dir" "$snapshot" "$HERMES_NAMESPACE"
+}
+
 backup() {
-  local out='' arg plain checksum tmpdir
+  local out='' plain checksum tmpdir snapshot
   local -a password_args=()
   while (($#)); do
     case "$1" in
@@ -266,6 +288,8 @@ backup() {
   [[ -n "$out" ]] || fail 'backup path required'
   require_cmd age
   require_cmd sha256sum
+  require_cmd kubectl
+  require_cmd python3
   mkdir -p "$(dirname "$out")"
   checksum="${out}.sha256"
   tmpdir="$(mktemp -d -t hermes-backup.XXXXXX)"
@@ -288,8 +312,11 @@ backup() {
   kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; tar czf /tmp/hermes-backup.tgz -C / opt/data workspace; chmod 600 /tmp/hermes-backup.tgz'
   kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$tmpdir/cluster.tgz" -c backup >/dev/null
   chmod 600 "$tmpdir/cluster.tgz"
-  mkdir -p "$tmpdir/stage/metadata"
+  mkdir -p "$tmpdir/stage/metadata/kubernetes"
   tar -xzf "$tmpdir/cluster.tgz" -C "$tmpdir/stage"
+  snapshot="$tmpdir/stage/metadata/kubernetes/resources.json"
+  snapshot_kubernetes_state "$tmpdir/raw" "$snapshot" "$tmpdir/version.json"
+  cp "$tmpdir/raw/cluster-version.txt" "$tmpdir/stage/metadata/kubernetes/cluster-version.txt"
   if [[ -f "$ROOT_DIR/current_config/hermes.env" ]]; then
     cp -a "$ROOT_DIR/current_config/hermes.env" "$tmpdir/stage/metadata/hermes.env"
   elif [[ -f "$ROOT_DIR/hermes.env" ]]; then
@@ -412,11 +439,41 @@ PY
   trap - EXIT
   extract_cleanup
 }
+restore_kubernetes_snapshot() {
+  local snapshot="$1" tmpdir="$2" force="$3" dry_run="$4" backup_version current_version namespace_json resources_json
+  backup_version="$(tr -d '[:space:]' < "$snapshot/cluster-version.txt")" || fail 'K3s version metadata is missing from the backup'
+  current_version="$(kubectl version -o json | python3 -c 'import json,sys; print(json.load(sys.stdin).get("serverVersion", {}).get("gitVersion", ""))')" || fail 'Unable to read Kubernetes server version'
+  if [[ -z "$current_version" || "$current_version" != *+k3s* ]]; then
+    fail 'Kubernetes server is not a detectable K3s version; full rollback requires K3s'
+  fi
+  if [[ "$current_version" != "$backup_version" && "$force" != true ]]; then
+    fail "K3s version mismatch: backup=$backup_version current=$current_version; rerun with --force only after reviewing compatibility"
+  fi
+  [[ "$current_version" == "$backup_version" ]] || warn "Forcing full rollback across K3s versions: backup=$backup_version current=$current_version"
+  namespace_json="$tmpdir/namespace.json"
+  resources_json="$tmpdir/resources.json"
+  python3 "$ROOT_DIR/scripts/kube_snapshot.py" split "$snapshot/resources.json" "$namespace_json" "$resources_json"
+  backup_namespace="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["name"])' "$namespace_json")"
+  [[ "$backup_namespace" == "$HERMES_NAMESPACE" ]] || fail "backup namespace=$backup_namespace does not match configured namespace=$HERMES_NAMESPACE"
+  if [[ "$dry_run" == true ]]; then
+    local namespace_state
+    namespace_state="$(kubectl get namespace "$HERMES_NAMESPACE" --ignore-not-found -o name)"
+    printf 'Full rollback preflight: valid\nK3s backup version: %s\nK3s current version: %s\nNamespace: %s\nResources: %s\nNo Kubernetes changes: dry-run\n' "$backup_version" "$current_version" "${namespace_state:-absent; would create}" "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["items"]))' "$resources_json")"
+    return 0
+  fi
+  kubectl apply -f "$namespace_json" >/dev/null
+  kubectl apply -f "$resources_json" >/dev/null
+  log "Applied encrypted Kubernetes resource and credential snapshot"
+}
+
 restore() {
-  local in='' plain='' tmpdir='' arg
+  local in='' plain='' tmpdir='' arg full=false dry_run=false force=false
   local -a password_args=()
   while (($#)); do
     case "$1" in
+      --full) full=true; shift ;;
+      --dry-run) dry_run=true; shift ;;
+      --force) force=true; shift ;;
       --password-prompt|--password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
       -*) fail "unknown restore option: $1" ;;
       *) [[ -z "$in" ]] || fail 'restore path specified more than once'; in="$1"; shift ;;
@@ -425,6 +482,10 @@ restore() {
   [[ -f "$in" ]] || fail "backup file required"
   require_cmd age
   require_cmd python3
+  if [[ "$full" == true || "$dry_run" == true ]]; then
+    require_cmd kubectl
+  fi
+  [[ "$dry_run" == false || "$full" == true ]] || fail '--dry-run for restore requires --full'
   tmpdir="$(mktemp -d -t hermes-restore.XXXXXX)"
   plain="$tmpdir/hermes-backup.tgz"
   prepare_backup_password "${password_args[@]}"
@@ -435,13 +496,30 @@ restore() {
     age --decrypt --output "$plain" "$in"
   validate_backup_archive "$plain" || fail "decrypted backup archive validation failed"
   mkdir -p "$tmpdir/payload"
-  tar -xzf "$plain" -C "$tmpdir/payload" opt/data workspace
+  if [[ "$full" == true ]]; then
+    tar -xzf "$plain" -C "$tmpdir/payload" opt/data workspace metadata/kubernetes
+    [[ -f "$tmpdir/payload/metadata/kubernetes/resources.json" ]] || fail 'full rollback requires an encrypted Kubernetes resource snapshot'
+    [[ -f "$tmpdir/payload/metadata/kubernetes/cluster-version.txt" ]] || fail 'full rollback requires K3s version metadata'
+    restore_kubernetes_snapshot "$tmpdir/payload/metadata/kubernetes" "$tmpdir" "$force" "$dry_run"
+    if [[ "$dry_run" == true ]]; then
+      trap - EXIT
+      restore_local_cleanup
+      return 0
+    fi
+  else
+    tar -xzf "$plain" -C "$tmpdir/payload" opt/data workspace
+  fi
   tar -czf "$tmpdir/restore-payload.tgz" -C "$tmpdir/payload" opt/data workspace
   plain="$tmpdir/restore-payload.tgz"
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
   local deployments=() d replicas
-  mapfile -t deployments < <(enabled_write_deployments)
+  if [[ "$full" == true ]]; then
+    mapfile -t deployments < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); print("\\n".join(item["metadata"]["name"] for item in data["items"] if item.get("kind") == "Deployment"))' "$tmpdir/resources.json")
+  else
+    mapfile -t deployments < <(enabled_write_deployments)
+  fi
+  ((${#deployments[@]} > 0)) || fail 'no restorable write-capable Deployments found'
   declare -A original_replicas=()
   for d in "${deployments[@]}"; do
     replicas="$(kubectl -n "$HERMES_NAMESPACE" get deploy "$d" -o jsonpath='{.spec.replicas}')"
