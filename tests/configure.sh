@@ -101,6 +101,7 @@ printf '\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
 [[ ! -e "$config_one/artifacts/bootstrap-profile" ]]
 [[ "$(stat -c %a "$config_one/hermes.env")" == 600 ]]
 [[ "$(stat -c %a "$answers_one")" == 600 ]]
+! grep -Eq 'DASHBOARD_AUTH_PASSWORD|API_SERVER_KEY|BROWSER_TOKEN' "$answers_one"
 # shellcheck disable=SC1090
 source "$config_one/hermes.env"
 [[ "$HERMES_AGENT_ENABLED" == true ]]
@@ -138,8 +139,65 @@ touch "$config_one/stale-marker"
 grep -qx 'provider: openai-codex' "$config_one/bootstrap/config.yaml"
 
 reuse_output="$TMP_DIR/reuse-output"
-printf 'y\n' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" > "$reuse_output"
-grep -Fqx "Rebuilding current_config from $answers_one" "$reuse_output"
+printf 'y\n\n\n\n\n\n\n\n\n\n\n\n\n\ny\n' | \
+  "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" > "$reuse_output" 2>&1
+grep -Fq 'Configuration created.' "$reuse_output"
+
+# Verify Y pre-seeds non-secret answers while blank input accepts them.
+answers_reuse="$TMP_DIR/answers-reuse"
+cp "$answers_one" "$answers_reuse"
+python3 - "$answers_reuse" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+values = {
+    "HERMES_NAMESPACE": "reuse.example",
+    "HERMES_BOOTSTRAP_PROFILE": "universal-system-architect",
+    "HERMES_DASHBOARD_ENABLED": "true",
+    "HERMES_WEBUI_ENABLED": "true",
+    "HERMES_BROWSER_ENABLED": "false",
+    "WEBUI_HOST": "webui.reuse.example",
+    "DASHBOARD_HOST": "dashboard.reuse.example",
+    "DASHBOARD_AUTH_USER": "reuse-admin",
+    "MODEL_PROVIDER": "reuse-provider",
+    "MODEL_NAME": "reuse-model",
+    "HERMES_AGENT_IMAGE": "agent:reuse",
+    "HERMES_WEBUI_IMAGE": "webui:reuse",
+    "HERMES_BROWSER_IMAGE": "browser:reuse",
+    "HERMES_ANSIBLE_SETUP": "false",
+    "HERMES_ANSIBLE_VERSION": "",
+    "HERMES_SSH_SETUP": "true",
+    "HERMES_BOOTSTRAP_MODE": "missing",
+}
+lines = []
+seen = set()
+for line in path.read_text().splitlines():
+    if "=" in line:
+        key = line.split("=", 1)[0]
+        if key in values:
+            line = f"{key}={values[key]}"
+            seen.add(key)
+    lines.append(line)
+for key, value in values.items():
+    if key not in seen:
+        lines.append(f"{key}={value}")
+path.write_text("\n".join(lines) + "\n")
+PY
+reuse_config="$TMP_DIR/current-reuse"
+python3 - <<'PY' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$reuse_config" --answers-file "$answers_reuse" >/dev/null 2>&1
+print("y")
+print("\n" * 17, end="")
+PY
+# shellcheck disable=SC1090
+source "$reuse_config/hermes.env"
+[[ "$HERMES_NAMESPACE" == reuse.example ]]
+[[ "$HERMES_BOOTSTRAP_PROFILE" == universal-system-architect ]]
+[[ "$HERMES_DASHBOARD_ENABLED" == true && "$HERMES_WEBUI_ENABLED" == true && "$HERMES_BROWSER_ENABLED" == false ]]
+[[ "$WEBUI_HOST" == webui.reuse.example && "$DASHBOARD_HOST" == dashboard.reuse.example ]]
+[[ "$DASHBOARD_AUTH_USER" == reuse-admin ]]
+[[ "$MODEL_PROVIDER" == reuse-provider && "$MODEL_NAME" == reuse-model ]]
+[[ "$HERMES_ANSIBLE_SETUP" == false && "$HERMES_SSH_SETUP" == true ]]
+[[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 
 unowned="$TMP_DIR/unowned"
 mkdir -p "$unowned"

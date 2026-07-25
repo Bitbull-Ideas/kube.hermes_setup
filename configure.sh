@@ -12,6 +12,7 @@ CONFIG_DIR="${HERMES_CURRENT_CONFIG_DIR:-$ROOT_DIR/current_config}"
 ANSWERS_FILE="${HERMES_CONFIGURATION_ANSWERS:-$ROOT_DIR/configuration_answers}"
 RUN_INSTALLER=true
 FROM_ANSWERS=false
+USE_ANSWER_DEFAULTS=false
 
 usage() {
   cat <<'EOF'
@@ -81,9 +82,25 @@ ask_yes_no() {
 
 if [[ "$FROM_ANSWERS" != true && -f "$ANSWERS_FILE" ]]; then
   if ask_yes_no "Reuse existing configuration answers from $ANSWERS_FILE?" true; then
-    FROM_ANSWERS=true
+    # Reuse answers as interactive defaults; do not skip the wizard questions.
+    # Passwords are never stored in configuration_answers and remain prompt/generate only.
+    # shellcheck disable=SC1090
+    source "$ANSWERS_FILE"
+    USE_ANSWER_DEFAULTS=true
   fi
 fi
+
+answer_default() {
+  local name="$1" fallback="${2:-}" value=""
+  [[ "$USE_ANSWER_DEFAULTS" == true && -v "$name" ]] && value="${!name}"
+  printf '%s' "${value:-$fallback}"
+}
+
+answer_bool_default() {
+  local name="$1" fallback="$2" value=""
+  [[ "$USE_ANSWER_DEFAULTS" == true && -v "$name" ]] && value="${!name}"
+  [[ "$value" == true || "$value" == false ]] && printf '%s' "$value" || printf '%s' "$fallback"
+}
 
 validate_hostname() {
   [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && "$1" == *.* ]]
@@ -129,43 +146,44 @@ else
   printf '\nHermes Kubernetes configuration wizard\n'
   printf 'The Agent is mandatory. Optional components can be selected independently.\n\n'
 
-  HERMES_NAMESPACE="$(prompt_value 'Kubernetes namespace' 'hermes')"
+  HERMES_NAMESPACE="$(prompt_value 'Kubernetes namespace' "$(answer_default HERMES_NAMESPACE hermes)")"
+  profile_default="$(answer_default HERMES_BOOTSTRAP_PROFILE personal-assistant)"
   while true; do
     printf 'Bootstrap profile:\n'
     printf '  1) personal-assistant\n'
     printf '  2) universal-system-architect\n'
-    read -r -p 'Select profile [1]: ' profile_choice
-    case "${profile_choice:-1}" in
+    read -r -p "Select profile [$([[ "$profile_default" == universal-system-architect ]] && printf 2 || printf 1)]: " profile_choice
+    case "${profile_choice:-$([[ "$profile_default" == universal-system-architect ]] && printf 2 || printf 1)}" in
       1|personal-assistant) HERMES_BOOTSTRAP_PROFILE=personal-assistant; break ;;
       2|universal-system-architect) HERMES_BOOTSTRAP_PROFILE=universal-system-architect; break ;;
       *) printf 'Choose 1 or 2.\n' >&2 ;;
     esac
   done
 
-  MODEL_PROVIDER="$(prompt_value 'Hermes model provider' 'openai-codex')"
-  MODEL_NAME="$(prompt_value 'Hermes model' 'gpt-5.6-luna')"
+  MODEL_PROVIDER="$(prompt_value 'Hermes model provider' "$(answer_default MODEL_PROVIDER openai-codex)")"
+  MODEL_NAME="$(prompt_value 'Hermes model' "$(answer_default MODEL_NAME gpt-5.6-luna)")"
 
-  HERMES_AGENT_IMAGE="$(prompt_value 'Hermes Agent container image' 'nousresearch/hermes-agent:latest')"
-  HERMES_WEBUI_IMAGE="$(prompt_value 'Hermes WebUI container image' 'ghcr.io/nesquena/hermes-webui:latest')"
-  HERMES_BROWSER_IMAGE="$(prompt_value 'Browserless Chromium container image' 'ghcr.io/browserless/chromium:latest')"
+  HERMES_AGENT_IMAGE="$(prompt_value 'Hermes Agent container image' "$(answer_default HERMES_AGENT_IMAGE nousresearch/hermes-agent:latest)")"
+  HERMES_WEBUI_IMAGE="$(prompt_value 'Hermes WebUI container image' "$(answer_default HERMES_WEBUI_IMAGE ghcr.io/nesquena/hermes-webui:latest)")"
+  HERMES_BROWSER_IMAGE="$(prompt_value 'Browserless Chromium container image' "$(answer_default HERMES_BROWSER_IMAGE ghcr.io/browserless/chromium:latest)")"
 
-  HERMES_DASHBOARD_ENABLED=false
-  HERMES_WEBUI_ENABLED=false
-  HERMES_BROWSER_ENABLED=false
-  ask_yes_no 'Install Dashboard?' true && HERMES_DASHBOARD_ENABLED=true
-  ask_yes_no 'Install WebUI?' true && HERMES_WEBUI_ENABLED=true
-  ask_yes_no 'Install Browserless Chromium?' true && HERMES_BROWSER_ENABLED=true
+  HERMES_DASHBOARD_ENABLED="$(answer_bool_default HERMES_DASHBOARD_ENABLED true)"
+  HERMES_WEBUI_ENABLED="$(answer_bool_default HERMES_WEBUI_ENABLED true)"
+  HERMES_BROWSER_ENABLED="$(answer_bool_default HERMES_BROWSER_ENABLED true)"
+  if ask_yes_no 'Install Dashboard?' "$HERMES_DASHBOARD_ENABLED"; then HERMES_DASHBOARD_ENABLED=true; else HERMES_DASHBOARD_ENABLED=false; fi
+  if ask_yes_no 'Install WebUI?' "$HERMES_WEBUI_ENABLED"; then HERMES_WEBUI_ENABLED=true; else HERMES_WEBUI_ENABLED=false; fi
+  if ask_yes_no 'Install Browserless Chromium?' "$HERMES_BROWSER_ENABLED"; then HERMES_BROWSER_ENABLED=true; else HERMES_BROWSER_ENABLED=false; fi
 
-  WEBUI_HOST=''
-  DASHBOARD_HOST=''
-  [[ "$HERMES_WEBUI_ENABLED" == true ]] && WEBUI_HOST="$(prompt_hostname 'WebUI hostname' 'hermes.example.com')"
-  [[ "$HERMES_DASHBOARD_ENABLED" == true ]] && DASHBOARD_HOST="$(prompt_hostname 'Dashboard hostname' 'hermes-admin.example.com')"
+  WEBUI_HOST="$(answer_default WEBUI_HOST '')"
+  DASHBOARD_HOST="$(answer_default DASHBOARD_HOST '')"
+  [[ "$HERMES_WEBUI_ENABLED" == true ]] && WEBUI_HOST="$(prompt_hostname 'WebUI hostname' "$(answer_default WEBUI_HOST hermes.example.com)")"
+  [[ "$HERMES_DASHBOARD_ENABLED" == true ]] && DASHBOARD_HOST="$(prompt_hostname 'Dashboard hostname' "$(answer_default DASHBOARD_HOST hermes-admin.example.com)")"
 
-  DASHBOARD_AUTH_USER=''
+  DASHBOARD_AUTH_USER="$(answer_default DASHBOARD_AUTH_USER '')"
   DASHBOARD_AUTH_PASSWORD=''
   if [[ "$HERMES_DASHBOARD_ENABLED" == true || "$HERMES_WEBUI_ENABLED" == true ]]; then
     if [[ "$HERMES_DASHBOARD_ENABLED" == true ]]; then
-      DASHBOARD_AUTH_USER="$(prompt_value 'Dashboard username' 'admin')"
+      DASHBOARD_AUTH_USER="$(prompt_value 'Dashboard username' "$(answer_default DASHBOARD_AUTH_USER admin)")"
       [[ "$DASHBOARD_AUTH_USER" =~ ^[A-Za-z0-9._-]+$ ]] || { printf 'ERROR: invalid Dashboard username.\n' >&2; exit 1; }
     else
       DASHBOARD_AUTH_USER=admin
@@ -173,23 +191,25 @@ else
     DASHBOARD_AUTH_PASSWORD="$(prompt_password)"
   fi
 
-  HERMES_ANSIBLE_SETUP=false
-  HERMES_ANSIBLE_VERSION=''
-  HERMES_SSH_SETUP=false
-  if ask_yes_no 'Install and configure Ansible?' false; then
+  HERMES_ANSIBLE_SETUP="$(answer_bool_default HERMES_ANSIBLE_SETUP false)"
+  HERMES_ANSIBLE_VERSION="$(answer_default HERMES_ANSIBLE_VERSION '')"
+  HERMES_SSH_SETUP="$(answer_bool_default HERMES_SSH_SETUP false)"
+  if ask_yes_no 'Install and configure Ansible?' "$HERMES_ANSIBLE_SETUP"; then
     HERMES_ANSIBLE_SETUP=true
     while true; do
-      HERMES_ANSIBLE_VERSION="$(prompt_value 'Ansible package version' '14.1.0')"
+      HERMES_ANSIBLE_VERSION="$(prompt_value 'Ansible package version' "$(answer_default HERMES_ANSIBLE_VERSION 14.1.0)")"
       [[ "$HERMES_ANSIBLE_VERSION" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] && break
       printf 'Enter a package version such as 14.1.0.\n' >&2
     done
     HERMES_SSH_SETUP=true
     printf 'SSH key setup enabled because Ansible was selected.\n'
   else
-    ask_yes_no 'Prepare a persistent SSH keypair?' false && HERMES_SSH_SETUP=true
+    if ask_yes_no 'Prepare a persistent SSH keypair?' "$HERMES_SSH_SETUP"; then HERMES_SSH_SETUP=true; else HERMES_SSH_SETUP=false; fi
   fi
 
-  if ask_yes_no 'Overwrite existing bootstrap-managed files on the PVC?' false; then
+  bootstrap_overwrite_default=false
+  [[ "${HERMES_BOOTSTRAP_MODE:-}" == overwrite ]] && bootstrap_overwrite_default=true
+  if ask_yes_no 'Overwrite existing bootstrap-managed files on the PVC?' "$bootstrap_overwrite_default"; then
     HERMES_BOOTSTRAP_MODE=overwrite
   else
     HERMES_BOOTSTRAP_MODE=missing
