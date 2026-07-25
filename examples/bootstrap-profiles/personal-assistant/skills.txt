@@ -2,3 +2,4 @@
 # examples/bootstrap-shared/skills; install.sh copies only these entries.
 markdown-pdf
 hermes-workspace-manager
+hermes-log-watchdog

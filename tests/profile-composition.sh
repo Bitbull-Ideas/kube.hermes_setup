@@ -49,7 +49,7 @@ HERMES_BOOTSTRAP_PROFILE=personal-assistant
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 personal_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$personal_stage" hermes-workspace-manager markdown-pdf
+assert_skill_set "$personal_stage" hermes-log-watchdog hermes-workspace-manager markdown-pdf
 assert_absent "$personal_stage/workspace/ansible"
 [[ "$HERMES_SSH_SETUP" == false && "$HERMES_ANSIBLE_SETUP" == false ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/personal-assistant/requirements.txt" ]]
@@ -59,7 +59,7 @@ HERMES_BOOTSTRAP_PROFILE=universal-system-architect
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 architect_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$architect_stage" github-setup-access hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager markdown-pdf
+assert_skill_set "$architect_stage" github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager markdown-pdf
 assert_file "$architect_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-architect/requirements.txt" ]]
