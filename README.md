@@ -235,7 +235,7 @@ For a deleted Namespace or installation, use `restore --full` as described above
   --component bootstrap
 ```
 
-Supported components are `data`, `config`, `bootstrap`, and `full`. The output directory must be new or empty. Use `--dry-run` to decrypt and validate the archive and show what would be extracted without writing files. Password input supports `--password-prompt`, `--password-stdin`, and `--password-file PATH`. Credential values and Kubernetes resource definitions are not currently in the backup format and therefore cannot be extracted or restored by a component option.
+Supported components are `data`, `config`, `bootstrap`, and `full`. The output directory must be new or empty. Use `--dry-run` to decrypt and validate the archive and show what would be extracted without writing files. Password input supports `--password-prompt`, `--password-stdin`, and `--password-file PATH`. The `full` extraction includes the encrypted snapshot metadata, including normalized Kubernetes resources and application Secret data; use it only in a mode-0700 recovery directory. Full rollback should normally use `restore --full` rather than manually applying extracted resources.
 
 ## Profiles
 
