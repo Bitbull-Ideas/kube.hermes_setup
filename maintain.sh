@@ -265,7 +265,7 @@ data = json.loads(Path(sys.argv[1]).read_text())
 version = data.get('serverVersion', {}).get('gitVersion', '')
 if not version or '+k3s' not in version:
     raise SystemExit('Kubernetes server is not a K3s version; full rollback requires a K3s server')
-Path(sys.argv[2]).write_text(version + '\\n')
+Path(sys.argv[2]).write_text(version + '\n')
 PY
   kubectl get namespace "$HERMES_NAMESPACE" -o json > "$raw_dir/namespace.json"
   for resource in pvc deployment service job ingress networkpolicy serviceaccount secret; do
@@ -309,7 +309,7 @@ backup() {
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   create_storage_helper_pod hermes-backup backup
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-backup --timeout=120s >/dev/null
-  kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; tar czf /tmp/hermes-backup.tgz -C / opt/data workspace; chmod 600 /tmp/hermes-backup.tgz'
+  kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; rm -rf /tmp/hermes-backup-stage; mkdir -p /tmp/hermes-backup-stage; cd /; find opt/data workspace -type f -exec sh -c '\''source="$1"; target="/tmp/hermes-backup-stage/$source"; mkdir -p "$(dirname "$target")"; cat "$source" > "$target"'\'' sh {} \;; cd /tmp/hermes-backup-stage; find . -type f -print | tar -T - -czf /tmp/hermes-backup.tgz; chmod 600 /tmp/hermes-backup.tgz'
   kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$tmpdir/cluster.tgz" -c backup >/dev/null
   chmod 600 "$tmpdir/cluster.tgz"
   mkdir -p "$tmpdir/stage/metadata/kubernetes"
@@ -440,21 +440,41 @@ PY
   extract_cleanup
 }
 restore_kubernetes_snapshot() {
-  local snapshot="$1" tmpdir="$2" force="$3" dry_run="$4" backup_version current_version namespace_json resources_json
-  backup_version="$(tr -d '[:space:]' < "$snapshot/cluster-version.txt")" || fail 'K3s version metadata is missing from the backup'
+  local snapshot="$1" tmpdir="$2" force="$3" dry_run="$4" backup_version='' current_version namespace_json resources_json backup_namespace namespace_state
+  if [[ -f "$snapshot/cluster-version.txt" ]]; then
+    backup_version="$(tr -d '[:space:]' < "$snapshot/cluster-version.txt")"
+  elif [[ "$force" == true ]]; then
+    warn 'K3s version metadata is missing; continuing because --force was specified'
+    backup_version='unknown'
+  else
+    fail 'K3s version metadata is missing from the backup'
+  fi
   current_version="$(kubectl version -o json | python3 -c 'import json,sys; print(json.load(sys.stdin).get("serverVersion", {}).get("gitVersion", ""))')" || fail 'Unable to read Kubernetes server version'
   if [[ -z "$current_version" || "$current_version" != *+k3s* ]]; then
-    fail 'Kubernetes server is not a detectable K3s version; full rollback requires K3s'
+    if [[ "$force" == true ]]; then
+      warn "Kubernetes server is not a detectable K3s version; continuing because --force was specified"
+    else
+      fail 'Kubernetes server is not a detectable K3s version; full rollback requires K3s'
+    fi
+  elif [[ "$backup_version" != unknown && "$current_version" != "$backup_version" ]]; then
+    if [[ "$force" == true ]]; then
+      warn "Forcing full rollback across K3s versions: backup=$backup_version current=$current_version"
+    else
+      fail "K3s version mismatch: backup=$backup_version current=$current_version; rerun with --force to override the compatibility gate"
+    fi
   fi
-  if [[ "$current_version" != "$backup_version" && "$force" != true ]]; then
-    fail "K3s version mismatch: backup=$backup_version current=$current_version; rerun with --force only after reviewing compatibility"
-  fi
-  [[ "$current_version" == "$backup_version" ]] || warn "Forcing full rollback across K3s versions: backup=$backup_version current=$current_version"
   namespace_json="$tmpdir/namespace.json"
   resources_json="$tmpdir/resources.json"
   python3 "$ROOT_DIR/scripts/kube_snapshot.py" split "$snapshot/resources.json" "$namespace_json" "$resources_json"
-  backup_namespace="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["name"])' "$namespace_json")"
-  [[ "$backup_namespace" == "$HERMES_NAMESPACE" ]] || fail "backup namespace=$backup_namespace does not match configured namespace=$HERMES_NAMESPACE"
+  backup_namespace="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["name"])' "$namespace_json")" || fail 'Kubernetes snapshot Namespace is malformed'
+  if [[ "$backup_namespace" != "$HERMES_NAMESPACE" ]]; then
+    if [[ "$force" == true ]]; then
+      warn "Forcing restore into backup Namespace: backup=$backup_namespace configured=$HERMES_NAMESPACE"
+      HERMES_NAMESPACE="$backup_namespace"
+    else
+      fail "backup namespace=$backup_namespace does not match configured namespace=$HERMES_NAMESPACE; rerun with --force to override the namespace gate"
+    fi
+  fi
   if [[ "$dry_run" == true ]]; then
     local namespace_state
     namespace_state="$(kubectl get namespace "$HERMES_NAMESPACE" --ignore-not-found -o name)"
@@ -499,7 +519,13 @@ restore() {
   if [[ "$full" == true ]]; then
     tar -xzf "$plain" -C "$tmpdir/payload" opt/data workspace metadata/kubernetes
     [[ -f "$tmpdir/payload/metadata/kubernetes/resources.json" ]] || fail 'full rollback requires an encrypted Kubernetes resource snapshot'
-    [[ -f "$tmpdir/payload/metadata/kubernetes/cluster-version.txt" ]] || fail 'full rollback requires K3s version metadata'
+    if [[ ! -f "$tmpdir/payload/metadata/kubernetes/cluster-version.txt" ]]; then
+      if [[ "$force" == true ]]; then
+        warn 'full rollback archive has no K3s version metadata; continuing because --force was specified'
+      else
+        fail 'full rollback requires K3s version metadata'
+      fi
+    fi
     restore_kubernetes_snapshot "$tmpdir/payload/metadata/kubernetes" "$tmpdir" "$force" "$dry_run"
     if [[ "$dry_run" == true ]]; then
       trap - EXIT

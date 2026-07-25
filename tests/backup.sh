@@ -130,10 +130,18 @@ if PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.32.0+k3s1 
 fi
 grep -Fq 'K3s version mismatch' "$TMP_DIR/mismatch.out"
 if PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" > "$TMP_DIR/non-k3s.out" 2>&1; then
-  printf 'non-K3s server unexpectedly accepted\n' >&2
+  :
+else
+  printf 'forced non-K3s restore unexpectedly refused\n' >&2
   exit 1
 fi
-grep -Fq 'requires K3s' "$TMP_DIR/non-k3s.out"
+grep -Fq 'continuing because --force' "$TMP_DIR/non-k3s.out"
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=other FAKE_K3S_VERSION=v1.31.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" > "$TMP_DIR/namespace-force.out" 2>&1
+grep -Fq 'Forcing restore into backup Namespace: backup=bob configured=other' "$TMP_DIR/namespace-force.out"
+rm -f "$TMP_DIR/full-root/metadata/kubernetes/cluster-version.txt"
+tar -czf "$TMP_DIR/no-version.tgz" -C "$TMP_DIR/full-root" opt/data workspace metadata
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 ./maintain.sh restore "$TMP_DIR/no-version.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" > "$TMP_DIR/no-version.out" 2>&1
+grep -Fq 'no K3s version metadata' "$TMP_DIR/no-version.out"
 PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.32.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" >/dev/null
 
 printf 'encrypted backup helper tests passed\n'

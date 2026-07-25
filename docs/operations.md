@@ -119,7 +119,7 @@ Before applying anything, use:
   --full --dry-run --password-file /secure/hermes-backup.pass
 ```
 
-Full mode requires the target API server to be K3s and its exact `serverVersion.gitVersion` to match the encrypted backup metadata. It refuses a missing/non-K3s server or version mismatch. Use `--force` only after compatibility review to override a version mismatch; it does not bypass the K3s requirement:
+Full mode requires a readable Kubernetes API server, but `--force` overrides all compatibility and targeting policy gates: missing/unknown backup K3s version, non-K3s detection, K3s version mismatch, and configured-vs-backup Namespace mismatch. With a Namespace mismatch, the restore targets the Namespace recorded in the backup. `--force` does not bypass cryptographic, archive, snapshot-schema, Kubernetes API, or resource-application failures:
 
 ```bash
 ./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age --full --force

@@ -216,7 +216,7 @@ Keep the repository, encrypted backup, checksum file, and passphrase separately.
 ./doctor.sh
 ```
 
-The full restore refuses unless the API server is K3s with the exact version recorded in the backup. Use `--force` only after reviewing a version mismatch. If the backup predates resource snapshots, use the documented `extract` path and reinstall manually; it cannot perform a full rollback.
+The full restore applies the Namespace recorded in the backup. Without `--force`, the API server must be detectable as K3s with the exact version recorded in the backup and `HERMES_NAMESPACE` must match. With `--force`, all three compatibility/targeting gates are overridden; malformed, undecryptable, or unappliable data still fails.
 
 ### 8. Restore
 
