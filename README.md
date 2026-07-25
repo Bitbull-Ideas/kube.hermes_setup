@@ -86,7 +86,7 @@ ${EDITOR:-vi} current_config/bootstrap/config.yaml
 Example structure:
 
 ```yaml
-provider: codex
+provider: openai-codex
 model: gpt-5.6-luna
 agent:
   verify_on_stop: false

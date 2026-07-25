@@ -136,7 +136,7 @@ else
     esac
   done
 
-  MODEL_PROVIDER="$(prompt_value 'Hermes model provider' 'codex')"
+  MODEL_PROVIDER="$(prompt_value 'Hermes model provider' 'openai-codex')"
   MODEL_NAME="$(prompt_value 'Hermes model' 'gpt-5.6-luna')"
 
   HERMES_AGENT_IMAGE="$(prompt_value 'Hermes Agent container image' 'nousresearch/hermes-agent:latest')"
@@ -203,7 +203,7 @@ DASHBOARD_HOST="${DASHBOARD_HOST:-}"
 DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER:-}"
 DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 HERMES_ANSIBLE_VERSION="${HERMES_ANSIBLE_VERSION:-}"
-MODEL_PROVIDER="${MODEL_PROVIDER:-codex}"
+MODEL_PROVIDER="${MODEL_PROVIDER:-openai-codex}"
 MODEL_NAME="${MODEL_NAME:-gpt-5.6-luna}"
 HERMES_AGENT_IMAGE="${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}"
 HERMES_WEBUI_IMAGE="${HERMES_WEBUI_IMAGE:-ghcr.io/nesquena/hermes-webui:latest}"
