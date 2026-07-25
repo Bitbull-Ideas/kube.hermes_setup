@@ -47,7 +47,7 @@ This follows Browserless' documented direct CDP connection path. The endpoint is
 
 ## Authentication
 
-`./maintain.sh show-passwords` checks the three credential Secrets without exposing their values. The output contains only Secret name, key name, presence status, and a SHA-256 fingerprint. Do not replace this with a command that decodes or prints Secret values in logs or shared terminal output.
+`./maintain.sh show-passwords` retrieves and decodes the three credential Secrets for an authorized administrator. It prints the values to the terminal and therefore must only be used from a trusted terminal; never capture, paste, log, or share its output. The command does not write credentials to local files.
 
 The setup has two application auth layers:
 

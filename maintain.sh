@@ -107,24 +107,22 @@ status() {
   kubectl -n "$HERMES_NAMESPACE" get pods,svc,ingress,networkpolicy -o wide
 }
 
-show_secret_fingerprint() {
-  local label="$1" secret="$2" key="$3" encoded digest
+show_secret_value() {
+  local label="$1" secret="$2" key="$3" encoded value
   encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret "$secret" -o "jsonpath={.data['$key']}")"
   if [[ -z "$encoded" ]]; then
-    printf '%-24s status=missing secret=%s key=%s\n' "$label" "$secret" "$key"
-    return 0
+    fail "Missing credential: secret=$secret key=$key"
   fi
-  digest="$(printf '%s' "$encoded" | base64 -d | sha256sum | cut -d' ' -f1)"
-  printf '%-24s status=present secret=%s key=%s sha256=%s\n' "$label" "$secret" "$key" "$digest"
+  value="$(printf '%s' "$encoded" | base64 -d)" || fail "Unable to decode credential: secret=$secret key=$key"
+  printf '%s: %s\n' "$label" "$value"
 }
 
 show_passwords() {
   command -v base64 >/dev/null 2>&1 || fail "Missing required command: base64"
-  command -v sha256sum >/dev/null 2>&1 || fail "Missing required command: sha256sum"
-  printf '%s\n' "Credential metadata for namespace $HERMES_NAMESPACE (values redacted):"
-  show_secret_fingerprint "Dashboard/WebUI password" hermes-dashboard-auth password
-  show_secret_fingerprint "API server key" hermes-api-server api-key
-  show_secret_fingerprint "Browserless token" hermes-browser-token token
+  printf '%s\n' "Credentials for namespace $HERMES_NAMESPACE:"
+  show_secret_value "Dashboard/WebUI password" hermes-dashboard-auth password
+  show_secret_value "API server key" hermes-api-server api-key
+  show_secret_value "Browserless token" hermes-browser-token token
 }
 
 restart() {

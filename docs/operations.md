@@ -132,7 +132,7 @@ Use the following command to check all three Kubernetes credential Secrets:
 ./maintain.sh show-passwords
 ```
 
-It runs one `kubectl get secret` query for each of the Dashboard/WebUI password, API server key, and Browserless token. For safety, it prints only whether the key is present and its SHA-256 fingerprint; it never prints decoded credential values.
+It runs one `kubectl get secret` query for each of the Dashboard/WebUI password, API server key, and Browserless token, decodes the values, and prints them. Use this only from a trusted administrator terminal; terminal history, scrollback, logs, screen sharing, and transcripts can expose the credentials. The command does not write the values to local files.
 
 ## Password rotation
 
