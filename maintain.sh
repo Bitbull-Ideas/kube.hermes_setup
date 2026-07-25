@@ -91,6 +91,7 @@ Usage:
   ./maintain.sh upgrade
   ./maintain.sh backup <backup.tgz>
   ./maintain.sh restore <backup.tgz>
+  ./maintain.sh show-passwords
   ./maintain.sh rotate-passwords [--lab] [--prompt|--generate|--from-env]
   ./maintain.sh rotate-browser-token
 
@@ -104,6 +105,26 @@ EOF
 
 status() {
   kubectl -n "$HERMES_NAMESPACE" get pods,svc,ingress,networkpolicy -o wide
+}
+
+show_secret_fingerprint() {
+  local label="$1" secret="$2" key="$3" encoded digest
+  encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret "$secret" -o "jsonpath={.data['$key']}")"
+  if [[ -z "$encoded" ]]; then
+    printf '%-24s status=missing secret=%s key=%s\n' "$label" "$secret" "$key"
+    return 0
+  fi
+  digest="$(printf '%s' "$encoded" | base64 -d | sha256sum | cut -d' ' -f1)"
+  printf '%-24s status=present secret=%s key=%s sha256=%s\n' "$label" "$secret" "$key" "$digest"
+}
+
+show_passwords() {
+  command -v base64 >/dev/null 2>&1 || fail "Missing required command: base64"
+  command -v sha256sum >/dev/null 2>&1 || fail "Missing required command: sha256sum"
+  printf '%s\n' "Credential metadata for namespace $HERMES_NAMESPACE (values redacted):"
+  show_secret_fingerprint "Dashboard/WebUI password" hermes-dashboard-auth password
+  show_secret_fingerprint "API server key" hermes-api-server api-key
+  show_secret_fingerprint "Browserless token" hermes-browser-token token
 }
 
 restart() {
@@ -429,6 +450,7 @@ cmd="${1:-}"
 shift || true
 case "$cmd" in
   status) status "$@" ;;
+  show-passwords) show_passwords "$@" ;;
   restart) restart "$@" ;;
   upgrade) upgrade "$@" ;;
   backup) backup "$@" ;;
