@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Render Markdown to a polished, selectable PDF with WeasyPrint."""
+"""Render Markdown to a polished, selectable PDF.
+
+Purpose: Convert Markdown with optional YAML front matter into a styled PDF using the
+available WeasyPrint, FPDF, or Playwright backend.
+Usage: python3 render_markdown_pdf.py INPUT.md OUTPUT.pdf [options]
+Exit status: 0 on success; 1 when PDF generation fails; 2 when dependencies are missing.
+"""
 from __future__ import annotations
 
 import argparse

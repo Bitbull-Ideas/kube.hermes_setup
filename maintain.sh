@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Operate and inspect an existing Hermes Kubernetes/K3s deployment.
+# Scope: Provide status, restart/upgrade, backup/restore, credential display and rotation,
+#        while keeping operations constrained to the configured namespace.
+# Requirements: Bash, kubectl, Python 3, base64, OpenSSL, and sha256sum where applicable.
+# Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|restore|rotate-passwords|rotate-browser-token}
+# Exit status: 0 means the requested operation completed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

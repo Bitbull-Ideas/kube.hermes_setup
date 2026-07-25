@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Render, validate, and install the Hermes Kubernetes/K3s stack.
+# Scope: Parse configuration, compose bootstrap data, manage Kubernetes Secrets, render
+#        manifests, apply resources, and verify enabled deployment rollouts.
+# Requirements: Bash, kubectl, Python 3, OpenSSL, base64, tar, and a configured cluster.
+# Usage: ENV_FILE=./hermes.env ./install.sh
+# Exit status: 0 means installation completed; non-zero stops before claiming success.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
