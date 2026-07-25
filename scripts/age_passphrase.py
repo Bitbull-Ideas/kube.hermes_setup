@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Run age with a passphrase supplied through a private pseudo-terminal.
+"""Run age with a passphrase supplied through a pseudo-terminal.
 
-Purpose: Support non-interactive, password-file-based age encryption/decryption without
-putting the passphrase in process arguments, shell history, or ordinary stdin.
+Purpose: Support non-interactive, password-file-based age encryption/decryption
+without putting the passphrase in process arguments, shell history, or ordinary stdin.
+Uses the `script -q -c` utility to create a proper PTY session for `age`.
+
 Usage: python3 scripts/age_passphrase.py PASSWORD_FILE -- age arguments...
-Requirements: Python 3, a local age executable, and a regular password file.
+Requirements: Python 3, `script` (util-linux), a local age executable, and a regular password file.
 Exit status: Mirrors age's exit status; non-zero identifies validation or age failure.
 """
 from __future__ import annotations
 
 import os
-import pty
-import select
 import subprocess
 import sys
 from pathlib import Path
@@ -32,45 +32,58 @@ def main() -> int:
     if not password:
         raise SystemExit("password file must not be empty")
 
-    master, slave = pty.openpty()
+    # Verify age is available
     try:
-        process = subprocess.Popen(
-            ["age", *sys.argv[separator + 1 :]],
-            stdin=slave,
-            stdout=slave,
-            stderr=slave,
-            close_fds=True,
-            env={k: v for k, v in os.environ.items() if k not in {"AGE_PASSPHRASE"}},
-        )
-        os.close(slave)
-        slave = -1
-        sent = False
-        output = bytearray()
-        while True:
-            ready, _, _ = select.select([master], [], [], 0.25)
-            if ready:
-                try:
-                    chunk = os.read(master, 4096)
-                except OSError:
-                    chunk = b""
-                if not chunk:
-                    break
-                output.extend(chunk)
-                lower = bytes(output).lower()
-                if not sent and (b"passphrase" in lower or b"password" in lower):
-                    os.write(master, password.encode() + b"\n")
-                    sent = True
-            if process.poll() is not None and not ready:
-                break
-        return_code = process.wait()
-        if output:
-            sys.stdout.buffer.write(output)
-            sys.stdout.buffer.flush()
-        return return_code
-    finally:
-        if slave >= 0:
-            os.close(slave)
-        os.close(master)
+        subprocess.check_output(["sh", "-c", "command -v age"], text=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        raise SystemExit("Missing required command: age. Install it on Fedora/RHEL with: dnf install age.")
+
+    # Verify script is available
+    try:
+        subprocess.check_output(["sh", "-c", "command -v script"], text=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        raise SystemExit("Missing required command: script. Install it with: dnf install util-linux")
+
+    # Build the age command string (without the leading "age" executable name)
+    argv = sys.argv[separator + 1 :]
+    if argv and argv[0] == "age":
+        argv = argv[1:]
+
+    # For --passphrase (encryption), age prompts twice: password + confirmation.
+    # For --decrypt, age prompts once.
+    is_encrypt = "--passphrase" in argv or "-p" in argv
+    if is_encrypt:
+        stdin_data = f"{password}\n{password}\n"
+    else:
+        stdin_data = f"{password}\n"
+
+    # Use script -q -c to create a proper PTY for age
+    age_cmd = "age " + " ".join(shlex_quote(a) for a in argv)
+    script_cmd = ["script", "-q", "-c", age_cmd, "/dev/null"]
+
+    result = subprocess.run(
+        script_cmd,
+        input=stdin_data,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env={k: v for k, v in os.environ.items() if k not in {"AGE_PASSPHRASE"}},
+    )
+    # Forward age's stdout and stderr
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+    return result.returncode
+
+
+def shlex_quote(s: str) -> str:
+    """Simple shell quoting for a single argument."""
+    if not s:
+        return "''"
+    if all(c.isalnum() or c in "._/-" for c in s):
+        return s
+    return "'" + s.replace("'", "'\\''") + "'"
 
 
 if __name__ == "__main__":

@@ -37,7 +37,13 @@ mkdir -p backups
 ./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).age
 ```
 
-The archive is encrypted with `age`. By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`.
+The archive is encrypted with `age`. Install it on Fedora/RHEL hosts with:
+
+```bash
+dnf install age
+```
+
+By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`.
 
 ## Extracting backup components
 

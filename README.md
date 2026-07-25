@@ -15,7 +15,7 @@ The repository is template-driven. Deployment-specific configuration, generated 
 
 On the admin workstation:
 
-- `git`, `kubectl`, `openssl`, `bash`, `python3`, `tar`, and `sha256sum`
+- `git`, `kubectl`, `age`, `openssl`, `bash`, `python3`, `tar`, and `sha256sum`
 - a working Kubernetes context
 - permission to manage the namespace and rendered Deployments, Services, Secrets, Jobs, PVCs, NetworkPolicies, Ingresses, and applicable Traefik CRDs
 - when Dashboard or WebUI should be publicly reachable, an Ingress controller compatible with standard Kubernetes Ingress

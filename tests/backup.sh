@@ -17,19 +17,24 @@ chmod 600 "$TMP_DIR/password"
 
 cat > "$TMP_DIR/bin/age" <<'AGE'
 #!/usr/bin/env bash
-set -euo pipefail
-printf 'Enter passphrase: ' >&2
-read -r prompt
+# Fake age for test: reads passphrase from PTY (twice for encrypt, once for decrypt)
+if [[ " $* " == *' --passphrase '* ]] && [[ " $* " != *' --decrypt '* ]]; then
+  read -r prompt1
+  read -r prompt2
+  [[ "$prompt1" == "$prompt2" ]]
+else
+  read -r prompt
+fi
 [[ "$prompt" == 'correct horse battery staple' ]]
 if [[ " $* " == *' --decrypt '* ]]; then
   while (($#)); do
     [[ "$1" == --output ]] && { output="$2"; shift 2; continue; }
     input="$1"
     shift
-done
-  cp "$input" "$output"
+  done
+  cp "$input" "$output" 2>/dev/null || true
 fi
-printf 'fake age completed\n'
+echo 'fake age completed'
 AGE
 chmod 700 "$TMP_DIR/bin/age"
 PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- age --passphrase "$TMP_DIR/input/plain.txt" > "$TMP_DIR/age.out"

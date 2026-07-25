@@ -2,7 +2,7 @@
 # Purpose: Operate and inspect an existing Hermes Kubernetes/K3s deployment.
 # Scope: Provide status, restart/upgrade, backup/restore, credential display and rotation,
 #        while keeping operations constrained to the configured namespace.
-# Requirements: Bash, kubectl, Python 3, base64, OpenSSL, and sha256sum where applicable.
+# Requirements: Bash, kubectl, age, Python 3, base64, OpenSSL, and sha256sum where applicable.
 # Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|extract|restore|rotate-passwords|rotate-browser-token}
 # Exit status: 0 means the requested operation completed; non-zero identifies a failure.
 set -euo pipefail
@@ -73,7 +73,19 @@ HERMES_RUNTIME_GID="${HERMES_RUNTIME_GID:-10000}"
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
-require_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
+require_cmd() {
+  local command_name="$1" install_hint
+  command -v "$command_name" >/dev/null 2>&1 && return 0
+  case "$command_name" in
+    age) install_hint='Install it on Fedora/RHEL with: dnf install age' ;;
+    kubectl) install_hint='Install kubectl or k3s, then ensure kubectl is in PATH' ;;
+    python3) install_hint='Install it with: dnf install python3' ;;
+    sha256sum) install_hint='Install it with: dnf install coreutils' ;;
+    base64) install_hint='Install it with: dnf install coreutils' ;;
+    *) install_hint="Install the package providing '$command_name' and ensure it is in PATH" ;;
+  esac
+  fail "Missing required command: $command_name. $install_hint."
+}
 rand_hex() { openssl rand -hex "${1:-32}"; }
 generate_password() { openssl rand -base64 "${1:-36}" | tr -d '\n'; }
 validate_backup_archive() {
