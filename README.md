@@ -151,6 +151,7 @@ set -a
 source current_config/hermes.env
 set +a
 ./maintain.sh status
+./maintain.sh show-passwords
 ./doctor.sh
 kubectl -n "$HERMES_NAMESPACE" get pods,svc,ingress,networkpolicy -o wide
 kubectl -n "$HERMES_NAMESPACE" logs deploy/hermes-agent

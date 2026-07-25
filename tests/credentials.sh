@@ -123,6 +123,22 @@ assert_failed() {
   ! grep -Eq 'create|apply' "$TMP_DIR/state/calls"
 }
 
+put_secret hermes-dashboard-auth password dashboard-secret
+put_secret hermes-api-server api-key api-secret
+put_secret hermes-browser-token token browser-secret
+show_output="$TMP_DIR/show-passwords.stdout"
+PATH="$TMP_DIR/bin:$PATH" FAKE_KUBECTL_STATE="$TMP_DIR/state" ENV_FILE="$TMP_DIR/blank.env" HERMES_NAMESPACE=hermes \
+  bash "$ROOT_DIR/maintain.sh" show-passwords >"$show_output"
+grep -Fq 'status=present secret=hermes-dashboard-auth key=password sha256=' "$show_output"
+grep -Fq 'status=present secret=hermes-api-server key=api-key sha256=' "$show_output"
+grep -Fq 'status=present secret=hermes-browser-token key=token sha256=' "$show_output"
+! grep -Fq 'dashboard-secret' "$show_output"
+! grep -Fq 'api-secret' "$show_output"
+! grep -Fq 'browser-secret' "$show_output"
+grep -Fq 'get secret hermes-dashboard-auth' "$TMP_DIR/state/calls"
+grep -Fq 'get secret hermes-api-server' "$TMP_DIR/state/calls"
+grep -Fq 'get secret hermes-browser-token' "$TMP_DIR/state/calls"
+
 # Explicit process-environment credentials survive loading a blank env file.
 printf '%s\n' 'DASHBOARD_AUTH_PASSWORD=' 'API_SERVER_KEY=' 'BROWSER_TOKEN=' > "$TMP_DIR/blank.env"
 PATH="$TMP_DIR/bin:$PATH" ENV_FILE="$TMP_DIR/blank.env" HERMES_INSTALL_LIB_ONLY=true \

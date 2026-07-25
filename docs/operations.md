@@ -124,6 +124,16 @@ auth.json                -> /opt/data/auth.json only with HERMES_BOOTSTRAP_INCLU
 
 Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite` only when you intentionally want the bootstrap source to replace existing files. Bootstrap data, `current_config/`, and `configuration_answers` can contain personal data or credentials; keep them out of Git.
 
+## Credential status
+
+Use the following command to check all three Kubernetes credential Secrets:
+
+```bash
+./maintain.sh show-passwords
+```
+
+It runs one `kubectl get secret` query for each of the Dashboard/WebUI password, API server key, and Browserless token. For safety, it prints only whether the key is present and its SHA-256 fingerprint; it never prints decoded credential values.
+
 ## Password rotation
 
 `maintain.sh rotate-passwords` rotates the shared password for the enabled Dashboard and/or WebUI components and supports three explicit input modes:

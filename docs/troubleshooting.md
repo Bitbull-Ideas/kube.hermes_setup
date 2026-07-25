@@ -10,6 +10,12 @@ kubectl -n <namespace> get secret hermes-dashboard-auth -o jsonpath='{.data.pass
 
 If both Dashboard and WebUI are disabled, no application password is generated. Use `maintain.sh rotate-passwords` for deliberate password changes.
 
+To inspect credential availability without revealing credentials, run:
+
+```bash
+./maintain.sh show-passwords
+```
+
 ## WebUI loads but chat fails with `AIAgent not available`
 
 The WebUI needs local access to the Hermes Agent source tree.
