@@ -27,6 +27,7 @@ warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
 rand_hex() { openssl rand -hex "${1:-32}"; }
+generate_password() { openssl rand -base64 "${1:-36}" | tr -d '\n'; }
 remove_local_credential_captures() {
   rm -f "$RENDER_DIR/generated-credentials.txt" "$RENDER_DIR"/.generated-credentials.*
   rm -f "$RENDER_DIR"/rotated-credentials-*.txt
@@ -160,7 +161,7 @@ resolve_runtime_credentials() {
       existing="$(read_existing_secret_value hermes-dashboard-auth password)" || status=$?
       case "$status" in
         0) DASHBOARD_AUTH_PASSWORD="$existing"; CREDENTIAL_SOURCE_DASHBOARD=reused ;;
-        1) DASHBOARD_AUTH_PASSWORD="$(rand_hex 18)"; CREDENTIAL_SOURCE_DASHBOARD=generated ;;
+        1) DASHBOARD_AUTH_PASSWORD="$(generate_password 36)"; CREDENTIAL_SOURCE_DASHBOARD=generated ;;
         *) fail "Unable to safely resolve Dashboard/WebUI credentials" ;;
       esac
       if [[ "${DASHBOARD_AUTH_USER_EXPLICIT:-false}" != true && "$CREDENTIAL_SOURCE_DASHBOARD" == reused ]]; then
@@ -190,7 +191,7 @@ resolve_runtime_credentials() {
     fi
   else
     if [[ -z "${DASHBOARD_AUTH_PASSWORD:-}" ]] && { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; }; then
-      DASHBOARD_AUTH_PASSWORD="$(rand_hex 18)"
+      DASHBOARD_AUTH_PASSWORD="$(generate_password 36)"
       CREDENTIAL_SOURCE_DASHBOARD=generated
     fi
     if [[ -z "${API_SERVER_KEY:-}" ]]; then

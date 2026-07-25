@@ -42,6 +42,14 @@ grep -Fq 'trap '\''rm -rf -- "$tmpdir"'\'' ERR' "$ROOT_DIR/maintain.sh"
 grep -Fq 'trap '\''rm -rf -- "$dash_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap '\''rm -rf -- "$secret_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap backup_on_exit EXIT' "$ROOT_DIR/maintain.sh"
+grep -Fq 'generate_password() { openssl rand -base64' "$ROOT_DIR/install.sh"
+grep -Fq 'generate_password() { openssl rand -base64' "$ROOT_DIR/maintain.sh"
+for credential_script in "$ROOT_DIR/install.sh" "$ROOT_DIR/maintain.sh"; do
+  ! grep -E -n 'md5sum|md5\(' "$credential_script" >/dev/null
+done
+password_test="$(HERMES_INSTALL_LIB_ONLY=true bash -c 'source "$1/install.sh"; generate_password 36' _ "$ROOT_DIR")"
+[[ "${#password_test}" -eq 48 ]]
+[[ "$password_test" =~ ^[A-Za-z0-9+/=]+$ ]]
 grep -Fq 'parse_env_file' "$ROOT_DIR/maintain.sh"
 grep -Fq 'parse_env_file' "$ROOT_DIR/doctor.sh"
 grep -Fq 'reject_control_chars' "$ROOT_DIR/scripts/render_template.py"
