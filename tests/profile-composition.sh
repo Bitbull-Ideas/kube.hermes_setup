@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Verify bootstrap profile composition and profile-specific defaults.
+# Scope: Check shared/profile files, selected skills, optional Ansible and SSH content,
+#        addon requirements, and cleanup/rebuild behavior.
+# Requirements: Bash, Python 3, standard utilities, and repository bootstrap sources.
+# Usage: ./tests/profile-composition.sh
+# Exit status: 0 means every profile composition contract passed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,6 +16,7 @@ export HERMES_INSTALL_LIB_ONLY=true
 source "$ROOT_DIR/install.sh"
 RENDER_DIR="$TMP_DIR/rendered"
 
+# Reset variables that profile composition may derive or preserve.
 reset_profile_env() {
   unset HERMES_BOOTSTRAP_DIR HERMES_SSH_SETUP HERMES_SSH_GENERATE_KEY
   unset HERMES_ANSIBLE_SETUP HERMES_ANSIBLE_CONFIG HERMES_ADDON_REQUIREMENTS

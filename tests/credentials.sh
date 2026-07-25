@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Test credential generation, reuse, precedence, Secret handling, and redaction.
+# Scope: Use a fake kubectl to exercise credential lifecycle behavior without contacting
+#        a cluster or exposing real credential values.
+# Requirements: Bash, OpenSSL, sha256sum, and repository installer/maintenance scripts.
+# Usage: ./tests/credentials.sh
+# Exit status: 0 means all credential contracts passed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -6,6 +12,7 @@ TMP_DIR="$(mktemp -d -t hermes-credentials-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/bin" "$TMP_DIR/state"
 
+# The fake kubectl records calls and emulates only the Secret operations needed here.
 cat > "$TMP_DIR/bin/kubectl" <<'KUBECTL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -123,6 +130,7 @@ assert_failed() {
   ! grep -Eq 'create|apply' "$TMP_DIR/state/calls"
 }
 
+# Verify the administrator-facing show-passwords command against fake Secrets.
 put_secret hermes-dashboard-auth password dashboard-secret
 put_secret hermes-api-server api-key api-secret
 put_secret hermes-browser-token token browser-secret

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Exercise the interactive configuration wizard and generated artifacts.
+# Scope: Verify prompts, defaults, answer replay, validation, bootstrap composition,
+#        safe environment parsing, and rendered-manifest security contracts.
+# Requirements: Bash, Python 3, standard POSIX utilities, and repository scripts.
+# Usage: ./tests/configure.sh
+# Exit status: 0 means every configuration contract passed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -6,6 +12,7 @@ TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 profile_output="$TMP_DIR/profile-output"
+# Exercise the interactive wizard with deterministic answers and inspect its output.
 printf '\n\n\n\nn\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
@@ -15,6 +22,7 @@ grep -qx '  1) personal-assistant' "$profile_output"
 grep -qx '  2) universal-system-architect' "$profile_output"
 grep -Fqx '  Credentials: Kubernetes Secrets only; values are not stored locally or printed' "$profile_output"
 
+# Verify operational-script environment-file fallback and process-variable precedence.
 # Operational scripts prefer an existing root hermes.env, then discover the
 # wizard-generated current_config/hermes.env when no root file exists.
 fallback_root="$TMP_DIR/env-fallback"
