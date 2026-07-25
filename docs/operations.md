@@ -34,24 +34,28 @@ For a pull-latest style restart:
 
 ```bash
 mkdir -p backups
-./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).tgz
+./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).age
 ```
 
-The archive contains:
+The archive is encrypted with `age` and the matching passphrase is requested by `age` during backup/restore. It contains:
 
 ```text
-/opt/data
-/workspace
+opt/data
+workspace
+metadata/hermes.env                 # when present locally
+metadata/configuration_answers      # when present locally
+metadata/bootstrap/                 # when present locally
+metadata/backup-info.txt
 ```
 
-This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. It does not include Kubernetes Secrets. Retain required credentials separately before namespace deletion. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration. The backup archive and checksum are written with mode `0600`.
+Kubernetes Secrets are never included in the archive. The metadata is for reconstructing the installer configuration; Kubernetes resources are recreated from the saved ENV and the repository template rather than blindly applying an old rendered manifest. Install `age` on the operator host before using encrypted backup/restore. Keep the encrypted archive and passphrase separately.
 
 ## Restore
 
 The namespace, Deployments, and PVCs must already exist. After namespace deletion, run `./install.sh` first to recreate them, then restore:
 
 ```bash
-./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.tgz
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age
 ./doctor.sh
 ```
 
@@ -170,7 +174,7 @@ DASHBOARD_AUTH_USER=admin DASHBOARD_AUTH_PASSWORD='use-a-long-random-value' ./ma
 
 Production policy rejects weak passwords by default. Use `--lab`, `HERMES_PASSWORD_POLICY=lab`, or `HERMES_ALLOW_WEAK_PASSWORD=true` only for lab systems.
 
-Plaintext passwords are not stored locally or printed for any rotation mode. The generated value is stored only in Kubernetes Secret `hermes-dashboard-auth`; the command to extract it is printed after a successful rotation.
+Plaintext passwords are not stored locally or printed for any rotation mode. The generated value is stored only in Kubernetes Secret `hermes-dashboard-auth`. Use `./maintain.sh show-passwords` from a trusted administrator terminal when the current values are needed.
 
 ## Browser token rotation
 

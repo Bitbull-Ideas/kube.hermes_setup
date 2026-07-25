@@ -62,7 +62,7 @@ Terminate TLS at your Ingress controller. This template supports Ingress TLS ref
 
 ## Backups
 
-Backups include OAuth state and possibly user/session data. Store them encrypted and restrict access. `maintain.sh backup` creates both the archive and its SHA-256 checksum with mode `0600`.
+Backups include OAuth state and possibly user/session data. `maintain.sh backup` creates an `age`-encrypted archive and a SHA-256 checksum, both with mode `0600`. The encrypted metadata preserves the installer ENV, saved non-secret answers, and generated bootstrap inputs when available. Kubernetes Secrets are deliberately excluded; retain the passphrase separately. Restore decrypts and validates the archive before changing the namespace.
 
 ## Password policy
 

@@ -1,20 +1,14 @@
 # Troubleshooting
 
-## Generated Dashboard/WebUI password cannot be found
+## Credentials cannot be found
 
-The installer never stores or prints generated credentials locally. It applies them directly to Kubernetes Secrets. An authorized cluster operator can retrieve the current credentials in a private terminal with:
-
-```bash
-./maintain.sh show-passwords
-```
-
-If both Dashboard and WebUI are disabled, no application password is generated. Use `maintain.sh rotate-passwords` for deliberate password changes.
-
-To retrieve the credentials as an authorized administrator, run this only from a trusted terminal:
+The installer applies credentials directly to Kubernetes Secrets and does not store them locally. An authorized operator can retrieve the current values from a trusted terminal with:
 
 ```bash
 ./maintain.sh show-passwords
 ```
+
+If both Dashboard and WebUI are disabled, no application password is generated. Use `./maintain.sh rotate-passwords` for deliberate password changes.
 
 ## WebUI loads but chat fails with `AIAgent not available`
 

@@ -73,8 +73,35 @@ HERMES_RUNTIME_GID="${HERMES_RUNTIME_GID:-10000}"
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+require_cmd() { command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"; }
 rand_hex() { openssl rand -hex "${1:-32}"; }
 generate_password() { openssl rand -base64 "${1:-36}" | tr -d '\n'; }
+validate_backup_archive() {
+  local archive="$1"
+  python3 - "$archive" <<'PY'
+import posixpath
+import sys
+import tarfile
+
+archive = sys.argv[1]
+allowed = ("opt/data", "workspace", "metadata")
+try:
+    with tarfile.open(archive, "r:gz") as stream:
+        for member in stream.getmembers():
+            name = member.name.replace("\\", "/")
+            normalized = posixpath.normpath(name)
+            if name.startswith("/") or normalized == ".." or normalized.startswith("../"):
+                raise SystemExit(f"unsafe archive path: {member.name}")
+            if not any(normalized == root or normalized.startswith(root + "/") for root in allowed):
+                raise SystemExit(f"archive path outside allowed roots: {member.name}")
+            if member.issym() or member.islnk():
+                raise SystemExit(f"links are not allowed in backup archives: {member.name}")
+            if not (member.isdir() or member.isfile()):
+                raise SystemExit(f"unsupported archive entry: {member.name}")
+except (OSError, tarfile.TarError) as exc:
+    raise SystemExit(f"invalid backup archive: {exc}")
+PY
+}
 
 is_truthy() { [[ "${1:-}" =~ ^(1|true|TRUE|yes|YES|y|Y|on|ON)$ ]]; }
 enabled_deployments() {
@@ -95,8 +122,8 @@ Usage:
   ./maintain.sh status
   ./maintain.sh restart
   ./maintain.sh upgrade
-  ./maintain.sh backup <backup.tgz>
-  ./maintain.sh restore <backup.tgz>
+  ./maintain.sh backup <backup.age> [--password-file PATH|--password-stdin]
+  ./maintain.sh restore <backup.age> [--password-file PATH|--password-stdin]
   ./maintain.sh show-passwords
   ./maintain.sh rotate-passwords [--lab] [--prompt|--generate|--from-env]
   ./maintain.sh rotate-browser-token
@@ -113,14 +140,47 @@ status() {
   kubectl -n "$HERMES_NAMESPACE" get pods,svc,ingress,networkpolicy -o wide
 }
 
-show_secret_value() {
-  local label="$1" secret="$2" key="$3" encoded value
+get_secret_value() {
+  local secret="$1" key="$2" encoded
   encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret "$secret" -o "jsonpath={.data['$key']}")"
-  if [[ -z "$encoded" ]]; then
-    fail "Missing credential: secret=$secret key=$key"
-  fi
-  value="$(printf '%s' "$encoded" | base64 -d)" || fail "Unable to decode credential: secret=$secret key=$key"
+  [[ -n "$encoded" ]] || fail "Missing credential: secret=$secret key=$key"
+  printf '%s' "$encoded" | base64 -d || fail "Unable to decode credential: secret=$secret key=$key"
+}
+show_secret_value() {
+  local label="$1" secret="$2" key="$3" value
+  value="$(get_secret_value "$secret" "$key")"
   printf '%s: %s\n' "$label" "$value"
+}
+
+prepare_backup_password() {
+  local mode=default password='' password_source=''
+  BACKUP_PASSWORD_TMP="$(mktemp -d -t hermes-backup-password.XXXXXX)"
+  chmod 700 "$BACKUP_PASSWORD_TMP"
+  while (($#)); do
+    case "$1" in
+      --password-stdin) mode=stdin; shift ;;
+      --password-file)
+        [[ $# -ge 2 ]] || fail '--password-file requires a path'
+        mode=file; password_source="$2"; shift 2 ;;
+      --password-file=*) mode=file; password_source="${1#*=}"; shift ;;
+      *) fail "unknown backup password option: $1" ;;
+    esac
+  done
+  case "$mode" in
+    default) password="$(get_secret_value hermes-dashboard-auth password)" ;;
+    stdin) IFS= read -r password || true ;;
+    file)
+      [[ -f "$password_source" ]] || fail "password file not found: $password_source"
+      local file_mode
+      file_mode="$(stat -c '%a' "$password_source")"
+      [[ "$file_mode" =~ ^6[04]0$ ]] || fail "password file must be owner-readable only (mode 600 or 640)"
+      IFS= read -r password < "$password_source" || true
+      ;;
+  esac
+  [[ -n "$password" ]] || fail 'backup encryption password must not be empty'
+  printf '%s\n' "$password" > "$BACKUP_PASSWORD_TMP/password"
+  chmod 600 "$BACKUP_PASSWORD_TMP/password"
+  unset password
 }
 
 show_passwords() {
@@ -145,32 +205,18 @@ upgrade() {
   restart
 }
 
-backup() {
-  local out="${1:-}" checksum
-  [[ -n "$out" ]] || fail "backup path required"
-  mkdir -p "$(dirname "$out")"
-  checksum="${out}.sha256"
-  backup_cleanup() {
-    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
-  }
-  backup_on_exit() {
-    local status=$?
-    backup_cleanup
-    trap - EXIT
-    exit "$status"
-  }
-  trap backup_on_exit EXIT
-  kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+create_storage_helper_pod() {
+  local name="$1" container="$2"
   cat <<JSON | kubectl apply -f - >/dev/null
 apiVersion: v1
 kind: Pod
 metadata:
-  name: hermes-backup
+  name: ${name}
   namespace: ${HERMES_NAMESPACE}
 spec:
   restartPolicy: Never
   containers:
-  - name: backup
+  - name: ${container}
     image: busybox:1.36
     command: ["sh", "-c", "sleep 3600"]
     volumeMounts:
@@ -186,21 +232,94 @@ spec:
     persistentVolumeClaim:
       claimName: hermes-workspace
 JSON
+}
+
+backup() {
+  local out='' arg plain checksum tmpdir
+  local -a password_args=()
+  while (($#)); do
+    case "$1" in
+      --password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
+      -*) fail "unknown backup option: $1" ;;
+      *) [[ -z "$out" ]] || fail 'backup path specified more than once'; out="$1"; shift ;;
+    esac
+  done
+  [[ -n "$out" ]] || fail 'backup path required'
+  require_cmd age
+  require_cmd sha256sum
+  mkdir -p "$(dirname "$out")"
+  checksum="${out}.sha256"
+  tmpdir="$(mktemp -d -t hermes-backup.XXXXXX)"
+  plain="$tmpdir/hermes-backup.tgz"
+  prepare_backup_password "${password_args[@]}"
+  backup_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+    rm -rf -- "$tmpdir" "$BACKUP_PASSWORD_TMP"
+  }
+  backup_on_exit() {
+    local status=$?
+    backup_cleanup
+    trap - EXIT
+    exit "$status"
+  }
+  trap backup_on_exit EXIT
+  kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  create_storage_helper_pod hermes-backup backup
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-backup --timeout=120s >/dev/null
   kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; tar czf /tmp/hermes-backup.tgz -C / opt/data workspace; chmod 600 /tmp/hermes-backup.tgz'
-  kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$out" -c backup >/dev/null
+  kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$tmpdir/cluster.tgz" -c backup >/dev/null
+  chmod 600 "$tmpdir/cluster.tgz"
+  mkdir -p "$tmpdir/stage/metadata"
+  tar -xzf "$tmpdir/cluster.tgz" -C "$tmpdir/stage"
+  if [[ -f "$ROOT_DIR/current_config/hermes.env" ]]; then
+    cp -a "$ROOT_DIR/current_config/hermes.env" "$tmpdir/stage/metadata/hermes.env"
+  elif [[ -f "$ROOT_DIR/hermes.env" ]]; then
+    cp -a "$ROOT_DIR/hermes.env" "$tmpdir/stage/metadata/hermes.env"
+  fi
+  [[ -f "$ROOT_DIR/configuration_answers" ]] && cp -a "$ROOT_DIR/configuration_answers" "$tmpdir/stage/metadata/configuration_answers"
+  [[ -d "$ROOT_DIR/current_config/bootstrap" ]] && cp -a "$ROOT_DIR/current_config/bootstrap" "$tmpdir/stage/metadata/bootstrap"
+  printf 'namespace=%s\ncreated_at=%s\n' "$HERMES_NAMESPACE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmpdir/stage/metadata/backup-info.txt"
+  chmod -R go-rwx "$tmpdir/stage/metadata"
+  tar -czf "$plain" -C "$tmpdir/stage" opt/data workspace metadata
+  chmod 600 "$plain"
+  # The wrapper supplies the passphrase through a private PTY, never argv or logs.
+  python3 "$ROOT_DIR/scripts/age_passphrase.py" "$BACKUP_PASSWORD_TMP/password" -- \
+    age --passphrase --armor --output "$out" "$plain"
   chmod 600 "$out"
-  trap - EXIT
-  backup_cleanup
   sha256sum "$out" > "$checksum"
   chmod 600 "$checksum"
   sha256sum -c "$checksum"
+  trap - EXIT
+  backup_cleanup
   ls -lh "$out" "$checksum"
 }
 
 restore() {
-  local in="${1:-}"
+  local in='' plain='' tmpdir='' arg
+  local -a password_args=()
+  while (($#)); do
+    case "$1" in
+      --password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
+      -*) fail "unknown restore option: $1" ;;
+      *) [[ -z "$in" ]] || fail 'restore path specified more than once'; in="$1"; shift ;;
+    esac
+  done
   [[ -f "$in" ]] || fail "backup file required"
+  require_cmd age
+  require_cmd python3
+  tmpdir="$(mktemp -d -t hermes-restore.XXXXXX)"
+  plain="$tmpdir/hermes-backup.tgz"
+  prepare_backup_password "${password_args[@]}"
+  restore_local_cleanup() { rm -rf -- "$tmpdir" "$BACKUP_PASSWORD_TMP"; }
+  restore_local_on_exit() { local status=$?; restore_local_cleanup; trap - EXIT; exit "$status"; }
+  trap restore_local_on_exit EXIT
+  python3 "$ROOT_DIR/scripts/age_passphrase.py" "$BACKUP_PASSWORD_TMP/password" -- \
+    age --decrypt --output "$plain" "$in"
+  validate_backup_archive "$plain" || fail "decrypted backup archive validation failed"
+  mkdir -p "$tmpdir/payload"
+  tar -xzf "$plain" -C "$tmpdir/payload" opt/data workspace
+  tar -czf "$tmpdir/restore-payload.tgz" -C "$tmpdir/payload" opt/data workspace
+  plain="$tmpdir/restore-payload.tgz"
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
   local deployments=() d replicas
@@ -215,6 +334,7 @@ restore() {
     for d in "${deployments[@]}"; do
       kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}" >/dev/null 2>&1 || true
     done
+    restore_local_cleanup
   }
   restore_on_exit() {
     local status=$?
@@ -227,36 +347,10 @@ restore() {
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
-  cat <<JSON | kubectl apply -f - >/dev/null
-apiVersion: v1
-kind: Pod
-metadata:
-  name: hermes-restore
-  namespace: ${HERMES_NAMESPACE}
-spec:
-  restartPolicy: Never
-  containers:
-  - name: restore
-    image: busybox:1.36
-    command: ["sh", "-c", "sleep 3600"]
-    volumeMounts:
-    - name: home
-      mountPath: /opt/data
-    - name: workspace
-      mountPath: /workspace
-  volumes:
-  - name: home
-    persistentVolumeClaim:
-      claimName: hermes-home
-  - name: workspace
-    persistentVolumeClaim:
-      claimName: hermes-workspace
-JSON
+  create_storage_helper_pod hermes-restore restore
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
-  kubectl -n "$HERMES_NAMESPACE" cp "$in" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
+  kubectl -n "$HERMES_NAMESPACE" cp "$plain" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
-  trap - EXIT
-  restore_cleanup
   log "Scaling deployments up"
   for d in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}"
@@ -266,6 +360,8 @@ JSON
       kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
     fi
   done
+  trap - EXIT
+  restore_cleanup
 }
 
 prompt_secret() {
@@ -450,17 +546,19 @@ rotate_browser_token() {
   echo "Rotated Browserless token. CDP endpoint: ws://hermes-browser:3000/chromium?token=<redacted>"
 }
 
-cmd="${1:-}"
-shift || true
-case "$cmd" in
-  status) status "$@" ;;
-  show-passwords) show_passwords "$@" ;;
-  restart) restart "$@" ;;
-  upgrade) upgrade "$@" ;;
-  backup) backup "$@" ;;
-  restore) restore "$@" ;;
-  rotate-passwords) rotate_passwords "$@" ;;
-  rotate-browser-token) rotate_browser_token "$@" ;;
-  -h|--help|help|"") usage ;;
-  *) usage; fail "unknown command: $cmd" ;;
-esac
+if [[ "${HERMES_MAINTAIN_LIB_ONLY:-false}" != true ]]; then
+  cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    status) status "$@" ;;
+    show-passwords) show_passwords "$@" ;;
+    restart) restart "$@" ;;
+    upgrade) upgrade "$@" ;;
+    backup) backup "$@" ;;
+    restore) restore "$@" ;;
+    rotate-passwords) rotate_passwords "$@" ;;
+    rotate-browser-token) rotate_browser_token "$@" ;;
+    -h|--help|help|"") usage ;;
+    *) usage; fail "unknown command: $cmd" ;;
+  esac
+fi

@@ -131,13 +131,10 @@ It validates settings, renders the manifest, creates the namespace and Secrets, 
 
 On the first installation, missing credentials are generated directly into Kubernetes Secrets. On later installations, blank values reuse existing Kubernetes Secrets; explicit values override them. `install.sh` does not print or store plaintext credentials. Use `./maintain.sh show-passwords` when an authorized administrator needs to retrieve them, and use the rotation commands for deliberate changes.
 
-If using Codex, load the generated environment and complete OAuth pairing in an interactive shell:
+If using Codex, complete OAuth pairing in an interactive shell. Pass the namespace explicitly; do not source the generated environment file:
 
 ```bash
-set -a
-source current_config/hermes.env
-set +a
-kubectl -n "$HERMES_NAMESPACE" exec -it deploy/hermes-agent -- /bin/bash
+kubectl -n <namespace> exec -it deploy/hermes-agent -- /bin/bash
 # Run inside the pod:
 hermes model
 ```
@@ -147,14 +144,11 @@ OAuth state persists at `/opt/data/auth.json` on the home PVC.
 ### 4. Debug and inspect
 
 ```bash
-set -a
-source current_config/hermes.env
-set +a
-./maintain.sh status
-./maintain.sh show-passwords
-./doctor.sh
-kubectl -n "$HERMES_NAMESPACE" get pods,svc,ingress,networkpolicy -o wide
-kubectl -n "$HERMES_NAMESPACE" logs deploy/hermes-agent
+ENV_FILE=./current_config/hermes.env ./maintain.sh status
+ENV_FILE=./current_config/hermes.env ./maintain.sh show-passwords
+ENV_FILE=./current_config/hermes.env ./doctor.sh
+kubectl -n <namespace> get pods,svc,ingress,networkpolicy -o wide
+kubectl -n <namespace> logs deploy/hermes-agent
 ```
 
 Use component logs only when that component is enabled:
@@ -187,31 +181,33 @@ Before destructive operations:
 
 ```bash
 mkdir -p backups
-backup="./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).tgz"
+backup="./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).age"
 ./maintain.sh backup "$backup"
 # maintain.sh creates and protects the matching .sha256 file.
-tar -tzf "$backup" >/dev/null
 sha256sum -c "$backup.sha256"
 stat -c '%a %n' "$backup" "$backup.sha256"  # both must be 600
 ```
 
-The archive contains both PVC filesystems:
+The encrypted archive contains both PVC filesystems plus local reconstruction metadata when available:
 
 ```text
-/opt/data
-/workspace
+opt/data
+workspace
+metadata/hermes.env
+metadata/configuration_answers
+metadata/bootstrap/
 ```
 
-It can include OAuth state, sessions, skills, memories, WebUI state, and workspace data. It does **not** contain Kubernetes Secrets. Before namespace deletion, retain required credential values separately. Store backups encrypted and restrict access.
+It can include OAuth state, sessions, skills, memories, WebUI state, and workspace data. It does **not** contain Kubernetes Secrets. The metadata is used to recreate the deployment with the repository templates; old rendered Kubernetes manifests are not applied automatically. Before namespace deletion, retain the encrypted archive, checksum, and passphrase separately.
 
 ### 7. Delete and rebuild
 
 > **Destructive:** deleting the namespace deletes its Deployments, Services, Secrets, Ingresses, Jobs, and PVC objects. Underlying PV data behavior depends on the storage class and PV reclaim policy; never rely on retained storage. Verify the backup first.
 
-Keep the repository, `current_config/`, `configuration_answers`, backup, checksum file, and required credentials. With the generated environment loaded as shown above:
+Keep the repository, `current_config/`, `configuration_answers`, encrypted backup, checksum file, passphrase, and required credentials. Use the explicit namespace from `current_config/hermes.env` or pass it directly:
 
 ```bash
-kubectl delete namespace "$HERMES_NAMESPACE"
+kubectl delete namespace <namespace>
 ```
 
 Before reinstalling, retain the credential values separately. If the recreated namespace has no Secrets, the installer generates new values for blank settings; if Secrets are retained, blank settings reuse them. Explicitly restore known values in `current_config/hermes.env` when you require deterministic credentials across a destructive rebuild. Keep the file mode `0600`. Depending on the storage backend and reclaim policy, the mounted volumes may be fresh or may contain retained data; restore clears their mounted contents before extracting the backup.
@@ -226,20 +222,22 @@ chmod 600 current_config/hermes.env
 Restore only after `install.sh` has recreated the namespace, Deployments, and PVCs:
 
 ```bash
-./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.tgz
+./maintain.sh restore ./backups/hermes-YYYYmmddTHHMMSSZ.age
 ./doctor.sh
 ```
 
-Restore scales the enabled write-heavy deployments down, clears visible and hidden entries on both PVCs, extracts the archive, reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID`, removes the helper Pod, and restores each deployment's original desired replica count. If any restore step fails, the cleanup path removes the helper Pod and attempts to restore those original counts.
+Restore scales the enabled write-heavy deployments down, clears visible and hidden entries on both PVCs, decrypts and validates the archive, extracts only the `opt/data` and `workspace` payload into the PVCs, reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID`, removes the helper Pod, and restores each deployment's original desired replica count. The encrypted metadata remains local for rebuilding configuration; it is not copied into the PVC root.
 
 ## Profiles
 
 | Profile | Skills | Ansible | SSH | Addon requirements |
 |---|---|---|---|---|
-| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager` | disabled | disabled | profile requirements |
+| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog` | disabled | disabled | profile requirements |
 | `universal-system-architect` | all shared skills | enabled | enabled | Ansible/cloud requirements |
 
 Explicit `HERMES_ANSIBLE_SETUP`, `HERMES_SSH_SETUP`, `HERMES_ADDON_REQUIREMENTS`, and `HERMES_ANSIBLE_VERSION` values override profile defaults.
+
+Skill metadata may list related skills. In this repository, a related skill is **bundled** only when its directory exists under `examples/bootstrap-shared/skills/`. A reference such as `hermes-agent`, `github-auth`, or `github-pr-workflow` is an **external-runtime** or **optional-reference** dependency and is not copied by this setup. The profile's `skills.txt` file is the authoritative installation allowlist.
 
 ## Common operations
 

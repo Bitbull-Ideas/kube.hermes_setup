@@ -6,7 +6,9 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Adds the `hermes-workspace-manager` bootstrap skill for topic-folder resolution, artifact containment, continuity, and explicit archival.
+- Adds encrypted `age` backup/restore support with a PTY-based passphrase helper, protected checksums, local reconstruction metadata, and strict archive validation.
+- Adds configurable `HERMES_IMAGE_PULL_POLICY` with `IfNotPresent` default and explicit `Always` option.
+- Adds isolated backup-helper regression tests and removes the setup-irrelevant remote logging reference.
 - Adds declarative profile skill allowlists and profile environment defaults with operator overrides.
 - Adds an interactive `configure.sh` wizard that stores the complete selected bootstrap and `hermes.env` under Git-ignored `current_config/`, then directs installer artifacts to `current_config/artifacts` during handoff.
 - Adds independently selectable Dashboard, WebUI, and Browser components while keeping Agent mandatory.
@@ -22,7 +24,7 @@ All notable changes to this project are documented in this file.
 - Makes `universal-system-architect` select all shared skills, enable SSH setup, and activate its Ansible-oriented addon requirements by default.
 - Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
 - Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
-- Removes the standalone `POST_SETUP.md` recipe to keep the repository focused on deployment and operations.
+- Keeps the shared `POST_SETUP.md` operator hint for optional post-install cron and delivery-channel configuration.
 - Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
 
 ### Fixed
