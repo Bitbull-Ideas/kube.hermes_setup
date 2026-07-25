@@ -75,10 +75,10 @@ The operational scripts resolve configuration in this order: an explicit `ENV_FI
 
 ## Initial generated credentials
 
-When the wizard password prompt is left empty, the password is generated only when `install.sh` runs. It is intentionally absent from `hermes.env` and `configuration_answers`. The installer applies generated and reused values directly to Kubernetes Secrets; it does not store or print plaintext credentials locally. Authorized operators can use the extraction commands printed in the installer summary, for example:
+When the wizard password prompt is left empty, the password is generated only when `install.sh` runs. It is intentionally absent from `hermes.env` and `configuration_answers`. The installer applies generated and reused values directly to Kubernetes Secrets; it does not store or print plaintext credentials locally. Authorized operators can retrieve all configured credentials with:
 
 ```bash
-kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+./maintain.sh show-passwords
 ```
 
 On the first installation, missing credentials are generated. On later installations, blank values reuse existing Kubernetes Secrets; explicit non-empty values override them. Kubernetes lookup or malformed-Secret errors fail closed rather than rotating credentials implicitly. Use the maintenance rotation commands for deliberate changes.

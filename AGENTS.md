@@ -235,7 +235,7 @@ Useful examples:
 DASHBOARD_AUTH_PASSWORD='...' ./maintain.sh rotate-passwords --from-env
 ```
 
-Generated password values are stored only in Kubernetes Secrets; never commit or print them. Use the post-operation `kubectl` extraction command when an authorized operator needs the value.
+Generated password values are stored only in Kubernetes Secrets; never commit or print them. Use `./maintain.sh show-passwords` from a trusted administrator terminal when the current values are needed.
 
 ## Codex OAuth behavior
 

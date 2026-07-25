@@ -123,13 +123,13 @@ ENV_FILE=./current_config/hermes.env ./install.sh
 
 It validates settings, renders the manifest, creates the namespace and Secrets, applies resources, runs the bootstrap job, and waits for rollouts.
 
-`install.sh` applies credentials directly through Kubernetes Secrets and does not create a local credential file:
+`install.sh` applies credentials directly through Kubernetes Secrets and does not create a local credential file. Use the administrator-only maintenance command when the values are needed:
 
 ```text
-Kubernetes Secret `hermes-dashboard-auth` (extract with the command printed by `install.sh`)
+./maintain.sh show-passwords
 ```
 
-On the first installation, missing credentials are generated directly into Kubernetes Secrets. On later installations, blank values reuse existing Kubernetes Secrets; explicit values override them. `install.sh` does not print or store plaintext credentials. Use the printed `kubectl` extraction command or `maintain.sh` for deliberate rotation.
+On the first installation, missing credentials are generated directly into Kubernetes Secrets. On later installations, blank values reuse existing Kubernetes Secrets; explicit values override them. `install.sh` does not print or store plaintext credentials. Use `./maintain.sh show-passwords` when an authorized administrator needs to retrieve them, and use the rotation commands for deliberate changes.
 
 If using Codex, load the generated environment and complete OAuth pairing in an interactive shell:
 

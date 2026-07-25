@@ -419,8 +419,8 @@ Dashboard/WebUI:     updated for dashboard user '$dashboard_user'; WebUI passwor
 
 Plaintext passwords were not printed. Store env-provided/generated values in your password manager.
 The generated password is stored only in Kubernetes Secret hermes-dashboard-auth.
-Extract it with:
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+Show the current credentials with:
+  ./maintain.sh show-passwords
 For lab passwords use --lab or HERMES_PASSWORD_POLICY=lab explicitly.
 EOF
 }

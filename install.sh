@@ -627,18 +627,10 @@ Browser enabled:  $HERMES_BROWSER_ENABLED
 Rendered file:    $MANIFEST_OUT
 
 Runtime credentials were applied through Kubernetes Secrets.
-No credential values were stored locally or printed.
-Extract the Dashboard/WebUI password when needed with:
+No credential values were stored locally or printed during installation.
+Show the credentials later, when needed, with the administrator-only maintenance command:
 
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
-
-Extract the API server key with:
-
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.data.api-key}' | base64 -d; printf '\n'
-
-Extract the Browserless token with:
-
-  kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-token -o jsonpath='{.data.token}' | base64 -d; printf '\n'
+  ./maintain.sh show-passwords
 
 Rotate later with:
 

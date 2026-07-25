@@ -84,10 +84,10 @@ The scripts avoid passing plaintext passwords as command-line arguments to `open
 
 ## Credential storage
 
-`install.sh` and generated-password rotation do not write plaintext credentials to local files and do not print credential values. Credentials are stored only in Kubernetes Secrets. Authorized operators can extract a value when needed, for example:
+`install.sh` and generated-password rotation do not write plaintext credentials to local files and do not print credential values. Credentials are stored only in Kubernetes Secrets. Authorized operators can retrieve the current values when needed, for example:
 
 ```bash
-kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+./maintain.sh show-passwords
 ```
 
 `current_config/`, `configuration_answers`, and `.rendered/` remain Git-ignored because they can contain other sensitive configuration, but they must not be used as credential stores.

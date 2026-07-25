@@ -2,10 +2,10 @@
 
 ## Generated Dashboard/WebUI password cannot be found
 
-The installer never stores or prints generated credentials locally. It applies them directly to Kubernetes Secrets. An authorized cluster operator can extract the current Dashboard/WebUI password in a private terminal:
+The installer never stores or prints generated credentials locally. It applies them directly to Kubernetes Secrets. An authorized cluster operator can retrieve the current credentials in a private terminal with:
 
 ```bash
-kubectl -n <namespace> get secret hermes-dashboard-auth -o jsonpath='{.data.password}' | base64 -d; printf '\n'
+./maintain.sh show-passwords
 ```
 
 If both Dashboard and WebUI are disabled, no application password is generated. Use `maintain.sh rotate-passwords` for deliberate password changes.
