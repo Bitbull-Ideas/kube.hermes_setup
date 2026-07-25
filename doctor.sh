@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Diagnose the health and integration state of an installed Hermes deployment.
+# Scope: Check namespace/resources, workloads, services, secrets, addon runtimes, WebUI,
+#        Browserless/CDP, and other operational prerequisites without changing resources.
+# Requirements: Bash, kubectl, Python 3, curl, and the configured cluster context.
+# Usage: ENV_FILE=./hermes.env ./doctor.sh
+# Exit status: 0 means diagnostics passed; non-zero identifies an unavailable or failed check.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

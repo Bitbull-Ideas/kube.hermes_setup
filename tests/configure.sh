@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Exercise the interactive configuration wizard and generated artifacts.
+# Scope: Verify prompts, defaults, answer replay, validation, bootstrap composition,
+#        safe environment parsing, and rendered-manifest security contracts.
+# Requirements: Bash, Python 3, standard POSIX utilities, and repository scripts.
+# Usage: ./tests/configure.sh
+# Exit status: 0 means every configuration contract passed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -6,6 +12,7 @@ TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 profile_output="$TMP_DIR/profile-output"
+# Exercise the interactive wizard with deterministic answers and inspect its output.
 printf '\n\n\n\nn\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
@@ -15,6 +22,7 @@ grep -qx '  1) personal-assistant' "$profile_output"
 grep -qx '  2) universal-system-architect' "$profile_output"
 grep -Fqx '  Credentials: Kubernetes Secrets only; values are not stored locally or printed' "$profile_output"
 
+# Verify operational-script environment-file fallback and process-variable precedence.
 # Operational scripts prefer an existing root hermes.env, then discover the
 # wizard-generated current_config/hermes.env when no root file exists.
 fallback_root="$TMP_DIR/env-fallback"
@@ -43,9 +51,9 @@ grep -Fq 'trap '\''rm -rf -- "$dash_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap '\''rm -rf -- "$secret_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap backup_on_exit EXIT' "$ROOT_DIR/maintain.sh"
 grep -Fq 'show-passwords) show_passwords' "$ROOT_DIR/maintain.sh"
-grep -Fq 'show_secret_fingerprint "Dashboard/WebUI password" hermes-dashboard-auth password' "$ROOT_DIR/maintain.sh"
-grep -Fq 'show_secret_fingerprint "API server key" hermes-api-server api-key' "$ROOT_DIR/maintain.sh"
-grep -Fq 'show_secret_fingerprint "Browserless token" hermes-browser-token token' "$ROOT_DIR/maintain.sh"
+grep -Fq 'show_secret_value "Dashboard/WebUI password" hermes-dashboard-auth password' "$ROOT_DIR/maintain.sh"
+grep -Fq 'show_secret_value "API server key" hermes-api-server api-key' "$ROOT_DIR/maintain.sh"
+grep -Fq 'show_secret_value "Browserless token" hermes-browser-token token' "$ROOT_DIR/maintain.sh"
 grep -Fq 'generate_password() { openssl rand -base64' "$ROOT_DIR/install.sh"
 grep -Fq 'generate_password() { openssl rand -base64' "$ROOT_DIR/maintain.sh"
 for credential_script in "$ROOT_DIR/install.sh" "$ROOT_DIR/maintain.sh"; do

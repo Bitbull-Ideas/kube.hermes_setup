@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Render the Hermes Kubernetes template with validated environment substitutions.
+
+Purpose: Convert a template plus installer environment into a manifest while rejecting
+unsafe control characters and invalid values at the YAML/shell boundary.
+Usage: python3 scripts/render_template.py TEMPLATE OUTPUT
+Exit status: 0 on successful rendering; 2 for usage errors; non-zero for validation errors.
+"""
 import os
 import re
 import sys

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Operate and inspect an existing Hermes Kubernetes/K3s deployment.
+# Scope: Provide status, restart/upgrade, backup/restore, credential display and rotation,
+#        while keeping operations constrained to the configured namespace.
+# Requirements: Bash, kubectl, Python 3, base64, OpenSSL, and sha256sum where applicable.
+# Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|restore|rotate-passwords|rotate-browser-token}
+# Exit status: 0 means the requested operation completed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -107,24 +113,22 @@ status() {
   kubectl -n "$HERMES_NAMESPACE" get pods,svc,ingress,networkpolicy -o wide
 }
 
-show_secret_fingerprint() {
-  local label="$1" secret="$2" key="$3" encoded digest
+show_secret_value() {
+  local label="$1" secret="$2" key="$3" encoded value
   encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret "$secret" -o "jsonpath={.data['$key']}")"
   if [[ -z "$encoded" ]]; then
-    printf '%-24s status=missing secret=%s key=%s\n' "$label" "$secret" "$key"
-    return 0
+    fail "Missing credential: secret=$secret key=$key"
   fi
-  digest="$(printf '%s' "$encoded" | base64 -d | sha256sum | cut -d' ' -f1)"
-  printf '%-24s status=present secret=%s key=%s sha256=%s\n' "$label" "$secret" "$key" "$digest"
+  value="$(printf '%s' "$encoded" | base64 -d)" || fail "Unable to decode credential: secret=$secret key=$key"
+  printf '%s: %s\n' "$label" "$value"
 }
 
 show_passwords() {
   command -v base64 >/dev/null 2>&1 || fail "Missing required command: base64"
-  command -v sha256sum >/dev/null 2>&1 || fail "Missing required command: sha256sum"
-  printf '%s\n' "Credential metadata for namespace $HERMES_NAMESPACE (values redacted):"
-  show_secret_fingerprint "Dashboard/WebUI password" hermes-dashboard-auth password
-  show_secret_fingerprint "API server key" hermes-api-server api-key
-  show_secret_fingerprint "Browserless token" hermes-browser-token token
+  printf '%s\n' "Credentials for namespace $HERMES_NAMESPACE:"
+  show_secret_value "Dashboard/WebUI password" hermes-dashboard-auth password
+  show_secret_value "API server key" hermes-api-server api-key
+  show_secret_value "Browserless token" hermes-browser-token token
 }
 
 restart() {

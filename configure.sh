@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Create an isolated Hermes configuration and optionally run the installer.
+# Scope: Drive interactive configuration, answer replay, profile composition, and
+#        generation of hermes.env, bootstrap files, and installer artifacts.
+# Requirements: Bash, Python 3, standard utilities, and repository bootstrap sources.
+# Usage: ./configure.sh [--config-dir PATH] [--answers-file PATH] [--from-answers] [--no-install]
+# Exit status: 0 means configuration completed; non-zero identifies invalid input or failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

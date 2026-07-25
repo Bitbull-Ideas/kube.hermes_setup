@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Purpose: Validate rendered Kubernetes manifests across optional-component combinations.
+# Scope: Exercise Dashboard, WebUI, and Browserless enabled/disabled states and verify
+#        resources, references, and security settings remain internally consistent.
+# Requirements: Bash, Python 3 with PyYAML, standard utilities, and repository scripts.
+# Usage: ./tests/matrix.sh
+# Exit status: 0 means every component matrix case passed; non-zero identifies a failure.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -6,6 +12,7 @@ TMP_DIR="$(mktemp -d -t hermes-matrix-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 component_cases=0
+# Render and validate all 2^3 optional-component combinations.
 for dashboard in false true; do
   for webui in false true; do
     for browser in false true; do

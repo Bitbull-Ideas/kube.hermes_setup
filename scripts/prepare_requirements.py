@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Prepare installer-owned addon requirements without modifying source files."""
+"""Prepare installer-owned addon requirements without modifying source files.
+
+Purpose: Add or remove the pinned Ansible runtime line in a generated requirements file.
+Usage: python3 scripts/prepare_requirements.py OUTPUT ANSIBLE_SETUP ANSIBLE_VERSION REMOVE_WHEN_DISABLED
+Exit status: 0 on success; non-zero for invalid arguments or an invalid Ansible version.
+"""
 
 import re
 import sys

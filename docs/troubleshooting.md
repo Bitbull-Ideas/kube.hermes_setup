@@ -10,7 +10,7 @@ kubectl -n <namespace> get secret hermes-dashboard-auth -o jsonpath='{.data.pass
 
 If both Dashboard and WebUI are disabled, no application password is generated. Use `maintain.sh rotate-passwords` for deliberate password changes.
 
-To inspect credential availability without revealing credentials, run:
+To retrieve the credentials as an authorized administrator, run this only from a trusted terminal:
 
 ```bash
 ./maintain.sh show-passwords
