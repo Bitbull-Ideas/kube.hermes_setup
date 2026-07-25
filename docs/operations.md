@@ -37,18 +37,57 @@ mkdir -p backups
 ./maintain.sh backup ./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).age
 ```
 
-The archive is encrypted with `age` and the matching passphrase is requested by `age` during backup/restore. It contains:
+The archive is encrypted with `age`. By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`.
 
-```text
-opt/data
-workspace
-metadata/hermes.env                 # when present locally
-metadata/configuration_answers      # when present locally
-metadata/bootstrap/                 # when present locally
-metadata/backup-info.txt
+## Extracting backup components
+
+`extract` writes selected backup content to a new or empty local directory. It never changes Kubernetes resources or PVCs:
+
+```bash
+./maintain.sh extract backup.age \
+  --output-dir ./recovery \
+  --component bootstrap
 ```
 
-Kubernetes Secrets are never included in the archive. The metadata is for reconstructing the installer configuration; Kubernetes resources are recreated from the saved ENV and the repository template rather than blindly applying an old rendered manifest. Install `age` on the operator host before using encrypted backup/restore. Keep the encrypted archive and passphrase separately.
+Supported components are:
+
+```text
+data       opt/data and workspace
+config     hermes.env, configuration_answers, backup-info.txt
+bootstrap  the saved bootstrap directory
+full       all currently supported components
+```
+
+Examples:
+
+```bash
+./maintain.sh extract backup.age --output-dir ./recovery --component data
+./maintain.sh extract backup.age --output-dir ./recovery --component config
+./maintain.sh extract backup.age --output-dir ./recovery --component bootstrap
+./maintain.sh extract backup.age --output-dir ./recovery --full
+./maintain.sh extract backup.age --output-dir ./recovery --full --dry-run
+```
+
+The output directory must be empty unless `--dry-run` is used. Existing files are never overwritten. `--component credentials` and Kubernetes-resource extraction are not implemented because the current backup format deliberately contains neither credential values nor a Kubernetes resource snapshot.
+
+For bootstrap recovery, review the extracted files first and then apply them through the normal installer path, for example:
+
+```bash
+HERMES_BOOTSTRAP_DIR=./recovery/bootstrap \
+ENV_FILE=./recovery/hermes.env \
+./install.sh
+```
+
+Password input for extraction:
+
+```bash
+./maintain.sh extract backup.age --output-dir ./recovery --full --password-prompt
+printf '%s\n' "$BACKUP_PASSWORD" | ./maintain.sh extract backup.age --output-dir ./recovery --full --password-stdin
+./maintain.sh extract backup.age --output-dir ./recovery --full --password-file /secure/hermes-backup.pass
+```
+
+`--dry-run` decrypts and validates the archive, checks the destination, and reports the selected mode without writing files.
+
 
 ## Restore
 

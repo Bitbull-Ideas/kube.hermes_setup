@@ -228,6 +228,16 @@ Restore only after `install.sh` has recreated the namespace, Deployments, and PV
 
 Restore scales the enabled write-heavy deployments down, clears visible and hidden entries on both PVCs, decrypts and validates the archive, extracts only the `opt/data` and `workspace` payload into the PVCs, reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID`, removes the helper Pod, and restores each deployment's original desired replica count. The encrypted metadata remains local for rebuilding configuration; it is not copied into the PVC root.
 
+To extract backup content locally without changing Kubernetes or PVCs, use an explicit output directory and component:
+
+```bash
+./maintain.sh extract ./backups/hermes-YYYYmmddTHHMMSSZ.age \
+  --output-dir ./recovery \
+  --component bootstrap
+```
+
+Supported components are `data`, `config`, `bootstrap`, and `full`. The output directory must be new or empty. Use `--dry-run` to decrypt and validate the archive and show what would be extracted without writing files. Password input supports `--password-prompt`, `--password-stdin`, and `--password-file PATH`. Credential values and Kubernetes resource definitions are not currently in the backup format and therefore cannot be extracted or restored by a component option.
+
 ## Profiles
 
 | Profile | Skills | Ansible | SSH | Addon requirements |

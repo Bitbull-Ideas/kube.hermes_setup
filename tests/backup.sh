@@ -21,6 +21,14 @@ set -euo pipefail
 printf 'Enter passphrase: ' >&2
 read -r prompt
 [[ "$prompt" == 'correct horse battery staple' ]]
+if [[ " $* " == *' --decrypt '* ]]; then
+  while (($#)); do
+    [[ "$1" == --output ]] && { output="$2"; shift 2; continue; }
+    input="$1"
+    shift
+done
+  cp "$input" "$output"
+fi
 printf 'fake age completed\n'
 AGE
 chmod 700 "$TMP_DIR/bin/age"
@@ -38,8 +46,20 @@ chmod 600 "$TMP_DIR/password"
 mkdir -p "$TMP_DIR/archive-root/opt/data" "$TMP_DIR/archive-root/workspace" "$TMP_DIR/archive-root/metadata"
 printf ok > "$TMP_DIR/archive-root/opt/data/file"
 printf config > "$TMP_DIR/archive-root/metadata/hermes.env"
+printf answers > "$TMP_DIR/archive-root/metadata/configuration_answers"
+printf info > "$TMP_DIR/archive-root/metadata/backup-info.txt"
+mkdir -p "$TMP_DIR/archive-root/metadata/bootstrap/skills"
+printf bootstrap > "$TMP_DIR/archive-root/metadata/bootstrap/SOUL.md"
+printf skill > "$TMP_DIR/archive-root/metadata/bootstrap/skills/example.md"
 tar -czf "$TMP_DIR/good.tgz" -C "$TMP_DIR/archive-root" opt/data workspace metadata
 HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1/maintain.sh"; validate_backup_archive "$2"' _ "$ROOT_DIR" "$TMP_DIR/good.tgz"
+PATH="$TMP_DIR/bin:$PATH" ./maintain.sh extract "$TMP_DIR/good.tgz" --output-dir "$TMP_DIR/recovery-bootstrap" --component bootstrap --password-file "$TMP_DIR/password"
+[[ -f "$TMP_DIR/recovery-bootstrap/bootstrap/SOUL.md" && -f "$TMP_DIR/recovery-bootstrap/bootstrap/skills/example.md" ]]
+[[ ! -e "$TMP_DIR/recovery-bootstrap/hermes.env" ]]
+PATH="$TMP_DIR/bin:$PATH" ./maintain.sh extract "$TMP_DIR/good.tgz" --output-dir "$TMP_DIR/recovery-config" --component config --password-stdin <<< 'correct horse battery staple'
+[[ -f "$TMP_DIR/recovery-config/hermes.env" && -f "$TMP_DIR/recovery-config/configuration_answers" ]]
+PATH="$TMP_DIR/bin:$PATH" ./maintain.sh extract "$TMP_DIR/good.tgz" --output-dir "$TMP_DIR/recovery-dry" --full --password-file "$TMP_DIR/password" --dry-run
+[[ ! -e "$TMP_DIR/recovery-dry" ]]
 mkdir -p "$TMP_DIR/bad-root/outside"
 tar -czf "$TMP_DIR/bad.tgz" -C "$TMP_DIR/bad-root" outside
 if HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1/maintain.sh"; validate_backup_archive "$2"' _ "$ROOT_DIR" "$TMP_DIR/bad.tgz" >/dev/null 2>&1; then

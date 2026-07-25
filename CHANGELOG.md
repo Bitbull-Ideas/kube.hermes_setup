@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Adds encrypted `age` backup/restore support with a PTY-based passphrase helper, protected checksums, local reconstruction metadata, and strict archive validation.
+- Adds explicit local backup extraction with `extract BACKUP.age --output-dir PATH --component data|config|bootstrap|full`, dry-run inspection, and prompt/stdin/password-file passphrase modes.
 - Adds configurable `HERMES_IMAGE_PULL_POLICY` with `IfNotPresent` default and explicit `Always` option.
 - Adds isolated backup-helper regression tests and removes the setup-irrelevant remote logging reference.
 - Adds declarative profile skill allowlists and profile environment defaults with operator overrides.

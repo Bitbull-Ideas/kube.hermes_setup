@@ -3,7 +3,7 @@
 # Scope: Provide status, restart/upgrade, backup/restore, credential display and rotation,
 #        while keeping operations constrained to the configured namespace.
 # Requirements: Bash, kubectl, Python 3, base64, OpenSSL, and sha256sum where applicable.
-# Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|restore|rotate-passwords|rotate-browser-token}
+# Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|extract|restore|rotate-passwords|rotate-browser-token}
 # Exit status: 0 means the requested operation completed; non-zero identifies a failure.
 set -euo pipefail
 
@@ -89,9 +89,9 @@ try:
     with tarfile.open(archive, "r:gz") as stream:
         for member in stream.getmembers():
             name = member.name.replace("\\", "/")
-            normalized = posixpath.normpath(name)
-            if name.startswith("/") or normalized == ".." or normalized.startswith("../"):
+            if name.startswith("/") or any(part in {".", ".."} for part in name.split("/")):
                 raise SystemExit(f"unsafe archive path: {member.name}")
+            normalized = posixpath.normpath(name)
             if not any(normalized == root or normalized.startswith(root + "/") for root in allowed):
                 raise SystemExit(f"archive path outside allowed roots: {member.name}")
             if member.issym() or member.islnk():
@@ -122,8 +122,10 @@ Usage:
   ./maintain.sh status
   ./maintain.sh restart
   ./maintain.sh upgrade
-  ./maintain.sh backup <backup.age> [--password-file PATH|--password-stdin]
-  ./maintain.sh restore <backup.age> [--password-file PATH|--password-stdin]
+  ./maintain.sh backup <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
+  ./maintain.sh restore <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
+  ./maintain.sh extract <backup.age> --output-dir PATH [--component data|config|bootstrap|full]
+      [--password-prompt|--password-file PATH|--password-stdin] [--dry-run]
   ./maintain.sh show-passwords
   ./maintain.sh rotate-passwords [--lab] [--prompt|--generate|--from-env]
   ./maintain.sh rotate-browser-token
@@ -153,11 +155,12 @@ show_secret_value() {
 }
 
 prepare_backup_password() {
-  local mode=default password='' password_source=''
+  local mode=prompt password='' password_source=''
   BACKUP_PASSWORD_TMP="$(mktemp -d -t hermes-backup-password.XXXXXX)"
   chmod 700 "$BACKUP_PASSWORD_TMP"
   while (($#)); do
     case "$1" in
+      --password-prompt) mode=prompt; shift ;;
       --password-stdin) mode=stdin; shift ;;
       --password-file)
         [[ $# -ge 2 ]] || fail '--password-file requires a path'
@@ -167,7 +170,11 @@ prepare_backup_password() {
     esac
   done
   case "$mode" in
-    default) password="$(get_secret_value hermes-dashboard-auth password)" ;;
+    prompt)
+      [[ -t 0 ]] || fail 'interactive password prompt requires a TTY; use --password-stdin or --password-file for automation'
+      read -r -s -p 'Backup passphrase: ' password
+      printf '\n' >&2
+      ;;
     stdin) IFS= read -r password || true ;;
     file)
       [[ -f "$password_source" ]] || fail "password file not found: $password_source"
@@ -239,7 +246,7 @@ backup() {
   local -a password_args=()
   while (($#)); do
     case "$1" in
-      --password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
+      --password-prompt|--password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
       -*) fail "unknown backup option: $1" ;;
       *) [[ -z "$out" ]] || fail 'backup path specified more than once'; out="$1"; shift ;;
     esac
@@ -294,12 +301,111 @@ backup() {
   ls -lh "$out" "$checksum"
 }
 
+extract_backup() {
+  local in='' output_dir='' component='' dry_run=false tmpdir='' plain='' arg
+  local -a password_args=()
+  while (($#)); do
+    case "$1" in
+      --output-dir)
+        [[ $# -ge 2 ]] || fail '--output-dir requires a path'
+        output_dir="$2"; shift 2 ;;
+      --output-dir=*) output_dir="${1#*=}"; shift ;;
+      --component)
+        [[ $# -ge 2 ]] || fail '--component requires data, config, or bootstrap'
+        component="$2"; shift 2 ;;
+      --component=*) component="${1#*=}"; shift ;;
+      --full) component=full; shift ;;
+      --dry-run) dry_run=true; shift ;;
+      --password-prompt|--password-stdin|--password-file|--password-file=*)
+        password_args+=("$1")
+        if [[ "$1" == '--password-file' ]]; then
+          [[ $# -ge 2 ]] || fail '--password-file requires a path'
+          password_args+=("$2"); shift
+        fi
+        shift ;;
+      *)
+        [[ -z "$in" ]] || fail 'backup path specified more than once'
+        in="$1"; shift ;;
+    esac
+  done
+  [[ -f "$in" ]] || fail 'backup file required'
+  [[ -n "$output_dir" ]] || fail '--output-dir is required for extract'
+  [[ "$component" == data || "$component" == config || "$component" == bootstrap || "$component" == full ]] || fail '--component or --full is required for extract'
+  require_cmd age
+  require_cmd python3
+  tmpdir="$(mktemp -d -t hermes-extract.XXXXXX)"
+  plain="$tmpdir/hermes-backup.tgz"
+  extract_cleanup() { rm -rf -- "$tmpdir" "$BACKUP_PASSWORD_TMP"; }
+  extract_on_exit() { local status=$?; extract_cleanup; trap - EXIT; exit "$status"; }
+  trap extract_on_exit EXIT
+  prepare_backup_password "${password_args[@]}"
+  python3 "$ROOT_DIR/scripts/age_passphrase.py" "$BACKUP_PASSWORD_TMP/password" -- \
+    age --decrypt --output "$plain" "$in" >/dev/null
+  validate_backup_archive "$plain" || fail 'backup archive validation failed'
+  if [[ -e "$output_dir" && ! -d "$output_dir" ]]; then
+    fail "extract output path is not a directory: $output_dir"
+  fi
+  if [[ "$dry_run" != true ]] && [[ -d "$output_dir" ]] && [[ -n "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    fail "extract output directory is not empty: $output_dir"
+  fi
+  if [[ "$dry_run" == true ]]; then
+    printf 'Backup: valid\nMode: extract\nComponent: %s\nOutput directory: %s\nNo files written: dry-run\n' "$component" "$output_dir"
+    trap - EXIT
+    extract_cleanup
+    return 0
+  fi
+  mkdir -p "$output_dir"
+  chmod 700 "$output_dir"
+  python3 - "$plain" "$output_dir" "$component" <<'PY'
+import os
+import shutil
+import sys
+import tarfile
+
+archive, destination, component = sys.argv[1:]
+selected = {
+    "data": ("opt/data", "workspace"),
+    "config": ("metadata/hermes.env", "metadata/configuration_answers", "metadata/backup-info.txt"),
+    "bootstrap": ("metadata/bootstrap",),
+    "full": ("opt/data", "workspace", "metadata"),
+}[component]
+
+def choose(name):
+    return any(name == root or name.startswith(root + "/") for root in selected)
+
+def mapped(name):
+    if name.startswith("metadata/"):
+        return name[len("metadata/"):]
+    return name
+
+with tarfile.open(archive, "r:gz") as stream:
+    for member in stream.getmembers():
+        if not choose(member.name):
+            continue
+        target = os.path.join(destination, mapped(member.name))
+        if member.isdir():
+            os.makedirs(target, mode=0o700, exist_ok=True)
+            continue
+        if not member.isfile():
+            raise SystemExit(f"unsupported selected archive entry: {member.name}")
+        os.makedirs(os.path.dirname(target), mode=0o700, exist_ok=True)
+        source = stream.extractfile(member)
+        if source is None:
+            raise SystemExit(f"unable to read selected archive entry: {member.name}")
+        with open(target, "wb") as output:
+            shutil.copyfileobj(source, output)
+        os.chmod(target, member.mode & 0o700 or 0o600)
+PY
+  printf 'Extracted component %s to %s\n' "$component" "$output_dir"
+  trap - EXIT
+  extract_cleanup
+}
 restore() {
   local in='' plain='' tmpdir='' arg
   local -a password_args=()
   while (($#)); do
     case "$1" in
-      --password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
+      --password-prompt|--password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
       -*) fail "unknown restore option: $1" ;;
       *) [[ -z "$in" ]] || fail 'restore path specified more than once'; in="$1"; shift ;;
     esac
@@ -555,6 +661,7 @@ if [[ "${HERMES_MAINTAIN_LIB_ONLY:-false}" != true ]]; then
     restart) restart "$@" ;;
     upgrade) upgrade "$@" ;;
     backup) backup "$@" ;;
+    extract) extract_backup "$@" ;;
     restore) restore "$@" ;;
     rotate-passwords) rotate_passwords "$@" ;;
     rotate-browser-token) rotate_browser_token "$@" ;;
