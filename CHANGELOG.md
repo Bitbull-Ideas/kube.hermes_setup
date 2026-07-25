@@ -45,6 +45,7 @@ All notable changes to this project are documented in this file.
 - Ensures the wizard and installer never store or print plaintext credentials; successful operations provide Kubernetes Secret extraction commands instead.
 - Updates QA credential acceptance to require Secret-only storage and explicitly reject obsolete local credential-capture-file expectations.
 - Replaces executable `ENV_FILE` sourcing in installer, maintenance, and diagnostics with a non-executing parser for quoted `KEY=value` assignments; unsafe shell environment controls are rejected.
+- Uses native cryptographic password generation via `openssl rand -base64` for generated Dashboard/WebUI passwords; API keys and Browserless tokens remain hex secrets, and no MD5-based generation is used.
 - Validates values crossing YAML and embedded-shell boundaries, including Kubernetes names, hosts, image references, resource sizes, numeric settings, paths, and control-character rejection.
 - Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.

@@ -68,6 +68,7 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 rand_hex() { openssl rand -hex "${1:-32}"; }
+generate_password() { openssl rand -base64 "${1:-36}" | tr -d '\n'; }
 
 is_truthy() { [[ "${1:-}" =~ ^(1|true|TRUE|yes|YES|y|Y|on|ON)$ ]]; }
 enabled_deployments() {
@@ -364,7 +365,7 @@ EOF
 
   case "$input_mode" in
     generate)
-      dashboard_pass="$(rand_hex 18)"
+      dashboard_pass="$(generate_password 36)"
       ;;
     env)
       dashboard_pass="$(secret_from_env DASHBOARD_AUTH_PASSWORD)"
