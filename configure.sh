@@ -139,6 +139,10 @@ else
   MODEL_PROVIDER="$(prompt_value 'Hermes model provider' 'codex')"
   MODEL_NAME="$(prompt_value 'Hermes model' 'gpt-5.6-luna')"
 
+  HERMES_AGENT_IMAGE="$(prompt_value 'Hermes Agent container image' 'nousresearch/hermes-agent:latest')"
+  HERMES_WEBUI_IMAGE="$(prompt_value 'Hermes WebUI container image' 'ghcr.io/nesquena/hermes-webui:latest')"
+  HERMES_BROWSER_IMAGE="$(prompt_value 'Browserless Chromium container image' 'ghcr.io/browserless/chromium:latest')"
+
   HERMES_DASHBOARD_ENABLED=false
   HERMES_WEBUI_ENABLED=false
   HERMES_BROWSER_ENABLED=false
@@ -201,8 +205,14 @@ DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 HERMES_ANSIBLE_VERSION="${HERMES_ANSIBLE_VERSION:-}"
 MODEL_PROVIDER="${MODEL_PROVIDER:-codex}"
 MODEL_NAME="${MODEL_NAME:-gpt-5.6-luna}"
+HERMES_AGENT_IMAGE="${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}"
+HERMES_WEBUI_IMAGE="${HERMES_WEBUI_IMAGE:-ghcr.io/nesquena/hermes-webui:latest}"
+HERMES_BROWSER_IMAGE="${HERMES_BROWSER_IMAGE:-ghcr.io/browserless/chromium:latest}"
 [[ "$MODEL_PROVIDER" =~ ^[A-Za-z0-9._:/-]+$ ]] || { printf 'ERROR: invalid model provider.\n' >&2; exit 1; }
 [[ "$MODEL_NAME" =~ ^[A-Za-z0-9._:/-]+$ ]] || { printf 'ERROR: invalid model name.\n' >&2; exit 1; }
+for image in "$HERMES_AGENT_IMAGE" "$HERMES_WEBUI_IMAGE" "$HERMES_BROWSER_IMAGE"; do
+  [[ "$image" =~ ^[A-Za-z0-9._/@:-]+$ ]] || { printf 'ERROR: invalid container image reference.\n' >&2; exit 1; }
+done
 [[ "$HERMES_BOOTSTRAP_MODE" == missing || "$HERMES_BOOTSTRAP_MODE" == overwrite ]] || { printf 'ERROR: invalid bootstrap mode in answers.\n' >&2; exit 1; }
 if [[ "$HERMES_ANSIBLE_SETUP" == true ]]; then
   [[ "$HERMES_ANSIBLE_VERSION" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || { printf 'ERROR: invalid Ansible version in answers.\n' >&2; exit 1; }
@@ -266,6 +276,9 @@ write_setting "$ENV_OUT" DASHBOARD_HOST "$DASHBOARD_HOST"
 write_setting "$ENV_OUT" DASHBOARD_AUTH_USER "$DASHBOARD_AUTH_USER"
 write_setting "$ENV_OUT" MODEL_PROVIDER "$MODEL_PROVIDER"
 write_setting "$ENV_OUT" MODEL_NAME "$MODEL_NAME"
+write_setting "$ENV_OUT" HERMES_AGENT_IMAGE "$HERMES_AGENT_IMAGE"
+write_setting "$ENV_OUT" HERMES_WEBUI_IMAGE "$HERMES_WEBUI_IMAGE"
+write_setting "$ENV_OUT" HERMES_BROWSER_IMAGE "$HERMES_BROWSER_IMAGE"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_PROFILE "$HERMES_BOOTSTRAP_PROFILE"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_DIR "$HERMES_BOOTSTRAP_DIR"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_MODE "$HERMES_BOOTSTRAP_MODE"
@@ -288,6 +301,9 @@ if [[ "$FROM_ANSWERS" != true ]]; then
   write_setting "$ANSWERS_FILE" DASHBOARD_AUTH_USER "$DASHBOARD_AUTH_USER"
   write_setting "$ANSWERS_FILE" MODEL_PROVIDER "$MODEL_PROVIDER"
   write_setting "$ANSWERS_FILE" MODEL_NAME "$MODEL_NAME"
+  write_setting "$ANSWERS_FILE" HERMES_AGENT_IMAGE "$HERMES_AGENT_IMAGE"
+  write_setting "$ANSWERS_FILE" HERMES_WEBUI_IMAGE "$HERMES_WEBUI_IMAGE"
+  write_setting "$ANSWERS_FILE" HERMES_BROWSER_IMAGE "$HERMES_BROWSER_IMAGE"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_SETUP "$HERMES_ANSIBLE_SETUP"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"
   write_setting "$ANSWERS_FILE" HERMES_SSH_SETUP "$HERMES_SSH_SETUP"

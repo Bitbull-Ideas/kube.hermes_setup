@@ -15,7 +15,44 @@ if [[ ! -f "$DEFAULT_ENV_FILE" && -f "$ROOT_DIR/current_config/hermes.env" ]]; t
   DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"
 fi
 ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
-[[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
+parse_env_file() {
+  local key encoded value
+  while IFS=$'\t' read -r key encoded; do
+    [[ -n "$key" ]] || continue
+    value="$(printf '%s' "$encoded" | base64 -d)" || { printf 'ERROR: unable to decode environment setting %s\n' "$key" >&2; exit 1; }
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < <(python3 - "$ENV_FILE" <<'PY'
+import base64, shlex, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as stream:
+        for number, line in enumerate(stream, 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            try:
+                fields = shlex.split(stripped, comments=True, posix=True)
+            except ValueError as exc:
+                raise SystemExit(f"invalid environment syntax at line {number}: {exc}")
+            if len(fields) != 1 or "=" not in fields[0]:
+                raise SystemExit(f"invalid environment assignment at line {number}")
+            key, value = fields[0].split("=", 1)
+            if not key or not (key[0].isalpha() or key[0] == "_") or not all(c.isalnum() or c == "_" for c in key):
+                raise SystemExit(f"invalid environment variable name at line {number}")
+            if key in {"BASH_ENV", "ENV", "CDPATH", "PATH", "SHELLOPTS", "BASHOPTS", "GLOBIGNORE", "PYTHONPATH", "PYTHONINSPECT"} or key.startswith("LD_"):
+                raise SystemExit(f"unsafe environment variable at line {number}")
+            print(f"{key}\t{base64.b64encode(value.encode()).decode()}")
+except OSError as exc:
+    raise SystemExit(f"unable to read environment file: {exc}")
+PY
+  )
+}
+[[ -f "$ENV_FILE" ]] && {
+  command -v python3 >/dev/null 2>&1 || { printf 'ERROR: Missing required command: python3\n' >&2; exit 1; }
+  command -v base64 >/dev/null 2>&1 || { printf 'ERROR: Missing required command: base64\n' >&2; exit 1; }
+  parse_env_file
+}
 [[ -z "$PROCESS_DASHBOARD_AUTH_USER_SET" ]] || DASHBOARD_AUTH_USER="$PROCESS_DASHBOARD_AUTH_USER"
 [[ -z "$PROCESS_DASHBOARD_AUTH_PASSWORD_SET" ]] || DASHBOARD_AUTH_PASSWORD="$PROCESS_DASHBOARD_AUTH_PASSWORD"
 [[ -z "$PROCESS_BROWSER_TOKEN_SET" ]] || BROWSER_TOKEN="$PROCESS_BROWSER_TOKEN"
@@ -83,9 +120,20 @@ upgrade() {
 }
 
 backup() {
-  local out="${1:-}"
+  local out="${1:-}" checksum
   [[ -n "$out" ]] || fail "backup path required"
   mkdir -p "$(dirname "$out")"
+  checksum="${out}.sha256"
+  backup_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  }
+  backup_on_exit() {
+    local status=$?
+    backup_cleanup
+    trap - EXIT
+    exit "$status"
+  }
+  trap backup_on_exit EXIT
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   cat <<JSON | kubectl apply -f - >/dev/null
 apiVersion: v1
@@ -113,11 +161,15 @@ spec:
       claimName: hermes-workspace
 JSON
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-backup --timeout=120s >/dev/null
-  kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'tar czf /tmp/hermes-backup.tgz -C / opt/data workspace'
+  kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; tar czf /tmp/hermes-backup.tgz -C / opt/data workspace; chmod 600 /tmp/hermes-backup.tgz'
   kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$out" -c backup >/dev/null
-  kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null
-  sha256sum "$out"
-  ls -lh "$out"
+  chmod 600 "$out"
+  trap - EXIT
+  backup_cleanup
+  sha256sum "$out" > "$checksum"
+  chmod 600 "$checksum"
+  sha256sum -c "$checksum"
+  ls -lh "$out" "$checksum"
 }
 
 restore() {
@@ -125,8 +177,26 @@ restore() {
   [[ -f "$in" ]] || fail "backup file required"
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_UID must be numeric"
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
-  local deployments=() d
+  local deployments=() d replicas
   mapfile -t deployments < <(enabled_write_deployments)
+  declare -A original_replicas=()
+  for d in "${deployments[@]}"; do
+    replicas="$(kubectl -n "$HERMES_NAMESPACE" get deploy "$d" -o jsonpath='{.spec.replicas}')"
+    original_replicas["$d"]="${replicas:-1}"
+  done
+  restore_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+    for d in "${deployments[@]}"; do
+      kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}" >/dev/null 2>&1 || true
+    done
+  }
+  restore_on_exit() {
+    local status=$?
+    restore_cleanup
+    trap - EXIT
+    exit "$status"
+  }
+  trap restore_on_exit EXIT
   log "Scaling down write-heavy deployments"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
@@ -159,11 +229,16 @@ JSON
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
   kubectl -n "$HERMES_NAMESPACE" cp "$in" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
-  kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null
+  trap - EXIT
+  restore_cleanup
   log "Scaling deployments up"
-  kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=1
   for d in "${deployments[@]}"; do
-    kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
+    kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}"
+  done
+  for d in "${deployments[@]}"; do
+    if [[ "${original_replicas[$d]}" -gt 0 ]]; then
+      kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
+    fi
   done
 }
 
@@ -233,13 +308,15 @@ apply_dashboard_auth_secret() {
   local user="$1" pass="$2" tmpdir
   tmpdir="$(mktemp -d)"
   chmod 700 "$tmpdir"
+  trap 'rm -rf -- "$tmpdir"' ERR
   printf '%s' "$user" > "$tmpdir/username"
   printf '%s' "$pass" > "$tmpdir/password"
   kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-dashboard-auth \
     --from-file=username="$tmpdir/username" \
     --from-file=password="$tmpdir/password" \
     --dry-run=client -o yaml | kubectl apply -f -
-  rm -rf "$tmpdir"
+  trap - ERR
+  rm -rf -- "$tmpdir"
 }
 
 rotate_passwords() {
@@ -323,11 +400,23 @@ EOF
 }
 rotate_browser_token() {
   is_truthy "$HERMES_BROWSER_ENABLED" || fail "Browser component is disabled"
-  local token="${BROWSER_TOKEN:-$(rand_hex 32)}" deployments=() d
+  local token="${BROWSER_TOKEN:-$(rand_hex 32)}" deployments=() d tmpdir
   mapfile -t deployments < <(enabled_deployments)
   local cdp="ws://hermes-browser:3000/chromium?token=${token}"
-  kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-token --from-literal=token="$token" --dry-run=client -o yaml | kubectl apply -f -
-  kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-cdp --from-literal=BROWSER_CDP_URL="$cdp" --dry-run=client -o yaml | kubectl apply -f -
+  tmpdir="$(mktemp -d -t hermes-browser-token.XXXXXX)"
+  chmod 700 "$tmpdir"
+  trap 'rm -rf -- "$tmpdir"' ERR
+  printf '%s' "$token" > "$tmpdir/token"
+  printf '%s' "$cdp" > "$tmpdir/BROWSER_CDP_URL"
+  chmod 600 "$tmpdir/token" "$tmpdir/BROWSER_CDP_URL"
+  kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-token \
+    --from-file=token="$tmpdir/token" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-cdp \
+    --from-file=BROWSER_CDP_URL="$tmpdir/BROWSER_CDP_URL" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  trap - ERR
+  rm -rf -- "$tmpdir"
   kubectl -n "$HERMES_NAMESPACE" rollout restart "${deployments[@]/#/deploy/}"
   for d in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s

@@ -44,7 +44,7 @@ The archive contains:
 /workspace
 ```
 
-This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. It does not include Kubernetes Secrets. Retain required credentials separately before namespace deletion. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration.
+This includes OAuth state, sessions, skills, memories, workspace files, and WebUI state. It does not include Kubernetes Secrets. Retain required credentials separately before namespace deletion. Treat backups as sensitive. Restore replaces both visible and hidden entries on both PVCs, then reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID` ownership from the active configuration. The backup archive and checksum are written with mode `0600`.
 
 ## Restore
 
@@ -55,6 +55,7 @@ The namespace, Deployments, and PVCs must already exist. After namespace deletio
 ./doctor.sh
 ```
 
+The helper Pod is removed on success or failure, and enabled write-heavy Deployments return to their original desired replica counts.
 
 ## Bootstrap agent configuration
 

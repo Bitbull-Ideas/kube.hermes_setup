@@ -7,7 +7,40 @@ if [[ ! -f "$DEFAULT_ENV_FILE" && -f "$ROOT_DIR/current_config/hermes.env" ]]; t
   DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"
 fi
 ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
-[[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
+parse_env_file() {
+  local key encoded value
+  while IFS=$'\t' read -r key encoded; do
+    [[ -n "$key" ]] || continue
+    value="$(printf '%s' "$encoded" | base64 -d)" || { printf 'ERROR: unable to decode environment setting %s\n' "$key" >&2; exit 1; }
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < <(python3 - "$ENV_FILE" <<'PY'
+import base64, shlex, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as stream:
+        for number, line in enumerate(stream, 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            try:
+                fields = shlex.split(stripped, comments=True, posix=True)
+            except ValueError as exc:
+                raise SystemExit(f"invalid environment syntax at line {number}: {exc}")
+            if len(fields) != 1 or "=" not in fields[0]:
+                raise SystemExit(f"invalid environment assignment at line {number}")
+            key, value = fields[0].split("=", 1)
+            if not key or not (key[0].isalpha() or key[0] == "_") or not all(c.isalnum() or c == "_" for c in key):
+                raise SystemExit(f"invalid environment variable name at line {number}")
+            if key in {"BASH_ENV", "ENV", "CDPATH", "PATH", "SHELLOPTS", "BASHOPTS", "GLOBIGNORE", "PYTHONPATH", "PYTHONINSPECT"} or key.startswith("LD_"):
+                raise SystemExit(f"unsafe environment variable at line {number}")
+            print(f"{key}\t{base64.b64encode(value.encode()).decode()}")
+except OSError as exc:
+    raise SystemExit(f"unable to read environment file: {exc}")
+PY
+  )
+}
+[[ -f "$ENV_FILE" ]] && { command -v python3 >/dev/null 2>&1 || { printf 'ERROR: Missing required command: python3\n' >&2; exit 1; }; command -v base64 >/dev/null 2>&1 || { printf 'ERROR: Missing required command: base64\n' >&2; exit 1; }; parse_env_file; }
 HERMES_BOOTSTRAP_PROFILE="${HERMES_BOOTSTRAP_PROFILE-personal-assistant}"
 if [[ -n "$HERMES_BOOTSTRAP_PROFILE" ]]; then
   profile_dir="$ROOT_DIR/examples/bootstrap-profiles/$HERMES_BOOTSTRAP_PROFILE"

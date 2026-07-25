@@ -35,7 +35,17 @@ All notable changes to this project are documented in this file.
 - Preserves explicit `--from-env` password and browser-token rotation inputs when the active env file contains blank wizard placeholders.
 - Clears internal profile-requirements state before each installer default-resolution pass so sourced or inherited state cannot alter custom requirements.
 - Makes restore remove hidden as well as visible PVC entries and reapplies the configured runtime UID/GID instead of hard-coded `1000:1000` ownership.
+- Adds image-specific Kubernetes security contexts: RuntimeDefault seccomp and disabled ServiceAccount-token automounting for all workloads; no privilege escalation for application containers; numeric non-root Browserless with all capabilities dropped.
+- Adds a live-tested security exception for current Agent/Dashboard/WebUI root-start initialization and privileged init-container volume preparation.
+- Moves Browserless token rotation from `kubectl --from-literal` process arguments to mode-restricted temporary files passed with `--from-file`, with cleanup traps.
+- Adds cleanup traps for all installer and maintenance temporary Secret staging directories, including failed Kubernetes Secret-apply paths.
+- Protects backup archives and generated SHA-256 checksum files with mode `0600`.
+- Adds backup/restore cleanup traps and restores each enabled deployment to its original replica count after success or failure.
+- Ensures the wizard offers configurable Agent, WebUI, and Browserless image references while retaining `latest` as the default.
 - Ensures the wizard and installer never store or print plaintext credentials; successful operations provide Kubernetes Secret extraction commands instead.
+- Updates QA credential acceptance to require Secret-only storage and explicitly reject obsolete local credential-capture-file expectations.
+- Replaces executable `ENV_FILE` sourcing in installer, maintenance, and diagnostics with a non-executing parser for quoted `KEY=value` assignments; unsafe shell environment controls are rejected.
+- Validates values crossing YAML and embedded-shell boundaries, including Kubernetes names, hosts, image references, resource sizes, numeric settings, paths, and control-character rejection.
 - Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 - Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.

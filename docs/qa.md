@@ -72,7 +72,7 @@ For ordinary reinstall tests:
 - missing Secrets generate values;
 - malformed, empty, missing-key, RBAC, connectivity, and weak-key errors fail closed;
 - compare hashes or source classifications only; never print values;
-- verify credential capture mode `0600` and atomic replacement behavior.
+- verify that no local credential-capture file is created; compare only Kubernetes Secret source classifications, hashes, metadata, and status.
 
 ## Recommended command sequence
 

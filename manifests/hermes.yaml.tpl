@@ -45,9 +45,12 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: ${HERMES_RUNTIME_GID}
         fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: init
         image: ${HERMES_AGENT_IMAGE}
@@ -330,9 +333,12 @@ spec:
       labels:
         app: hermes-agent
     spec:
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: ${HERMES_RUNTIME_GID}
         fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: prepare-permissions
         image: busybox:1.36
@@ -359,6 +365,8 @@ spec:
       - name: hermes-agent
         image: ${HERMES_AGENT_IMAGE}
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
         command: ["/init", "/opt/hermes/docker/main-wrapper.sh"]
         args: ["gateway", "run"]
         ports:
@@ -463,9 +471,12 @@ spec:
       labels:
         app: hermes-dashboard
     spec:
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: ${HERMES_RUNTIME_GID}
         fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: prepare-permissions
         image: busybox:1.36
@@ -492,6 +503,8 @@ spec:
       - name: hermes-dashboard
         image: ${HERMES_AGENT_IMAGE}
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
         command: ["/init", "/opt/hermes/docker/main-wrapper.sh"]
         args: ["dashboard", "--host", "0.0.0.0", "--port", "9119", "--no-open"]
         ports:
@@ -602,9 +615,12 @@ spec:
       labels:
         app: hermes-webui
     spec:
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: ${HERMES_RUNTIME_GID}
         fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: prepare-webui-state
         image: busybox:1.36
@@ -657,6 +673,8 @@ spec:
       - name: hermes-webui
         image: ${HERMES_WEBUI_IMAGE}
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - name: web
           containerPort: 8787
@@ -787,10 +805,22 @@ spec:
       labels:
         app: hermes-browser
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: chromium
         image: ${HERMES_BROWSER_IMAGE}
         imagePullPolicy: Always
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         ports:
         - name: http
           containerPort: 3000

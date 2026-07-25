@@ -188,9 +188,10 @@ Before destructive operations:
 mkdir -p backups
 backup="./backups/hermes-$(date -u +%Y%m%dT%H%M%SZ).tgz"
 ./maintain.sh backup "$backup"
+# maintain.sh creates and protects the matching .sha256 file.
 tar -tzf "$backup" >/dev/null
-sha256sum "$backup" > "$backup.sha256"
 sha256sum -c "$backup.sha256"
+stat -c '%a %n' "$backup" "$backup.sha256"  # both must be 600
 ```
 
 The archive contains both PVC filesystems:
@@ -228,7 +229,7 @@ Restore only after `install.sh` has recreated the namespace, Deployments, and PV
 ./doctor.sh
 ```
 
-Restore scales write-heavy deployments down, clears visible and hidden entries on both PVCs, extracts the archive, reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID`, and scales deployments up.
+Restore scales the enabled write-heavy deployments down, clears visible and hidden entries on both PVCs, extracts the archive, reapplies `HERMES_RUNTIME_UID:HERMES_RUNTIME_GID`, removes the helper Pod, and restores each deployment's original desired replica count. If any restore step fails, the cleanup path removes the helper Pod and attempts to restore those original counts.
 
 ## Profiles
 

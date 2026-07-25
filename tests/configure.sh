@@ -33,6 +33,26 @@ done
 grep -Fq 'chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace' "$ROOT_DIR/maintain.sh"
 ! grep -Fq 'chown -R 1000:1000' "$ROOT_DIR/maintain.sh"
 grep -Fq 'find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +' "$ROOT_DIR/maintain.sh"
+! grep -Fq -- '--from-literal' "$ROOT_DIR/maintain.sh"
+grep -Fq 'from-file=token=' "$ROOT_DIR/maintain.sh"
+grep -Fq 'chmod 600 "$out"' "$ROOT_DIR/maintain.sh"
+grep -Fq 'chmod 600 "$checksum"' "$ROOT_DIR/maintain.sh"
+grep -Fq 'umask 077' "$ROOT_DIR/maintain.sh"
+grep -Fq 'trap '\''rm -rf -- "$tmpdir"'\'' ERR' "$ROOT_DIR/maintain.sh"
+grep -Fq 'trap '\''rm -rf -- "$dash_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
+grep -Fq 'trap '\''rm -rf -- "$secret_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
+grep -Fq 'trap backup_on_exit EXIT' "$ROOT_DIR/maintain.sh"
+grep -Fq 'parse_env_file' "$ROOT_DIR/maintain.sh"
+grep -Fq 'parse_env_file' "$ROOT_DIR/doctor.sh"
+grep -Fq 'reject_control_chars' "$ROOT_DIR/scripts/render_template.py"
+grep -Fq 'require_pattern' "$ROOT_DIR/scripts/render_template.py"
+! grep -Fq 'source "$ENV_FILE"' "$ROOT_DIR/install.sh"
+! grep -Fq 'source "$ENV_FILE"' "$ROOT_DIR/maintain.sh"
+! grep -Fq 'source "$ENV_FILE"' "$ROOT_DIR/doctor.sh"
+
+grep -Fq 'trap restore_on_exit EXIT' "$ROOT_DIR/maintain.sh"
+grep -Fq 'original_replicas' "$ROOT_DIR/maintain.sh"
+grep -Fq 'replicas="${original_replicas[$d]}"' "$ROOT_DIR/maintain.sh"
 touch "$fallback_root/hermes.env"
 resolved_env="$(HERMES_INSTALL_LIB_ONLY=true bash -c 'source "$1/install.sh"; printf "%s" "$ENV_FILE"' _ "$fallback_root")"
 [[ "$resolved_env" == "$fallback_root/hermes.env" ]]
@@ -52,7 +72,7 @@ grep -q 'HERMES_INSTALL_LIB_ONLY=false ENV_FILE=' "$ROOT_DIR/configure.sh"
 
 config_one="$TMP_DIR/current-one"
 answers_one="$TMP_DIR/answers-one"
-printf '\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
+printf '\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
   "$ROOT_DIR/setup.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 
 [[ -f "$config_one/hermes.env" ]]
@@ -112,7 +132,7 @@ fi
 
 config_two="$TMP_DIR/current-two"
 answers_two="$TMP_DIR/answers-two"
-printf '\n\nopenrouter\nopenai/gpt-5.6\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\n' | \
+printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_two" --answers-file "$answers_two" >/dev/null
 # shellcheck disable=SC1090
 source "$config_two/hermes.env"
@@ -196,9 +216,28 @@ for document in yaml.safe_load_all(open(sys.argv[1])):
     if document and document.get('kind') == 'Deployment' and document.get('metadata', {}).get('name') == 'hermes-webui':
         env = {item['name']: item.get('value') for item in document['spec']['template']['spec']['containers'][0]['env']}
         assert env['HERMES_NIX_BUILD'] == '1'
+        assert document['spec']['template']['spec']['automountServiceAccountToken'] is False
+        assert document['spec']['template']['spec']['securityContext']['seccompProfile']['type'] == 'RuntimeDefault'
+        assert document['spec']['template']['spec']['containers'][0]['securityContext']['allowPrivilegeEscalation'] is False
         break
 else:
     raise AssertionError('hermes-webui Deployment missing')
+
+for document in yaml.safe_load_all(open(sys.argv[1])):
+    if not document or document.get('kind') != 'Deployment':
+        continue
+    pod = document['spec']['template']['spec']
+    assert pod['automountServiceAccountToken'] is False
+    assert pod['securityContext']['seccompProfile']['type'] == 'RuntimeDefault'
+    if document['metadata']['name'] == 'hermes-browser':
+        container = pod['containers'][0]
+        assert container['securityContext']['runAsUser'] == 999
+        assert container['securityContext']['runAsGroup'] == 999
+        assert container['securityContext']['runAsNonRoot'] is True
+        assert container['securityContext']['allowPrivilegeEscalation'] is False
+        assert container['securityContext']['capabilities']['drop'] == ['ALL']
+    elif document['metadata']['name'] in ('hermes-agent', 'hermes-dashboard'):
+        assert pod['containers'][0]['securityContext']['allowPrivilegeEscalation'] is False
 PY
 
 printf 'configure and component tests passed\n'

@@ -37,10 +37,42 @@ load_env() {
     warn "Missing env file: $ENV_FILE. Using environment variables only."
     return 0
   fi
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+  require_cmd python3
+  require_cmd base64
+  local key encoded value parsed
+  if ! parsed="$(python3 - "$ENV_FILE" <<'PY'
+import base64, shlex, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as stream:
+        for number, line in enumerate(stream, 1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            try:
+                fields = shlex.split(stripped, comments=True, posix=True)
+            except ValueError as exc:
+                raise SystemExit(f"invalid environment syntax at line {number}: {exc}")
+            if len(fields) != 1 or "=" not in fields[0]:
+                raise SystemExit(f"invalid environment assignment at line {number}")
+            key, value = fields[0].split("=", 1)
+            if not key or not (key[0].isalpha() or key[0] == "_") or not all(c.isalnum() or c == "_" for c in key):
+                raise SystemExit(f"invalid environment variable name at line {number}")
+            if key in {"BASH_ENV", "ENV", "CDPATH", "PATH", "SHELLOPTS", "BASHOPTS", "GLOBIGNORE", "PYTHONPATH", "PYTHONINSPECT"} or key.startswith("LD_"):
+                raise SystemExit(f"unsafe environment variable at line {number}")
+            print(f"{key}\t{base64.b64encode(value.encode()).decode()}")
+except OSError as exc:
+    raise SystemExit(f"unable to read environment file: {exc}")
+PY
+)"; then
+    fail "Unable to parse environment file $ENV_FILE"
+  fi
+  while IFS=$'\t' read -r key encoded; do
+    [[ -n "$key" ]] || continue
+    value="$(printf '%s' "$encoded" | base64 -d)" || fail "Unable to decode environment setting $key"
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done <<< "$parsed"
   [[ -z "$PROCESS_DASHBOARD_AUTH_USER_SET" ]] || DASHBOARD_AUTH_USER="$PROCESS_DASHBOARD_AUTH_USER"
   [[ -z "$PROCESS_DASHBOARD_AUTH_PASSWORD_SET" ]] || DASHBOARD_AUTH_PASSWORD="$PROCESS_DASHBOARD_AUTH_PASSWORD"
   [[ -z "$PROCESS_API_SERVER_KEY_SET" ]] || API_SERVER_KEY="$PROCESS_API_SERVER_KEY"
@@ -194,7 +226,18 @@ enabled_deployments() {
 validate() {
   require_cmd kubectl
   require_cmd openssl
+  local scalar scalar_name
+  for scalar_name in HERMES_NAMESPACE WEBUI_HOST DASHBOARD_HOST TLS_SECRET_NAME STORAGE_CLASS_NAME MODEL_PROVIDER MODEL_NAME HERMES_AGENT_IMAGE HERMES_WEBUI_IMAGE HERMES_BROWSER_IMAGE HERMES_SSH_KEY_PATH HERMES_UV_DIR HERMES_ADDON_VENV; do
+    scalar="${!scalar_name-}"
+    [[ "$scalar" != *$'\n'* && "$scalar" != *$'\r'* && "$scalar" != *$'\t'* ]] || fail "$scalar_name must not contain control characters"
+  done
   [[ -n "${HERMES_NAMESPACE:-}" ]] || fail "HERMES_NAMESPACE is required"
+  [[ "$HERMES_NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || fail "HERMES_NAMESPACE must be a DNS-compatible Kubernetes name"
+  [[ "${MODEL_PROVIDER:-}" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "MODEL_PROVIDER contains unsupported YAML characters"
+  [[ "${MODEL_NAME:-}" =~ ^[A-Za-z0-9._:/-]+$ ]] || fail "MODEL_NAME contains unsupported YAML characters"
+  for image in "$HERMES_AGENT_IMAGE" "$HERMES_WEBUI_IMAGE" "$HERMES_BROWSER_IMAGE"; do
+    [[ "$image" =~ ^[A-Za-z0-9._/@:-]+$ ]] || fail "container image reference contains unsupported YAML characters"
+  done
   is_truthy "$HERMES_AGENT_ENABLED" || fail "HERMES_AGENT_ENABLED must remain true; the Agent is mandatory"
   if is_truthy "$HERMES_WEBUI_ENABLED"; then
     [[ -n "${WEBUI_HOST:-}" ]] || fail "WEBUI_HOST is required when WebUI is enabled"
@@ -495,13 +538,15 @@ create_namespace_and_secrets() {
     local dash_tmpdir
     dash_tmpdir="$(mktemp -d)"
     chmod 700 "$dash_tmpdir"
+    trap 'rm -rf -- "$dash_tmpdir"' ERR
     printf '%s' "$DASHBOARD_AUTH_USER" > "$dash_tmpdir/username"
     printf '%s' "$DASHBOARD_AUTH_PASSWORD" > "$dash_tmpdir/password"
     kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-dashboard-auth \
       --from-file=username="$dash_tmpdir/username" \
       --from-file=password="$dash_tmpdir/password" \
       --dry-run=client -o yaml | kubectl apply -f -
-    rm -rf "$dash_tmpdir"
+    trap - ERR
+    rm -rf -- "$dash_tmpdir"
   else
     kubectl -n "$HERMES_NAMESPACE" delete secret hermes-dashboard-auth --ignore-not-found=true >/dev/null
   fi
@@ -509,6 +554,7 @@ create_namespace_and_secrets() {
   local secret_tmpdir
   secret_tmpdir="$(mktemp -d)"
   chmod 700 "$secret_tmpdir"
+  trap 'rm -rf -- "$secret_tmpdir"' ERR
   printf '%s' "$API_SERVER_KEY" > "$secret_tmpdir/api-key"
   printf '%s' "$BROWSER_TOKEN" > "$secret_tmpdir/token"
   printf '%s' "$BROWSER_CDP_URL" > "$secret_tmpdir/BROWSER_CDP_URL"
@@ -528,7 +574,8 @@ create_namespace_and_secrets() {
   kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-cdp \
     --from-file=BROWSER_CDP_URL="$secret_tmpdir/BROWSER_CDP_URL" \
     --dry-run=client -o yaml | kubectl apply -f -
-  rm -rf "$secret_tmpdir"
+  trap - ERR
+  rm -rf -- "$secret_tmpdir"
 }
 
 apply_and_wait() {
