@@ -291,6 +291,37 @@ See [`docs/security.md`](docs/security.md).
 └── docs/                   # focused operations and troubleshooting guides
 ```
 
+### scripts/
+
+| Script | Purpose |
+|--------|---------|
+| `render_template.py` | Reads the Jinja-style template (`manifests/hermes.yaml.tpl`) and environment variables, validates all values at the YAML/shell boundary (control characters, DNS names, booleans, image references), and writes the final multi-document Kubernetes manifest. Called by `install.sh`. |
+| `prepare_requirements.py` | Merges profile `requirements.txt` with the explicitly configured Ansible version. Replaces bare `ansible` entries with the pinned `ansible==VERSION` line so the addon pip install is deterministic. |
+| `age_passphrase.py` | Manages age-encryption passphrase lifecycle for `maintain.sh backup`/`restore`: prompt, stdin, or file-based delivery with mode-0600 validation. |
+| `kube_snapshot.py` | Captures a normalized snapshot of repository-owned Kubernetes resources (Namespace, PVCs, Deployments, Secrets, Services, Ingresses, NetworkPolicies, Jobs) for encrypted backup metadata. Used by `maintain.sh backup --full`. |
+
+### tests/
+
+| Test | Scope | What it checks |
+|------|-------|----------------|
+| `profile-composition.sh` | Bootstrap profiles | Skill allowlists, shared vs. profile-specific file layout, SSH/Ansible/NPX flag propagation, operator-variable overrides, custom `ANSIBLE_CONFIG` preservation. Runs `apply_profile_defaults()` + `compose_profile_bootstrap()` in matching sequences. |
+| `configure.sh` | Wizard artifacts | Interactive and `--from-answers` generation: env file mode 0600, credential absence from answers, correct `HERMES_*` values per profile, bootstrap config.yaml contract, prepared archive content, answer reuse/replay, replay-security against unowned directories. |
+| `matrix.sh` | Manifest rendering | All 8 optional-component combinations (Dash/WebUI/Browser on/off), 16 profile/Ansible/requirements combinations, injection-attack rejection (multiline YAML, invalid namespace). Each case renders the full manifest and validates resource presence/absence with Python + PyYAML. |
+| `backup.sh` | Backup/restore lifecycle | Encrypted archive creation, passphrase delivery, checksum validation, traversal/link/type rejection, dry-run restore, K3s-version/namespace policy enforcement, force override behavior, and malformed-archive handling. |
+| `credentials.sh` | Secret lifecycle | Explicit-vs-generated-vs-reused credential precedence, malformed/empty/missing Secret detection, weak-key rejection, and cross-credential boundary tests (Dashboard vs API vs Browserless). |
+| `qa-contract.sh` | Live-deployment contract | Shared conventions and assertion style used by all tests; documents the mandatory-live-acceptance policy referenced by `docs/qa.md`. |
+
+### docs/
+
+| Document | Content |
+|----------|---------|
+| `operations.md` | Day-2 operations: status, restart, upgrade, backup/restore/extract, bootstrap configuration lifecycle, credential management, password rotation, Browser token rotation, Codex re-auth, WebUI CDP setup, Browserless resource knobs, resource sizing, persistent Python addon packages, persistent HOME and SSH, and NPX/Node.js support. |
+| `qa.md` | Mandatory live-acceptance policy: test evidence requirements, minimum component matrix (agent-only, dashboard, webui, browser, full, reinstall, failure), backup acceptance, credential acceptance, and quality-rule labelling (static/local, render/schema, live/cluster, runtime/acceptance). |
+| `security.md` | Security posture: secrets policy, container security contexts, Browserless/CDP lockdown, authentication layers, TLS termination, backup encryption, password policy, credential storage, WebUI password bootstrap, upload sizing, API key length, and bootstrap data sensitivity. |
+| `troubleshooting.md` | Common failure patterns: init job failures, PVC issues, rollout stalls, ingress/connectivity, Browserless/CDP problems, WebUI authentication, and Codex OAuth pairing issues. |
+| `codex-auth.md` | Step-by-step OpenAI Codex OAuth pairing: `hermes model` execution, auth.json creation, backup-only persistence recommendation, and recovery from lost OAuth state. |
+| `ansible.md` | Ansible integration: addon-venv activation, collection bake-off, inventory construction, Ansible-core overrides, persistent known_hosts, and SSH config templates. |
+
 ## Acknowledgements
 
 - **[Chris Rüttimann (`joe-speedboat`)](https://github.com/joe-speedboat)** — project maintainer.
