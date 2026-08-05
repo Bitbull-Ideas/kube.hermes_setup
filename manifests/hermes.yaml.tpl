@@ -106,6 +106,9 @@ spec:
               [ ! -f "${HERMES_SSH_KEY_PATH}.pub" ] || chmod 644 "${HERMES_SSH_KEY_PATH}.pub"
             fi
           fi
+          if [ "${HERMES_NPX_SETUP}" = "true" ] || [ "${HERMES_NPX_SETUP}" = "TRUE" ] || [ "${HERMES_NPX_SETUP}" = "1" ] || [ "${HERMES_NPX_SETUP}" = "yes" ] || [ "${HERMES_NPX_SETUP}" = "YES" ] || [ "${HERMES_NPX_SETUP}" = "on" ] || [ "${HERMES_NPX_SETUP}" = "ON" ]; then
+            mkdir -p /opt/data/.npm
+          fi
           bootstrap_copy_missing() {
             src="$1"
             dest="$2"
@@ -187,6 +190,7 @@ spec:
           {
             printf '%s\n' '# Managed by kube.hermes_setup; do not put secrets in this file.'
             printf '%s\n' 'export PATH="${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:$PATH"'
+            printf '%s\n' 'export npm_config_yes=true'
             printf '%s\n' 'export LANG="C.UTF-8"'
             printf '%s\n' 'export LC_ALL="C.UTF-8"'
             if [ -n "${HERMES_ANSIBLE_CONFIG}" ]; then
@@ -396,6 +400,8 @@ spec:
           value: /opt/data:/workspace
         - name: HERMES_ADDON_PYTHON_MODE
           value: "${HERMES_ADDON_PYTHON_MODE}"
+        - name: npm_config_yes
+          value: "true"
         - name: HERMES_UV_DIR
           value: "${HERMES_UV_DIR}"
         - name: HERMES_ADDON_VENV

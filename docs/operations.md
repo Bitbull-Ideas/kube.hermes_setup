@@ -392,3 +392,28 @@ chmod 644 /opt/data/.ssh/id_ed25519.pub
 ```
 
 Keep host key checking enabled. Prefer maintaining `/opt/data/.ssh/known_hosts` or using reviewed per-host `accept-new` entries in `/opt/data/.ssh/config`; do not use global `StrictHostKeyChecking=no` as a default.
+
+## NPX / Node.js package support
+
+When `HERMES_NPX_SETUP=true` (default for `universal-system-architect`), the init job creates the npm cache directory at `/opt/data/.npm` with correct `hermes:hermes` ownership and the agent container receives `npm_config_yes=true` in its environment. This allows `npx`-based MCP servers and skill installers to run without blocking on interactive prompts or failing with `EACCES` on the cache directory.
+
+The setting is toggleable in `hermes.env`:
+
+```bash
+HERMES_NPX_SETUP=true
+```
+
+Operational behavior:
+
+- The npm cache directory lives on the PVC at `/opt/data/.npm` and survives Pod recreation.
+- `npm_config_yes=true` is set in the agent deployment environment and in the terminal profile hook (`/opt/data/home/.hermes-terminal-env`), so both the gateway process and interactive login shells inherit it.
+- No npm packages are pre-installed. The infrastructure only prepares the ground for `npx` to work without interactive prompts.
+- If `HERMES_NPX_SETUP=false`, no npm-related paths or environment variables are configured.
+
+Manual `npx` usage works from any context:
+
+```bash
+kubectl -n <namespace> exec deploy/hermes-agent -- npx --yes <package>
+```
+
+Because the agent `npm_config_yes=true` is set, adding `--yes` is technically redundant but keeps the command self-documenting for manual use.

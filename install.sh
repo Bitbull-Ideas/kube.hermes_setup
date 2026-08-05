@@ -291,6 +291,7 @@ prepare_defaults() {
   export HERMES_ADDON_VENV="/opt/data/addon-venv"
   export HERMES_ADDON_PYTHON_VERSION="${HERMES_ADDON_PYTHON_VERSION:-3.13}"
   export HERMES_ANSIBLE_SETUP="${HERMES_ANSIBLE_SETUP:-false}"
+  export HERMES_NPX_SETUP="${HERMES_NPX_SETUP:-false}"
   export HERMES_ANSIBLE_VERSION="${HERMES_ANSIBLE_VERSION:-14.1.0}"
   if is_truthy "$HERMES_ANSIBLE_SETUP"; then
     export HERMES_SSH_SETUP=true
@@ -378,6 +379,7 @@ prepare_defaults() {
   [[ "$HERMES_ADDON_VENV" = /opt/data/* ]] || fail "HERMES_ADDON_VENV must be under /opt/data for PVC persistence"
   [[ "$HERMES_ADDON_PYTHON_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || fail "HERMES_ADDON_PYTHON_VERSION must look like 3.13 or 3.13.5"
   case "$HERMES_SSH_SETUP" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "HERMES_SSH_SETUP must be boolean" ;; esac
+  case "$HERMES_NPX_SETUP" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "HERMES_NPX_SETUP must be boolean" ;; esac
   case "$HERMES_ANSIBLE_SETUP" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "HERMES_ANSIBLE_SETUP must be boolean" ;; esac
   for component_value in "$HERMES_AGENT_ENABLED" "$HERMES_DASHBOARD_ENABLED" "$HERMES_WEBUI_ENABLED" "$HERMES_BROWSER_ENABLED"; do
     case "$component_value" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "component enablement values must be boolean" ;; esac
@@ -416,6 +418,9 @@ apply_profile_defaults() {
   source "$defaults"
   if [[ -z "${HERMES_SSH_SETUP+x}" ]]; then
     export HERMES_SSH_SETUP="${HERMES_PROFILE_DEFAULT_SSH_SETUP:-true}"
+  fi
+  if [[ -z "${HERMES_NPX_SETUP+x}" ]]; then
+    export HERMES_NPX_SETUP="${HERMES_PROFILE_DEFAULT_NPX_SETUP:-false}"
   fi
   if [[ -z "${HERMES_ANSIBLE_SETUP+x}" ]]; then
     export HERMES_ANSIBLE_SETUP="${HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP:-false}"

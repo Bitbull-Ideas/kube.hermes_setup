@@ -1,6 +1,6 @@
 # kube.hermes_setup
 
-Current release: **v2.0.1** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
+Current release: **v2.1.0** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
 
 Production-oriented Kubernetes/K3s installer for a [Hermes Agent](https://github.com/nousresearch/hermes-agent) stack:
 
@@ -239,12 +239,12 @@ Supported components are `data`, `config`, `bootstrap`, and `full`. The output d
 
 ## Profiles
 
-| Profile | Skills | Ansible | SSH | Addon requirements |
-|---|---|---|---|---|
-| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog` | disabled | disabled | profile requirements |
-| `universal-system-architect` | all shared skills | enabled | enabled | Ansible/cloud requirements |
+| Profile | Skills | NPX | Ansible | SSH | Addon requirements |
+|---|---|---|---|---|---|---|
+| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog` | disabled | disabled | disabled | profile requirements |
+| `universal-system-architect` | all shared skills | enabled | enabled | enabled | Ansible/cloud requirements |
 
-Explicit `HERMES_ANSIBLE_SETUP`, `HERMES_SSH_SETUP`, `HERMES_ADDON_REQUIREMENTS`, and `HERMES_ANSIBLE_VERSION` values override profile defaults.
+Explicit `HERMES_NPX_SETUP`, `HERMES_ANSIBLE_SETUP`, `HERMES_SSH_SETUP`, `HERMES_ADDON_REQUIREMENTS`, and `HERMES_ANSIBLE_VERSION` values override profile defaults.
 
 Skill metadata may list related skills. In this repository, a related skill is **bundled** only when its directory exists under `examples/bootstrap-shared/skills/`. A reference such as `hermes-agent`, `github-auth`, or `github-pr-workflow` is an **external-runtime** or **optional-reference** dependency and is not copied by this setup. The profile's `skills.txt` file is the authoritative installation allowlist.
 
