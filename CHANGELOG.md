@@ -4,8 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [v2.1.2] - 2026-08-05
 
+### Added
+
+- NPX setup is now asked interactively in the `configure.sh` wizard. When
+  replaying saved answers (`--from-answers`), the profile default is used.
+- Python addon version is now asked in the wizard with version format validation.
+  Accepts values like `3.13` or `3.13.5`.
+- Both `HERMES_NPX_SETUP` and `HERMES_ADDON_PYTHON_VERSION` are written to
+  `hermes.env` and saved to `configuration_answers` for durable replay.
+
+### Changed
+
+- README: adds full reference tables for `scripts/`, `tests/`, and `docs/`
+  directories, documenting the purpose of every file in each directory.
+- README: documents the three-step profile default resolution chain (explicit
+  answer → profile default → hardcoded fallback) with a reference table
+  covering SSH, Ansible, NPX, and Python version. [PR #58]
+
 ### Fixed
-- Minor documentation syntax fixes. [PR #58]
+
+- Minor documentation syntax fixes.
 
 ## [v2.1.1] - 2026-08-05
 
