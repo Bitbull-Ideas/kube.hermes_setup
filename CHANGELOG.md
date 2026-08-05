@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.1.1] - 2026-08-05
+
+### Fixed
+
+- Fixes `configure.sh` crashing with `HERMES_NPX_SETUP: unbound variable` when running the interactive wizard. The wizard did not resolve profile-owned variables — adds `apply_profile_defaults()` call after wizard questions so `HERMES_NPX_SETUP` (and any future profile-default variables) are populated from the selected profile's `defaults.conf` before writing the env file and composing bootstrap. [PR #56]
+
 ## [v2.1.0] - 2026-08-05
 
 ### Added
