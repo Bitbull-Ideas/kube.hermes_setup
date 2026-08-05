@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.1.2] - 2026-08-05
+
+### Fixed
+- Minor documentation syntax fixes. [PR #57]
+
 ## [v2.1.1] - 2026-08-05
 
 ### Fixed

@@ -1,6 +1,6 @@
 # kube.hermes_setup
 
-Current release: **v2.1.1** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
+Current release: **v2.1.2** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
 
 Production-oriented Kubernetes/K3s installer for a [Hermes Agent](https://github.com/nousresearch/hermes-agent) stack:
 
@@ -240,7 +240,7 @@ Supported components are `data`, `config`, `bootstrap`, and `full`. The output d
 ## Profiles
 
 | Profile | Skills | NPX | Ansible | SSH | Addon requirements |
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|
 | `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog` | disabled | disabled | disabled | profile requirements |
 | `universal-system-architect` | all shared skills | enabled | enabled | enabled | Ansible/cloud requirements |
 
@@ -295,7 +295,7 @@ See [`docs/security.md`](docs/security.md).
 
 - **[Chris Rüttimann (`joe-speedboat`)](https://github.com/joe-speedboat)** — project maintainer.
 - **[Nicolas Eberle (`archham`)](https://github.com/archham)** — operational ideas, use cases, and reusable-skill inspiration.
-- **[`hermes-speedboat`](https://github.com/hermes-speedboat)** — automation identity represented in repository history.
+- **[Hermes Agent (`hermes-speedboat`)](https://github.com/hermes-speedboat)** — automation identity represented in repository history.
 
 ## License
 
