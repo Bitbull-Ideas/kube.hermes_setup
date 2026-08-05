@@ -19,8 +19,9 @@ RENDER_DIR="$TMP_DIR/rendered"
 # Reset variables that profile composition may derive or preserve.
 reset_profile_env() {
   unset HERMES_BOOTSTRAP_DIR HERMES_SSH_SETUP HERMES_SSH_GENERATE_KEY
+  unset HERMES_NPX_SETUP
   unset HERMES_ANSIBLE_SETUP HERMES_ANSIBLE_CONFIG HERMES_ADDON_REQUIREMENTS
-  unset HERMES_PROFILE_DEFAULT_SSH_SETUP HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP
+  unset HERMES_PROFILE_DEFAULT_SSH_SETUP HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP HERMES_PROFILE_DEFAULT_NPX_SETUP
   unset HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS HERMES_PROFILE_REQUIREMENTS_SELECTED
 }
 
@@ -55,6 +56,7 @@ assert_absent "$personal_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$personal_stage/workspace/POST_SETUP.md"
 assert_absent "$personal_stage/workspace/ansible"
 [[ "$HERMES_SSH_SETUP" == false && "$HERMES_ANSIBLE_SETUP" == false ]]
+[[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/personal-assistant/requirements.txt" ]]
 
 reset_profile_env
@@ -68,6 +70,7 @@ assert_absent "$architect_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$architect_stage/workspace/POST_SETUP.md"
 assert_file "$architect_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
+[[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-architect/requirements.txt" ]]
 
 reset_profile_env
@@ -80,6 +83,7 @@ compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 override_stage="$HERMES_BOOTSTRAP_DIR"
 assert_absent "$override_stage/workspace/ansible"
 [[ "$HERMES_SSH_SETUP" == false && "$HERMES_ANSIBLE_SETUP" == false ]]
+[[ "$HERMES_NPX_SETUP" == true ]]
 [[ -z "$HERMES_ADDON_REQUIREMENTS" ]]
 
 reset_profile_env
