@@ -114,6 +114,7 @@ source "$config_one/hermes.env"
 [[ "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_ANSIBLE_VERSION" == 13.4.0 ]]
 [[ "$HERMES_SSH_SETUP" == true ]]
+[[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == overwrite ]]
 [[ "$MODEL_PROVIDER" == openai-codex ]]
 [[ "$MODEL_NAME" == gpt-5.6-luna ]]
@@ -206,6 +207,7 @@ source "$reuse_config/hermes.env"
 [[ "$MODEL_PROVIDER" == reuse-provider && "$MODEL_NAME" == reuse-model ]]
 [[ "$HERMES_IMAGE_PULL_POLICY" == Always ]]
 [[ "$HERMES_ANSIBLE_SETUP" == false && "$HERMES_SSH_SETUP" == true ]]
+[[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 
 unowned="$TMP_DIR/unowned"
@@ -233,6 +235,7 @@ DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 [[ -z "$DASHBOARD_AUTH_PASSWORD" ]]
 [[ "$HERMES_ANSIBLE_SETUP" == false ]]
 [[ "$HERMES_SSH_SETUP" == false ]]
+[[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 [[ "$MODEL_PROVIDER" == openrouter ]]
 [[ "$MODEL_NAME" == openai/gpt-5.6 ]]
