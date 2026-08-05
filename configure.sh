@@ -214,6 +214,20 @@ else
     if ask_yes_no 'Prepare a persistent SSH keypair?' "$HERMES_SSH_SETUP"; then HERMES_SSH_SETUP=true; else HERMES_SSH_SETUP=false; fi
   fi
 
+  HERMES_NPX_SETUP="$(answer_bool_default HERMES_NPX_SETUP false)"
+  if ask_yes_no 'Prepare Node.js/npx for MCP and skill support?' "$HERMES_NPX_SETUP"; then HERMES_NPX_SETUP=true; else HERMES_NPX_SETUP=false; fi
+
+  HERMES_ADDON_PYTHON_VERSION="$(answer_default HERMES_ADDON_PYTHON_VERSION '')"
+  if ask_yes_no 'Install addon Python packages?' "$([[ -n "$HERMES_ADDON_PYTHON_VERSION" ]] && echo true || echo false)"; then
+    while true; do
+      HERMES_ADDON_PYTHON_VERSION="$(prompt_value 'Python version for addon packages' "$(answer_default HERMES_ADDON_PYTHON_VERSION 3.13)")"
+      [[ "$HERMES_ADDON_PYTHON_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] && break
+      printf 'Enter a Python version such as 3.13 or 3.13.5.\n' >&2
+    done
+  else
+    HERMES_ADDON_PYTHON_VERSION=
+  fi
+
   bootstrap_overwrite_default=false
   [[ "${HERMES_BOOTSTRAP_MODE:-}" == overwrite ]] && bootstrap_overwrite_default=true
   if ask_yes_no 'Overwrite existing bootstrap-managed files on the PVC?' "$bootstrap_overwrite_default"; then
@@ -236,6 +250,8 @@ DASHBOARD_HOST="${DASHBOARD_HOST:-}"
 DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER:-}"
 DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 HERMES_ANSIBLE_VERSION="${HERMES_ANSIBLE_VERSION:-}"
+HERMES_NPX_SETUP="${HERMES_NPX_SETUP:-}"
+HERMES_ADDON_PYTHON_VERSION="${HERMES_ADDON_PYTHON_VERSION:-}"
 MODEL_PROVIDER="${MODEL_PROVIDER:-openai-codex}"
 MODEL_NAME="${MODEL_NAME:-gpt-5.6-luna}"
 HERMES_AGENT_IMAGE="${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}"
@@ -327,6 +343,7 @@ write_setting "$ENV_OUT" HERMES_BOOTSTRAP_MODE "$HERMES_BOOTSTRAP_MODE"
 write_setting "$ENV_OUT" HERMES_RENDER_DIR "$HERMES_RENDER_DIR"
 write_setting "$ENV_OUT" HERMES_ANSIBLE_SETUP "$HERMES_ANSIBLE_SETUP"
 write_setting "$ENV_OUT" HERMES_NPX_SETUP "$HERMES_NPX_SETUP"
+write_setting "$ENV_OUT" HERMES_ADDON_PYTHON_VERSION "$HERMES_ADDON_PYTHON_VERSION"
 write_setting "$ENV_OUT" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"
 write_setting "$ENV_OUT" HERMES_SSH_SETUP "$HERMES_SSH_SETUP"
 write_setting "$ENV_OUT" HERMES_SSH_GENERATE_KEY "$HERMES_SSH_SETUP"
@@ -349,6 +366,8 @@ if [[ "$FROM_ANSWERS" != true ]]; then
   write_setting "$ANSWERS_FILE" HERMES_BROWSER_IMAGE "$HERMES_BROWSER_IMAGE"
   write_setting "$ANSWERS_FILE" HERMES_IMAGE_PULL_POLICY "$HERMES_IMAGE_PULL_POLICY"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_SETUP "$HERMES_ANSIBLE_SETUP"
+  write_setting "$ANSWERS_FILE" HERMES_NPX_SETUP "$HERMES_NPX_SETUP"
+  write_setting "$ANSWERS_FILE" HERMES_ADDON_PYTHON_VERSION "$HERMES_ADDON_PYTHON_VERSION"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"
   write_setting "$ANSWERS_FILE" HERMES_SSH_SETUP "$HERMES_SSH_SETUP"
   write_setting "$ANSWERS_FILE" HERMES_BOOTSTRAP_MODE "$HERMES_BOOTSTRAP_MODE"

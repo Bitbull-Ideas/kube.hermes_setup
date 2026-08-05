@@ -13,7 +13,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
-printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\n' | \
+printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
     --answers-file "$TMP_DIR/profile-answers" > "$profile_output"
@@ -95,7 +95,7 @@ grep -q 'HERMES_INSTALL_LIB_ONLY=false ENV_FILE=' "$ROOT_DIR/configure.sh"
 
 config_one="$TMP_DIR/current-one"
 answers_one="$TMP_DIR/answers-one"
-printf '\n\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\ny\n' | \
+printf '\n\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\nn\nn\ny\n' | \
   "$ROOT_DIR/setup.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 
 [[ -f "$config_one/hermes.env" ]]
@@ -174,6 +174,8 @@ values = {
     "HERMES_BROWSER_IMAGE": "browser:reuse",
     "HERMES_IMAGE_PULL_POLICY": "Always",
     "HERMES_ANSIBLE_SETUP": "false",
+    "HERMES_NPX_SETUP": "true",
+    "HERMES_ADDON_PYTHON_VERSION": "3.13",
     "HERMES_ANSIBLE_VERSION": "",
     "HERMES_SSH_SETUP": "true",
     "HERMES_BOOTSTRAP_MODE": "missing",
@@ -195,7 +197,7 @@ PY
 reuse_config="$TMP_DIR/current-reuse"
 python3 - <<'PY' | "$ROOT_DIR/configure.sh" --no-install --config-dir "$reuse_config" --answers-file "$answers_reuse" >/dev/null 2>&1
 print("y")
-print("\n" * 18, end="")
+print("\n" * 21, end="")
 PY
 # shellcheck disable=SC1090
 source "$reuse_config/hermes.env"
@@ -221,7 +223,7 @@ fi
 
 config_two="$TMP_DIR/current-two"
 answers_two="$TMP_DIR/answers-two"
-printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\n' | \
+printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_two" --answers-file "$answers_two" >/dev/null
 # shellcheck disable=SC1090
 source "$config_two/hermes.env"
