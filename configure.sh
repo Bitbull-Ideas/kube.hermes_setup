@@ -254,6 +254,12 @@ if [[ "$HERMES_ANSIBLE_SETUP" == true ]]; then
   HERMES_SSH_SETUP=true
 fi
 
+# Resolve remaining profile defaults not set by wizard questions.
+# This fills HERMES_NPX_SETUP and any other future profile-owned
+# variables while preserving the wizard's explicit choices.
+export HERMES_BOOTSTRAP_PROFILE
+apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
+
 CONFIG_MARKER="$CONFIG_DIR/.hermes-current-config"
 if [[ -e "$CONFIG_DIR" && -n "$(find "$CONFIG_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
   if [[ "$FROM_ANSWERS" == true ]]; then
