@@ -246,6 +246,27 @@ Supported components are `data`, `config`, `bootstrap`, and `full`. The output d
 
 Explicit `HERMES_NPX_SETUP`, `HERMES_ANSIBLE_SETUP`, `HERMES_SSH_SETUP`, `HERMES_ADDON_REQUIREMENTS`, and `HERMES_ANSIBLE_VERSION` values override profile defaults.
 
+### Profile default resolution
+
+Variables that belong to a profile (`HERMES_SSH_SETUP`, `HERMES_ANSIBLE_SETUP`, `HERMES_NPX_SETUP`) are resolved in this order:
+
+1. **Explicit env/wizard answer** — if the user sets the variable in `hermes.env` or answers the wizard question, that value wins.
+2. **Profile default** — if the variable is still unset after the wizard (user pressed Enter), `apply_profile_defaults()` fills it from the selected profile's `defaults.conf` (e.g. `HERMES_PROFILE_DEFAULT_NPX_SETUP`).
+3. **Installer fallback** — `install.sh::prepare_defaults()` applies `:-false` as a last-resort default if neither the profile nor the user provided a value.
+
+Variables without a profile default (e.g. `HERMES_ADDON_PYTHON_VERSION`) use only step 1 and the installer's hardcoded fallback (`:-3.13` in `install.sh` line 292). There is no profile-specific Python version.
+
+In practice this means:
+
+| Variable | Profile-owned? | Profile source | Installer fallback |
+|----------|---------------|----------------|--------------------|
+| `HERMES_SSH_SETUP` | Yes | `HERMES_PROFILE_DEFAULT_SSH_SETUP` | `:-true` |
+| `HERMES_ANSIBLE_SETUP` | Yes | `HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP` | `:-false` |
+| `HERMES_NPX_SETUP` | Yes | `HERMES_PROFILE_DEFAULT_NPX_SETUP` | `:-false` |
+| `HERMES_ADDON_PYTHON_VERSION` | No | (none) | `:-3.13` |
+
+The configure.sh wizard follows the same chain: answers the user gave are saved to `configuration_answers`, blank inputs leave the variable unset, and the subsequent `apply_profile_defaults()` call fills profile-owned variables from the selected profile before the env file is written.
+
 Skill metadata may list related skills. In this repository, a related skill is **bundled** only when its directory exists under `examples/bootstrap-shared/skills/`. A reference such as `hermes-agent`, `github-auth`, or `github-pr-workflow` is an **external-runtime** or **optional-reference** dependency and is not copied by this setup. The profile's `skills.txt` file is the authoritative installation allowlist.
 
 ## Common operations
