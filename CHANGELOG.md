@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.1.0] - 2026-08-05
+
+### Added
+
+- Adds `HERMES_NPX_SETUP` toggle for npx/npm cache support. When enabled, the init job pre-creates the npm cache directory at `/opt/data/.npm` with correct `hermes:hermes` ownership, and `npm_config_yes=true` is injected into the agent container environment and the terminal profile hook. This prevents `npx`-based MCP servers and skill installers from blocking on interactive prompts or failing with `EACCES` when the agent runs subprocesses as the unprivileged runtime user.
+- Adds `HERMES_PROFILE_DEFAULT_NPX_SETUP` to profile defaults: `true` for `universal-system-architect`, `false` for `personal-assistant`.
+- Adds `HERMES_NPX_SETUP` validation in `install.sh`, `render_template.py`, and `configure.sh`.
+
+### Changed
+
+- Updates the init job script in `hermes.yaml.tpl` to seed the npm cache directory before the bootstrap chown step.
+- Adds `npm_config_yes=true` to the agent deployment env vars in `hermes.yaml.tpl`.
+- Adds `export npm_config_yes=true` to the terminal environment hook so login shells inherit the setting.
+- Updates `examples/hermes.env.example` with the new `HERMES_NPX_SETUP` section.
+- Updates the profile table in README to include the NPX column.
+
 ## [Unreleased]
 
 ### Added
