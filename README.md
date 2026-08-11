@@ -241,7 +241,7 @@ Supported components are `data`, `config`, `bootstrap`, and `full`. The output d
 
 | Profile | Skills | NPX | Ansible | SSH | Addon requirements |
 |---|---|---|---|---|---|
-| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog`, `systemische-psychologie` | disabled | disabled | disabled | profile requirements |
+| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog`, `coaching-recurring-patterns` | disabled | disabled | disabled | profile requirements |
 | `universal-system-architect` | all shared skills | enabled | enabled | enabled | Ansible/cloud requirements |
 | `universal-system-administrator` | all shared skills + 3 profile-specific skills | enabled | enabled | disabled | Ansible requirements |
 
