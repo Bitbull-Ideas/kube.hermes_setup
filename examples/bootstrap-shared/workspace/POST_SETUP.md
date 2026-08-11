@@ -121,3 +121,47 @@ If using the Hermes API/tooling, set `deliver` explicitly when creating the job.
 - [ ] A controlled test alert was delivered to the selected channel without exposing secrets.
 
 This post-setup step is intentionally manual because channel selection is deployment-specific and cron jobs cannot ask an operator for clarification when they run unattended.
+
+## Recipe: daily coaching practice via cron (personal-assistant profile)
+
+The `personal-assistant` bootstrap profile ships with two coaching skills:
+- `systemische-psychologie` — systemic/hypnosystemic coaching framework
+- `coaching-recurring-patterns` — recurring-pattern resolution, values work, resource activation, and daily practice structure
+
+When you want a regular evening reflection routine that runs the **light mode** daily practice, set up an LLM-driven cron job:
+
+```bash
+hermes cron create "0 20 * * *" \
+  --name "Daily coaching light practice" \
+  --skills coaching-recurring-patterns \
+  --prompt "Run the Light Mode daily practice from the coaching-recurring-patterns skill. Ask one question at a time and wait for the answer before asking the next."
+```
+
+For a full **standard mode** session (with pattern tracking), use:
+
+```bash
+hermes cron create "0 20 * * *" \
+  --name "Daily coaching standard practice" \
+  --skills coaching-recurring-patterns \
+  --prompt "Run the Standard Mode daily practice from the coaching-recurring-patterns skill. Ask one question at a time and wait for the answer before asking the next."
+```
+
+The `--skills coaching-recurring-patterns` flag loads the skill into the cron job's context so it has the full practice structure, question catalogue, and values framework available.
+
+For the full hypnosystemic coaching arc (contract → intervention → transfer), load both skills:
+
+```bash
+hermes cron create "0 20 * * *" \
+  --name "Evening coaching session" \
+  --skills coaching-recurring-patterns,systemische-psychologie \
+  --prompt "Run the evening reflection using the Standard Mode from coaching-recurring-patterns. Supplement with systemic questions from systemische-psychologie as appropriate. Ask one question at a time."
+```
+
+**Important:** Cron jobs run unattended and cannot ask for permission. The coaching skills are designed for reflective practice — they ask questions, the user answers. No changes are made to any system.
+
+### Verification checklist
+
+- [ ] `hermes cron list` shows the job with the correct schedule and skills
+- [ ] The first cron delivery asks one question at a time
+- [ ] The chosen skill (`coaching-recurring-patterns`) is loaded into the job context
+- [ ] The skills exist in the active profile's skill path
