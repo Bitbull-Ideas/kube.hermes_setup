@@ -47,7 +47,7 @@ All notable changes to this project are documented in this file.
 - Updates `examples/hermes.env.example` with the new `HERMES_NPX_SETUP` section.
 - Updates the profile table in README to include the NPX column.
 
-## [Unreleased]
+## [v2.2.0] - 2026-08-11
 
 ### Added
 
@@ -60,6 +60,13 @@ All notable changes to this project are documented in this file.
 - Adds independently selectable Dashboard, WebUI, and Browser components while keeping Agent mandatory.
 - Adds versioned Ansible package installation through `HERMES_ANSIBLE_VERSION` whenever Ansible setup is enabled.
 - Generates native Hermes `config.yaml` from the wizard and injects it through bootstrap into persistent `/opt/data/config.yaml`.
+- Adds `universal-system-administrator` bootstrap profile — Linux sysadmin (RHCE level) supporting RHEL and Debian families. Read-only investigation by default, per-change authorization, backup discipline under `/srv/backup`, and `/CHANGES.md` audit logging. Ships three profile-specific skills:
+  - `linux-triage`: what-changed reconstruction on existing systems (dual-family package history, log timeline, SELinux/AppArmor, journald)
+  - `linux-change-safety`: backup, restore, `/CHANGES.md` entry, SELinux restorecon, rollback
+  - `ansible-fleet-change`: canary-first multi-host changes with playbook-generated audit entries
+- Adds `systemische-psychologie` skill to `personal-assistant` profile — professionally researched, neutral systemic/hypnosystemic coaching framework based on Gunther Schmidt. Ships 3 references: question catalogue, role/safety matrix, and verified sources (DBVC, DGSF, ICF, BDP).
+- Adds `coaching-recurring-patterns` skill to `personal-assistant` profile — neutral, universally applicable coaching skill for values discovery, recurring pattern resolution, resource activation, and daily practice. Adaptation vs. change distinction included.
+- Adds POST_SETUP recipe for daily coaching practice via cron (personal-assistant profile) with copy/paste-ready `hermes cron create` examples for light mode, standard mode, and combined sessions.
 
 ### Changed
 
@@ -72,6 +79,8 @@ All notable changes to this project are documented in this file.
 - Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
 - Keeps the shared `POST_SETUP.md` operator hint for optional post-install cron and delivery-channel configuration.
 - Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
+- README profile table lists all three bootstrap profiles with their skill sets and feature toggles.
+- README adds `universal-system-administrator` row and updates `personal-assistant` with the two new coaching skills.
 
 ### Fixed
 
@@ -103,7 +112,6 @@ All notable changes to this project are documented in this file.
 - Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
 - Displays bootstrap profile choices on separate lines for terminal readability.
 - Keeps the configuration wizard interactive when reusing `configuration_answers`: `y` pre-seeds saved non-secret answers, `n` uses built-in defaults, and blank passwords are never stored or offered as defaults.
-
 - Removes the temporary composed-profile stage after copying it into the canonical generated bootstrap directory.
 - Makes `HERMES_ANSIBLE_SETUP=false` exclude a profile-provided Ansible workspace from generated bootstrap content on fresh deployments.
 - Preserves an explicit `HERMES_ANSIBLE_CONFIG` override and makes diagnostics validate the configured path rather than requiring the default path.
