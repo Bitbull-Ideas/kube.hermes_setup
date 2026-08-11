@@ -1,0 +1,8 @@
+# Shared skills selected for this profile. One canonical source exists under
+# examples/bootstrap-shared/skills; install.sh copies only these entries.
+github-setup-access
+hermes-workspace-ansible
+hermes-workspace-git
+hermes-workspace-manager
+markdown-pdf
+hermes-log-watchdog
