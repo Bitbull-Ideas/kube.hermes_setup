@@ -17,9 +17,11 @@ printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
     --answers-file "$TMP_DIR/profile-answers" > "$profile_output"
+# Profile menu is now dynamically discovered; verify at least all expected profiles appear.
 grep -qx 'Bootstrap profile:' "$profile_output"
-grep -qx '  1) personal-assistant' "$profile_output"
-grep -qx '  2) universal-system-architect' "$profile_output"
+grep -E '^  1\) personal-assistant$' "$profile_output"
+grep -E '^  [0-9]+\) universal-system-architect$' "$profile_output"
+grep -E '^  [0-9]+\) universal-system-administrator$' "$profile_output"
 grep -Fqx '  Credentials: Kubernetes Secrets only; values are not stored locally or printed' "$profile_output"
 
 # Verify operational-script environment-file fallback and process-variable precedence.

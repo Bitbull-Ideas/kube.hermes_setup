@@ -148,17 +148,53 @@ else
 
   HERMES_NAMESPACE="$(prompt_value 'Kubernetes namespace' "$(answer_default HERMES_NAMESPACE hermes)")"
   profile_default="$(answer_default HERMES_BOOTSTRAP_PROFILE personal-assistant)"
-  while true; do
-    printf 'Bootstrap profile:\n'
-    printf '  1) personal-assistant\n'
-    printf '  2) universal-system-architect\n'
-    read -r -p "Select profile [$([[ "$profile_default" == universal-system-architect ]] && printf 2 || printf 1)]: " profile_choice
-    case "${profile_choice:-$([[ "$profile_default" == universal-system-architect ]] && printf 2 || printf 1)}" in
-      1|personal-assistant) HERMES_BOOTSTRAP_PROFILE=personal-assistant; break ;;
-      2|universal-system-architect) HERMES_BOOTSTRAP_PROFILE=universal-system-architect; break ;;
-      *) printf 'Choose 1 or 2.\n' >&2 ;;
-    esac
-  done
+    # Discover available profiles dynamically from the repository
+    declare -a profile_names=()
+    declare -a profile_descriptions=()
+    declare -i index=1
+    declare -i default_index=1
+    local_profile_dir=""
+    local_profile_name=""
+    local_soul_line=""
+    for local_profile_dir in "$ROOT_DIR/examples/bootstrap-profiles/"*/; do
+      [[ -d "$local_profile_dir" ]] || continue
+      local_profile_name="$(basename "$local_profile_dir")"
+      profile_names+=("$local_profile_name")
+      # Read first line of SOUL.md for a one-line description
+      local_soul_line=""
+      [[ -f "$local_profile_dir/SOUL.md" ]] && local_soul_line="$(head -1 "$local_profile_dir/SOUL.md" 2>/dev/null || true)"
+      profile_descriptions+=("${local_soul_line:-$local_profile_name}")
+      [[ "$local_profile_name" == "$profile_default" ]] && default_index=$index
+      index=$((index + 1))
+    done
+    declare -i profile_count=$((index - 1))
+    while true; do
+      printf 'Bootstrap profile:\n'
+      index=1
+      for local_profile_name in "${profile_names[@]}"; do
+        printf '  %d) %s\n' "$index" "$local_profile_name"
+        index=$((index + 1))
+      done
+      read -r -p "Select profile [$default_index]: " profile_choice
+      profile_choice="${profile_choice:-$default_index}"
+      # Match by number or by exact name
+      if [[ "$profile_choice" =~ ^[0-9]+$ ]] && (( profile_choice >= 1 && profile_choice <= profile_count )); then
+        HERMES_BOOTSTRAP_PROFILE="${profile_names[$((profile_choice - 1))]}"
+        break
+      fi
+      matched=false
+      for local_profile_name in "${profile_names[@]}"; do
+        if [[ "$profile_choice" == "$local_profile_name" ]]; then
+          HERMES_BOOTSTRAP_PROFILE="$local_profile_name"
+          matched=true
+          break
+        fi
+      done
+      if [[ "$matched" == true ]]; then
+        break
+      fi
+      printf 'Choose a number or profile name from the list above.\n' >&2
+    done
 
   MODEL_PROVIDER="$(prompt_value 'Hermes model provider' "$(answer_default MODEL_PROVIDER openai-codex)")"
   MODEL_NAME="$(prompt_value 'Hermes model' "$(answer_default MODEL_NAME gpt-5.6-luna)")"
