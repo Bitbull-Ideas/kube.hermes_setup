@@ -2,6 +2,97 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.2.0] - 2026-08-11
+
+### Highlights
+
+One minor bump consolidating:
+- The **universal-system-administrator** bootstrap profile (PR #60)
+- Two coaching skills for the **personal-assistant** profile (PRs #61, #62)
+- The interactive `configure.sh` wizard, encrypted full-rollback snapshots, and significant security hardening (accumulated on `main` since v2.1.2)
+
+### Added
+
+**New bootstrap profile**
+- Adds `universal-system-administrator` profile — a Linux sysadmin identity (RHCE skill level) for RHEL-family and Debian-family systems. Read-only investigation by default, per-change authorization, `/srv/backup` backup discipline, and `/CHANGES.md` audit trail. Ships three profile-specific skills:
+  - `linux-triage` — what-changed reconstruction on existing systems (dual-family package history, log timeline, SELinux/AppArmor, journald)
+  - `linux-change-safety` — backup, restore, `/CHANGES.md` entry, SELinux restorecon, rollback
+  - `ansible-fleet-change` — canary-first multi-host changes with playbook-generated audit entries
+
+**New coaching skills for personal-assistant profile**
+- Adds `systemische-psychologie` skill — professionally researched, neutral systemic/hypnosystemic coaching framework based on Gunther Schmidt. Ships three references: question catalogue, role/safety matrix, and verified sources (DBVC, DGSF, ICF, BDP).
+- Adds `coaching-recurring-patterns` skill — values discovery, recurring pattern resolution, resource activation, and daily practice structure with light mode and standard mode. Adaptation vs. change distinction included.
+- Adds `POST_SETUP.md` recipe for daily cron-based coaching practice with copy/paste-ready `hermes cron create` examples.
+
+**Infrastructure**
+- Adds encrypted full-rollback snapshots: repository-owned Kubernetes resources, application Secrets, normalized metadata, and the exact K3s server version stored inside the age archive. `restore --full` recreates an absent Namespace and enforces K3s/version/Namespace gates; `--force` overrides gates while retaining data-integrity and API failures.
+- Adds `restore --full --dry-run` preflight output without Kubernetes or PVC changes.
+- Adds configurable `HERMES_IMAGE_PULL_POLICY` with `IfNotPresent` default and explicit `Always` option.
+- Adds independently selectable Dashboard, WebUI, and Browser components while keeping Agent mandatory.
+- Adds versioned Ansible package installation through `HERMES_ANSIBLE_VERSION`.
+- Adds isolated backup-helper regression tests.
+- Adds `maintain.sh show-passwords` — retrieves and decodes Kubernetes credential Secrets for an authorized administrator without writing them to local files.
+
+**Configuration wizard**
+- Adds an interactive `configure.sh` wizard that stores the complete selected bootstrap and `hermes.env` under Git-ignored `current_config/`, then directs installer artifacts to `current_config/artifacts` during handoff.
+- Adds declarative profile skill allowlists and profile environment defaults with operator overrides.
+- Generates native Hermes `config.yaml` from the wizard and injects it through bootstrap into persistent `/opt/data/config.yaml`.
+- Displays bootstrap profile choices on separate lines for terminal readability.
+- Preserves the configuration wizard interactivity when reusing `configuration_answers`: `y` pre-seeds saved non-secret answers, `n` uses built-in defaults, and blank passwords are never stored or offered as defaults.
+
+### Changed
+
+**Profiles and workspace**
+- Integrates the generic workspace manager with the existing Git and Ansible workspace skills by defining specialized placement precedence and preventing duplicate topic folders.
+- Replaces duplicate root/non-root SSH key installation recipes in the Ansible workspace skill with one idempotent account-aware example.
+- Makes `personal-assistant` select `markdown-pdf` and `hermes-workspace-manager` without duplicating canonical skill sources, disable SSH setup by default, and activate its own addon requirements.
+- Makes `universal-system-architect` select all shared skills, enable SSH setup, and activate its Ansible-oriented addon requirements by default.
+- Makes `HERMES_ANSIBLE_SETUP=false` exclude a profile-provided Ansible workspace from bootstrap content on fresh deployments.
+- Adds `universal-system-administrator` row and updates `personal-assistant` with the two new coaching skills in the README profile table.
+- Updates the bootstrap workspace instructions, SOUL profile, and README to describe the combined workspace lifecycle.
+
+**Documentation**
+- Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
+- Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
+- Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
+- Corrects credential, render, and bootstrap artifact paths for both wizard and manual installations.
+- Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
+
+**Installer**
+- Makes `install.sh`, `doctor.sh`, and `maintain.sh` automatically discover wizard-generated `current_config/hermes.env` when no root `hermes.env` or explicit `ENV_FILE` is present.
+- Removes the temporary composed-profile stage after copying it into the canonical generated bootstrap directory.
+- Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
+- Clears internal profile-requirements state before each installer default-resolution pass so sourced or inherited state cannot alter custom requirements.
+- Preserves explicit `--from-env` password and browser-token rotation inputs when the active env file contains blank wizard placeholders.
+- Changes the default model provider from `codex` to `openai-codex` across the wizard, installer defaults, example configuration, config tests, and maintainer documentation.
+
+**Backup and restore**
+- Makes restore remove hidden as well as visible PVC entries and reapplies the configured runtime UID/GID instead of hardcoded `1000:1000` ownership.
+- Protects backup archives and generated SHA-256 checksum files with mode `0600`.
+- Adds backup/restore cleanup traps and restores each enabled deployment to its original replica count after success or failure.
+
+### Fixed
+
+**Security hardening**
+- Adds image-specific Kubernetes security contexts: RuntimeDefault seccomp and disabled ServiceAccount-token automounting for all workloads; no privilege escalation for application containers; numeric non-root Browserless with all capabilities dropped.
+- Adds a live-tested security exception for current Agent/Dashboard/WebUI root-start initialization and privileged init-container volume preparation.
+- Moves Browserless token rotation from `kubectl --from-literal` process arguments to mode-restricted temporary files passed with `--from-file`, with cleanup traps.
+- Adds cleanup traps for all installer and maintenance temporary Secret staging directories, including failed Kubernetes Secret-apply paths.
+- Replaces executable `ENV_FILE` sourcing in installer, maintenance, and diagnostics with a non-executing parser for quoted `KEY=value` assignments; unsafe shell environment controls are rejected.
+- Ensures the wizard and installer never store or print plaintext credentials; authorized retrieval uses `./maintain.sh show-passwords`.
+- Uses native cryptographic password generation via `openssl rand -base64` for Dashboard/WebUI passwords; API keys and Browserless tokens remain hex secrets, no MD5-based generation.
+- Updates QA credential acceptance to require Secret-only storage and explicitly reject obsolete local credential-capture-file expectations.
+- Validates values crossing YAML and embedded-shell boundaries — Kubernetes names, hosts, image references, resource sizes, numeric settings, paths, and control-character rejection.
+
+**Configuration**
+- Preserves existing Dashboard/WebUI, API server, and Browserless credentials during ordinary reinstalls when configuration values are blank; explicit maintenance commands remain the rotation path.
+- Preserves an explicit `HERMES_ANSIBLE_CONFIG` override and makes diagnostics validate the configured path rather than requiring the default path.
+- Ensures the wizard offers configurable Agent, WebUI, and Browserless image references while retaining `latest` as the default.
+- Sets `HERMES_NIX_BUILD=1` for the current WebUI image so its Agent-source dependency installation remains compatible with recent Hermes Agent images that reject normal wheel/sdist builds.
+
+**Documentation**
+- Corrects the production walkthrough's bootstrap refresh, answer replay, credential retention, backup validation, namespace deletion, rebuild, and restore semantics.
+
 ## [v2.1.2] - 2026-08-05
 
 ### Added
@@ -46,75 +137,6 @@ All notable changes to this project are documented in this file.
 - Adds `export npm_config_yes=true` to the terminal environment hook so login shells inherit the setting.
 - Updates `examples/hermes.env.example` with the new `HERMES_NPX_SETUP` section.
 - Updates the profile table in README to include the NPX column.
-
-## [v2.2.0] - 2026-08-11
-
-### Added
-
-- Adds encrypted full-rollback snapshots: repository-owned Kubernetes resources, application Secrets, normalized metadata, and the exact K3s server version are stored inside the age archive. `restore --full` recreates an absent Namespace and enforces K3s/version/Namespace gates by default; `--force` overrides all compatibility and targeting gates while retaining data-integrity and API failures.
-- Adds `restore --full --dry-run` preflight output without Kubernetes or PVC changes.
-- Adds configurable `HERMES_IMAGE_PULL_POLICY` with `IfNotPresent` default and explicit `Always` option.
-- Adds isolated backup-helper regression tests and removes the setup-irrelevant remote logging reference.
-- Adds declarative profile skill allowlists and profile environment defaults with operator overrides.
-- Adds an interactive `configure.sh` wizard that stores the complete selected bootstrap and `hermes.env` under Git-ignored `current_config/`, then directs installer artifacts to `current_config/artifacts` during handoff.
-- Adds independently selectable Dashboard, WebUI, and Browser components while keeping Agent mandatory.
-- Adds versioned Ansible package installation through `HERMES_ANSIBLE_VERSION` whenever Ansible setup is enabled.
-- Generates native Hermes `config.yaml` from the wizard and injects it through bootstrap into persistent `/opt/data/config.yaml`.
-- Adds `universal-system-administrator` bootstrap profile — Linux sysadmin (RHCE level) supporting RHEL and Debian families. Read-only investigation by default, per-change authorization, backup discipline under `/srv/backup`, and `/CHANGES.md` audit logging. Ships three profile-specific skills:
-  - `linux-triage`: what-changed reconstruction on existing systems (dual-family package history, log timeline, SELinux/AppArmor, journald)
-  - `linux-change-safety`: backup, restore, `/CHANGES.md` entry, SELinux restorecon, rollback
-  - `ansible-fleet-change`: canary-first multi-host changes with playbook-generated audit entries
-- Adds `systemische-psychologie` skill to `personal-assistant` profile — professionally researched, neutral systemic/hypnosystemic coaching framework based on Gunther Schmidt. Ships 3 references: question catalogue, role/safety matrix, and verified sources (DBVC, DGSF, ICF, BDP).
-- Adds `coaching-recurring-patterns` skill to `personal-assistant` profile — neutral, universally applicable coaching skill for values discovery, recurring pattern resolution, resource activation, and daily practice. Adaptation vs. change distinction included.
-- Adds POST_SETUP recipe for daily coaching practice via cron (personal-assistant profile) with copy/paste-ready `hermes cron create` examples for light mode, standard mode, and combined sessions.
-
-### Changed
-
-- Integrates the generic workspace manager with the existing Git and Ansible workspace skills by defining specialized placement precedence and preventing duplicate topic folders.
-- Replaces duplicate root/non-root SSH key installation recipes in the Ansible workspace skill with one idempotent account-aware example.
-- Updates the bootstrap workspace instructions, SOUL profile, and README to describe the combined workspace lifecycle.
-- Makes `personal-assistant` select `markdown-pdf` and `hermes-workspace-manager` without duplicating canonical skill sources, disable SSH setup by default, and activate its own addon requirements.
-- Makes `universal-system-architect` select all shared skills, enable SSH setup, and activate its Ansible-oriented addon requirements by default.
-- Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
-- Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
-- Keeps the shared `POST_SETUP.md` operator hint for optional post-install cron and delivery-channel configuration.
-- Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
-- README profile table lists all three bootstrap profiles with their skill sets and feature toggles.
-- README adds `universal-system-administrator` row and updates `personal-assistant` with the two new coaching skills.
-
-### Fixed
-
-- Sets `HERMES_NIX_BUILD=1` for the current WebUI image so its Agent-source dependency installation remains compatible with recent Hermes Agent images that reject normal wheel/sdist builds; remove this compatibility setting after the upstream editable-install fix is released.
-- Adds a mandatory live-acceptance QA contract for installer, Kubernetes, profile, credential, WebUI, Browserless, authentication, SSH, and Ansible changes; Agent-only or static-only evidence no longer qualifies for these scopes.
-- Preserves existing Dashboard/WebUI, API server, and Browserless credentials during ordinary reinstalls when configuration values are blank; explicit maintenance commands remain the rotation path.
-- Corrects the production walkthrough's bootstrap refresh, answer replay, credential retention, backup validation, namespace deletion, rebuild, and restore semantics.
-- Makes `install.sh`, `doctor.sh`, and `maintain.sh` automatically discover wizard-generated `current_config/hermes.env` when no root `hermes.env` or explicit `ENV_FILE` is present.
-- Preserves explicit `--from-env` password and browser-token rotation inputs when the active env file contains blank wizard placeholders.
-- Clears internal profile-requirements state before each installer default-resolution pass so sourced or inherited state cannot alter custom requirements.
-- Makes restore remove hidden as well as visible PVC entries and reapplies the configured runtime UID/GID instead of hard-coded `1000:1000` ownership.
-- Adds image-specific Kubernetes security contexts: RuntimeDefault seccomp and disabled ServiceAccount-token automounting for all workloads; no privilege escalation for application containers; numeric non-root Browserless with all capabilities dropped.
-- Adds a live-tested security exception for current Agent/Dashboard/WebUI root-start initialization and privileged init-container volume preparation.
-- Moves Browserless token rotation from `kubectl --from-literal` process arguments to mode-restricted temporary files passed with `--from-file`, with cleanup traps.
-- Adds cleanup traps for all installer and maintenance temporary Secret staging directories, including failed Kubernetes Secret-apply paths.
-- Protects backup archives and generated SHA-256 checksum files with mode `0600`.
-- Adds backup/restore cleanup traps and restores each enabled deployment to its original replica count after success or failure.
-- Ensures the wizard offers configurable Agent, WebUI, and Browserless image references while retaining `latest` as the default.
-- Ensures the wizard and installer never store or print plaintext credentials; authorized retrieval uses `./maintain.sh show-passwords`.
-- Updates QA credential acceptance to require Secret-only storage and explicitly reject obsolete local credential-capture-file expectations.
-- Replaces executable `ENV_FILE` sourcing in installer, maintenance, and diagnostics with a non-executing parser for quoted `KEY=value` assignments; unsafe shell environment controls are rejected.
-- Changes the default model provider from `codex` to `openai-codex` across the wizard, installer defaults, example configuration, generated config tests, and maintainer documentation; provider-specific Codex OAuth instructions remain unchanged.
-- Adds `maintain.sh show-passwords`, which retrieves and decodes the three Kubernetes credential Secrets for an authorized administrator; it does not write them to local files.
-- Replaces installer and documentation-specific `kubectl` Secret extraction commands with the single `./maintain.sh show-passwords` administrator workflow.
-- Uses native cryptographic password generation via `openssl rand -base64` for generated Dashboard/WebUI passwords; API keys and Browserless tokens remain hex secrets, and no MD5-based generation is used.
-- Validates values crossing YAML and embedded-shell boundaries, including Kubernetes names, hosts, image references, resource sizes, numeric settings, paths, and control-character rejection.
-- Corrects credential, render, and bootstrap artifact paths throughout the documentation for both wizard and manual installations.
-- Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
-- Clears installer library mode before the wizard hands off to `install.sh`, so answering yes starts the deployment.
-- Displays bootstrap profile choices on separate lines for terminal readability.
-- Keeps the configuration wizard interactive when reusing `configuration_answers`: `y` pre-seeds saved non-secret answers, `n` uses built-in defaults, and blank passwords are never stored or offered as defaults.
-- Removes the temporary composed-profile stage after copying it into the canonical generated bootstrap directory.
-- Makes `HERMES_ANSIBLE_SETUP=false` exclude a profile-provided Ansible workspace from generated bootstrap content on fresh deployments.
-- Preserves an explicit `HERMES_ANSIBLE_CONFIG` override and makes diagnostics validate the configured path rather than requiring the default path.
 
 ## [v2.0.1] - 2026-07-20
 
