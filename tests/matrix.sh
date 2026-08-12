@@ -67,18 +67,29 @@ custom_without="$TMP_DIR/custom-without.txt"
 printf '%s\n' 'requests' 'ansible @ https://example.com/ansible.whl' > "$custom_with"
 printf '%s\n' 'requests' > "$custom_without"
 profile_cases=0
-for profile in personal-assistant universal-system-architect universal-system-administrator; do
+# Dynamically discover all available profiles from the filesystem.
+declare -a discovered_profiles=()
+for profiledir in "$ROOT_DIR/examples/bootstrap-profiles/"*/; do
+  [[ -d "$profiledir" ]] || continue
+  discovered_profiles+=("$(basename "$profiledir")")
+done
+for profile in "${discovered_profiles[@]}"; do
+  # Read the profile's local defaults to determine expected SSH behavior.
+  profile_defaults="$ROOT_DIR/examples/bootstrap-profiles/$profile/defaults.conf"
+  profile_ssh_default=true
+  [[ -f "$profile_defaults" ]] && source "$profile_defaults" 2>/dev/null || true
+  profile_ssh_expected="${HERMES_PROFILE_DEFAULT_SSH_SETUP:-true}"
   for ansible_setup in false true; do
     for requirements_mode in default empty custom-with custom-without; do
       (
         export HERMES_INSTALL_LIB_ONLY=true
         # shellcheck disable=SC1091
         source "$ROOT_DIR/install.sh"
+        unset HERMES_ADDON_REQUIREMENTS HERMES_SSH_SETUP HERMES_SSH_GENERATE_KEY HERMES_ANSIBLE_CONFIG
         export HERMES_BOOTSTRAP_PROFILE="$profile"
         export HERMES_ANSIBLE_SETUP="$ansible_setup"
         export HERMES_ANSIBLE_VERSION=13.4.0
         export HERMES_BOOTSTRAP_MODE=overwrite
-        unset HERMES_ADDON_REQUIREMENTS HERMES_SSH_SETUP HERMES_SSH_GENERATE_KEY HERMES_ANSIBLE_CONFIG
         case "$requirements_mode" in
           default) ;;
           empty) export HERMES_ADDON_REQUIREMENTS= ;;
@@ -104,14 +115,15 @@ for profile in personal-assistant universal-system-architect universal-system-ad
         else
           [[ ! -e "$extract/workspace/ansible" ]]
           [[ -z "$HERMES_ANSIBLE_CONFIG" ]]
-          if [[ "$profile" == personal-assistant ]]; then
-            [[ "$HERMES_SSH_SETUP" == false ]]
-          else
+          # SSH default is driven by the profile's own defaults.conf, not hardcoded.
+          if [[ "$profile_ssh_expected" == true ]]; then
             [[ "$HERMES_SSH_SETUP" == true ]]
+          else
+            [[ "$HERMES_SSH_SETUP" == false ]]
           fi
           case "$requirements_mode" in
             custom-with)
-              [[ "$(grep -Eci '^ansible' "$extract/addons/requirements.txt")" == 1 ]]
+              [[ "$(grep -Eci '^ansible' "$extract/addons/requirements.txt" || true)" == 1 ]]
               ;;
             *)
               [[ ! -f "$extract/addons/requirements.txt" ]] || ! grep -Eqi '^ansible' "$extract/addons/requirements.txt"
