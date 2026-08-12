@@ -67,7 +67,7 @@ custom_without="$TMP_DIR/custom-without.txt"
 printf '%s\n' 'requests' 'ansible @ https://example.com/ansible.whl' > "$custom_with"
 printf '%s\n' 'requests' > "$custom_without"
 profile_cases=0
-for profile in personal-assistant universal-system-architect; do
+for profile in personal-assistant universal-system-architect universal-system-administrator; do
   for ansible_setup in false true; do
     for requirements_mode in default empty custom-with custom-without; do
       (

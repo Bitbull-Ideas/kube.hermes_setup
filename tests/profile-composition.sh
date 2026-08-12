@@ -45,12 +45,13 @@ assert_skill_set() {
   }
 }
 
+# ---- personal-assistant ----
 reset_profile_env
 HERMES_BOOTSTRAP_PROFILE=personal-assistant
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 personal_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$personal_stage" hermes-log-watchdog hermes-workspace-manager markdown-pdf
+assert_skill_set "$personal_stage" coaching-recurring-patterns hermes-log-watchdog hermes-workspace-manager markdown-pdf systemische-psychologie
 assert_file "$personal_stage/workspace/POST_SETUP.md"
 assert_absent "$personal_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$personal_stage/workspace/POST_SETUP.md"
@@ -59,6 +60,7 @@ assert_absent "$personal_stage/workspace/ansible"
 [[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/personal-assistant/requirements.txt" ]]
 
+# ---- universal-system-architect ----
 reset_profile_env
 HERMES_BOOTSTRAP_PROFILE=universal-system-architect
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
@@ -73,6 +75,22 @@ assert_file "$architect_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-architect/requirements.txt" ]]
 
+# ---- universal-system-administrator ----
+reset_profile_env
+HERMES_BOOTSTRAP_PROFILE=universal-system-administrator
+apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
+compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
+admin_stage="$HERMES_BOOTSTRAP_DIR"
+assert_skill_set "$admin_stage" ansible-fleet-change github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager linux-change-safety linux-triage markdown-pdf
+assert_file "$admin_stage/workspace/POST_SETUP.md"
+assert_absent "$admin_stage/POST_SETUP.md"
+cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$admin_stage/workspace/POST_SETUP.md"
+assert_file "$admin_stage/workspace/ansible/ansible.cfg"
+[[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
+[[ "$HERMES_NPX_SETUP" == false ]]
+[[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-administrator/requirements.txt" ]]
+
+# ---- operator override test ----
 reset_profile_env
 HERMES_BOOTSTRAP_PROFILE=universal-system-architect
 HERMES_SSH_SETUP=false
