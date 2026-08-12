@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.2.1] - 2026-08-11
+
+### Fixed
+
+- **configure.sh wizard now dynamically discovers bootstrap profiles.** The profile selection menu was hardcoded to only two entries (personal-assistant, universal-system-architect) — the universal-system-administrator profile was never offered. Replaced with a filesystem scanner that lists all directories under `examples/bootstrap-profiles/`. Selection by number or by exact profile name. [PR #65]
+- **Missing HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS in universal-system-administrator defaults.conf** — caused `unbound variable` in profile-composition tests. [PR #65]
+- Updated all tests (`tests/configure.sh`, `tests/profile-composition.sh`, `tests/matrix.sh`) to cover the new dynamic profile discovery and the universal-system-administrator profile.
+
 ## [v2.2.0] - 2026-08-11
 
 ### Highlights
