@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.2.2] - 2026-08-12
+
+### Fixed
+
+- Clarifies that the universal system administrator's production Linux controls apply to separately managed targets, not routine self-maintenance inside the installer-provided Hermes Agent, Dashboard, or WebUI containers.
+- Prevents GitHub access setup from inventing `/srv/backup`, `/CHANGES.md`, root, `systemd`, or target-host change-management prerequisites when the active `/opt/data` profile PVC is directly writable.
+- Documents live runtime-path detection for hardened containers that omit `/.dockerenv` and Kubernetes ServiceAccount mounts, while preserving explicit authorization for cluster, credential, access, availability, and PVC lifecycle changes.
+- Adds profile-composition regression checks for the runtime-versus-target scope boundary.
+
 ## [v2.2.1] - 2026-08-11
 
 ### Fixed

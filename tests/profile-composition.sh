@@ -89,6 +89,11 @@ assert_file "$admin_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-administrator/requirements.txt" ]]
+grep -q 'Scope boundary: Hermes runtime vs. managed targets' "$admin_stage/SOUL.md"
+grep -q 'Do not administer the runtime as a target host' "$admin_stage/SOUL.md"
+grep -q 'Do \*\*not\*\* use this skill for routine self-maintenance' "$admin_stage/skills/linux-change-safety/SKILL.md"
+grep -q 'Do not require `kubectl`, root, `/srv/backup`, `/CHANGES.md`' "$admin_stage/skills/github-setup-access/SKILL.md"
+grep -q 'Routine self-maintenance of the active Hermes runtime' "$admin_stage/workspace/AGENTS.md"
 
 # ---- operator override test ----
 reset_profile_env

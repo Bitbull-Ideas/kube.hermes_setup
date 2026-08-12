@@ -1,7 +1,7 @@
 ---
 name: linux-change-safety
-description: "Use when a change to a production Linux system has been authorized — create backups, verify free space, log in /CHANGES.md, apply the change, restore SELinux context, and confirm the service works."
-version: 1.0.0
+description: "Use when a change to a managed production Linux target has been authorized — back up and audit that target, apply the change, and verify service health. Do not use for Hermes runtime self-maintenance."
+version: 1.0.1
 author: Hermes Agent
 license: MIT
 platforms: [linux]
@@ -13,9 +13,19 @@ metadata:
 
 # Linux Change Safety
 
+## Scope Gate
+
+Use this skill only for an authorized change to a **managed production Linux target**: a separate host, VM, bare-metal system, remote container host, database server, or fleet member reached through SSH, Ansible, inventory, or another explicit target connection.
+
+Do **not** use this skill for routine self-maintenance inside the current Hermes Agent, Dashboard, or WebUI container. In `kube.hermes_setup`, `$HERMES_HOME` (normally `/opt/data`) and `/workspace` are persistent PVC-backed runtime paths. Editing the active profile's skills, memories, scripts, Git identity/credential helper, or runtime configuration there does not require target-host `/srv/backup`, `/CHANGES.md`, root ownership, `systemd`, OS-family package history, or SELinux restore steps.
+
+For authorized runtime self-maintenance, preserve unrelated files, use restrictive permissions, avoid duplicate copies of credential files, make the smallest reversible edit, and verify Hermes can load or use the result. Changes to Kubernetes resources, PVC lifecycle, Secrets, access, credentials, or availability are installer/cluster administration and require their own explicit scope; they are not silently exempted by this gate.
+
+The scope gate is complete only after the execution context and affected path/resource identify either a managed target (continue below) or Hermes runtime self-maintenance (do not apply this skill).
+
 ## Trigger
 
-A change to a production Linux system has been explicitly authorized by the operator. This skill governs the change execution lifecycle.
+A change to a managed production Linux target has been explicitly authorized by the operator. This skill governs that target's change execution lifecycle.
 
 ## Pre-change checks
 
@@ -128,10 +138,12 @@ When backups are transferred off-host (rsync, scp, tar), the receiving system's 
 - `/srv/backup` is a rollback staging area, not an archive. It is not assumed covered by the real backup system.
 - A restored file with wrong SELinux context looks exactly like a failed rollback. Always `restorecon -v` and `ls -Z`.
 - `mysqldump` without `umask 077` creates a world-readable dump file on disk during the write window.
+- Do not block Hermes profile/PVC self-maintenance because `/srv/backup` or `/CHANGES.md` is absent inside an application container; that means this skill was applied to the wrong scope.
 
 ## Verification
 
 - [ ] Authorization confirmed (attributable to operator or deputy)
+- [ ] Execution scope confirmed as a managed target, not Hermes runtime self-maintenance
 - [ ] Free space verified and sufficient
 - [ ] Backup files created under `/srv/backup/` with correct ownership
 - [ ] /srv/backup/ root owned only, stat confirms 0700
