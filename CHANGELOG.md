@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.2.3] - 2026-08-15
+
+### Fixed
+
+- Enables persistent SSH setup by default for every bundled profile so fresh installations create one ED25519 identity under `$HOME/.ssh/` without profile-specific surprises.
+- Makes ordinary `ssh` select `/opt/data/.ssh/id_ed25519` with `IdentitiesOnly yes` through a PVC-backed wrapper on every runtime PATH, independent of container passwd-home differences, while preserving operator-managed SSH config content.
+- Preserves the existing private-key fingerprint across installer reruns and adds doctor checks for effective identity selection, safe permissions, and matching private/public fingerprints.
+- Adds a hermetic SSH identity regression test covering first run, unchanged rerun, one-key count, no Kubernetes `subPath` dependency, and effective ordinary `ssh -G` output.
+
 ## [v2.2.2] - 2026-08-12
 
 ### Fixed

@@ -360,7 +360,7 @@ export PATH=/opt/data/addon-venv/bin:/opt/data/uv/bin:$PATH
 
 Agent, Dashboard, and WebUI always use `/opt/data` as persistent Unix home on the `hermes-home` PVC.
 
-SSH setup defaults to `false` for `personal-assistant` and `true` for `universal-system-architect`. Override it explicitly when needed:
+SSH setup defaults to `true` for every bundled profile so a fresh setup has one usable persistent identity out of the box. Override it explicitly with `HERMES_SSH_SETUP=false` when a profile must not have an SSH identity:
 
 ```bash
 HERMES_SSH_SETUP=true
@@ -373,6 +373,8 @@ Operational behavior:
 - `HOME=/opt/data`, `XDG_CONFIG_HOME=/opt/data/.config`, and `XDG_CACHE_HOME=/opt/data/.cache` are set on Agent, Dashboard, and WebUI processes.
 - If `HERMES_SSH_SETUP=true`, `/opt/data/.ssh` is created with mode `700`, `known_hosts` is created with mode `644`, and the init job generates the key only when `HERMES_SSH_KEY_PATH` does not already exist. Existing keys are preserved.
 - Private keys are forced to mode `600`; public keys are forced to mode `644`.
+- `/opt/data/.ssh/config` selects the persistent key with `IdentitiesOnly yes`. A PVC-backed wrapper at `/opt/data/hermes-managed/bin/ssh` is first on the Agent, Dashboard, WebUI, and terminal subprocess PATH and invokes the system `ssh` with `-F /opt/data/.ssh/config` on a recursion-safe system PATH, so ordinary `ssh` uses the same key independently of passwd-home differences. No `.ssh` Kubernetes `subPath` mount is required.
+- Rerunning the installer updates only its marked SSH config block, preserves operator-managed config lines, and never rotates an existing key.
 
 Fetch the generated public key:
 
@@ -380,16 +382,16 @@ Fetch the generated public key:
 kubectl -n <namespace> exec deploy/hermes-agent -- cat /opt/data/.ssh/id_ed25519.pub
 ```
 
-Manual setup is possible and persistent:
+Do not run `ssh-keygen` merely because a shell reports a different passwd home. Verify the effective identity first:
 
 ```bash
-kubectl -n <namespace> exec -it deploy/hermes-agent -- /bin/bash
-mkdir -p /opt/data/.ssh
-ssh-keygen -t ed25519 -N '' -f /opt/data/.ssh/id_ed25519
-chmod 700 /opt/data/.ssh
-chmod 600 /opt/data/.ssh/id_ed25519
-chmod 644 /opt/data/.ssh/id_ed25519.pub
+kubectl -n <namespace> exec deploy/hermes-agent -- \
+  ssh -G example.invalid | grep -E '^(identityfile|identitiesonly) '
 ```
+
+If SSH is explicitly disabled, a fresh PVC receives no SSH key or wrapper; on an existing PVC the installer removes only its managed wrapper and preserves existing key/config data. Generating, replacing, rotating, importing, or deleting an existing key is a separate credential-lifecycle action and must be intentional.
+
+The SSH key is for SSH access to managed target systems. GitHub access is separate: use `GITHUB_TOKEN` from mode-`0600` `/opt/data/.env` for GitHub API and HTTPS Git operations. Do not add the managed-target SSH key to GitHub merely to make repository access work, and never put either private keys or token values in Git, remote URLs, logs, or PR text.
 
 Keep host key checking enabled. Prefer maintaining `/opt/data/.ssh/known_hosts` or using reviewed per-host `accept-new` entries in `/opt/data/.ssh/config`; do not use global `StrictHostKeyChecking=no` as a default.
 

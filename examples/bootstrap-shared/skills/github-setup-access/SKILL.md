@@ -1,7 +1,7 @@
 ---
 name: github-setup-access
 description: Use when configuring GitHub access for a Hermes Kubernetes installation that should read public repositories and contribute pull requests without access to private repositories. Guide the user through a dedicated low-privilege GitHub account, a classic PAT limited to public_repo, secure placement in /opt/data/.env, and non-disclosing verification.
-version: 2.0.2
+version: 2.0.3
 author: Hermes Agent
 license: MIT
 platforms: [linux]
@@ -22,6 +22,15 @@ Configure a Hermes Agent running in Kubernetes to read public GitHub repositorie
 3. Create a **personal access token (classic)** with only the nested `public_repo` scope.
 4. Store it as `GITHUB_TOKEN` in `/opt/data/.env` on the persistent Hermes home PVC.
 5. Verify identity and effective repository permissions without printing the token.
+
+## Authentication boundary: target SSH versus GitHub
+
+Keep the two runtime credentials separate:
+
+- `/opt/data/.ssh/id_ed25519` is the installation's single persistent SSH identity for managed target systems. Discover and report the existing public key; do not generate, replace, rotate, copy, or delete an SSH keypair without explicit approval.
+- `GITHUB_TOKEN` in mode-`0600` `/opt/data/.env` is the GitHub API and HTTPS Git credential. Use it for GitHub repository reads, pushes, and pull requests within its effective permissions.
+
+Do not add the managed-target SSH key to GitHub merely to make repository access work when `GITHUB_TOKEN` is configured. Never place the token in a Git remote URL or print either credential.
 
 This is a **low-privilege public-repository contributor**, not a strictly read-only identity. Creating a fork, pushing a feature branch, and opening a pull request requires write operations. The security boundary comes from using a dedicated account with no private access and a token restricted to public repositories.
 

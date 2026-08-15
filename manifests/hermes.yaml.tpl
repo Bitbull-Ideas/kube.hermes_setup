@@ -105,6 +105,31 @@ spec:
               chmod 600 "${HERMES_SSH_KEY_PATH}"
               [ ! -f "${HERMES_SSH_KEY_PATH}.pub" ] || chmod 644 "${HERMES_SSH_KEY_PATH}.pub"
             fi
+            if [ -f "${HERMES_SSH_KEY_PATH}" ]; then
+              ssh_config=/opt/data/.ssh/config
+              ssh_config_tmp="$ssh_config.$$.tmp"
+              touch "$ssh_config"
+              sed '/^# BEGIN kube\.hermes_setup SSH identity$/,/^# END kube\.hermes_setup SSH identity$/d' "$ssh_config" > "$ssh_config_tmp"
+              {
+                printf '%s\n' '# BEGIN kube.hermes_setup SSH identity'
+                printf '%s\n' 'Host *'
+                printf '%s\n' '    IdentityFile ${HERMES_SSH_KEY_PATH}'
+                printf '%s\n' '    IdentitiesOnly yes'
+                printf '%s\n' '# END kube.hermes_setup SSH identity'
+                cat "$ssh_config_tmp"
+              } > "$ssh_config"
+              rm -f "$ssh_config_tmp"
+              chmod 600 "$ssh_config"
+              mkdir -p /opt/data/hermes-managed/bin
+              {
+                printf '%s\n' '#!/bin/sh'
+                printf '%s\n' '# Managed by kube.hermes_setup; use the persistent runtime SSH config.'
+                printf '%s\n' 'exec env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ssh -F /opt/data/.ssh/config "$@"'
+              } > /opt/data/hermes-managed/bin/ssh
+              chmod 755 /opt/data/hermes-managed/bin/ssh
+            fi
+          else
+            rm -f /opt/data/hermes-managed/bin/ssh
           fi
           if [ "${HERMES_NPX_SETUP}" = "true" ] || [ "${HERMES_NPX_SETUP}" = "TRUE" ] || [ "${HERMES_NPX_SETUP}" = "1" ] || [ "${HERMES_NPX_SETUP}" = "yes" ] || [ "${HERMES_NPX_SETUP}" = "YES" ] || [ "${HERMES_NPX_SETUP}" = "on" ] || [ "${HERMES_NPX_SETUP}" = "ON" ]; then
             mkdir -p /opt/data/.npm
@@ -189,7 +214,7 @@ spec:
           mkdir -p /opt/data/home
           {
             printf '%s\n' '# Managed by kube.hermes_setup; do not put secrets in this file.'
-            printf '%s\n' 'export PATH="${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:$PATH"'
+            printf '%s\n' 'export PATH="/opt/data/hermes-managed/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:$PATH"'
             printf '%s\n' 'export npm_config_yes=true'
             printf '%s\n' 'export LANG="C.UTF-8"'
             printf '%s\n' 'export LC_ALL="C.UTF-8"'
@@ -415,7 +440,7 @@ spec:
         - name: ANSIBLE_CONFIG
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
-          value: /opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          value: /opt/data/hermes-managed/bin:/opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: API_SERVER_ENABLED
           value: "true"
         - name: API_SERVER_HOST
@@ -555,7 +580,7 @@ spec:
         - name: ANSIBLE_CONFIG
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
-          value: /opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          value: /opt/data/hermes-managed/bin:/opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
           valueFrom:
             secretKeyRef:
@@ -744,7 +769,7 @@ spec:
         - name: ANSIBLE_CONFIG
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
-          value: ${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          value: /opt/data/hermes-managed/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: HERMES_API_URL
           value: http://hermes-agent:8642
         - name: HERMES_API_KEY

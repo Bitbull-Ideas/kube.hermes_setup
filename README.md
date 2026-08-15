@@ -1,6 +1,6 @@
 # kube.hermes_setup
 
-Current release: **v2.2.2** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
+Current release: **v2.2.3** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
 
 Production-oriented Kubernetes/K3s installer for a [Hermes Agent](https://github.com/nousresearch/hermes-agent) stack:
 
@@ -241,9 +241,9 @@ Supported components are `data`, `config`, `bootstrap`, and `full`. The output d
 
 | Profile | Skills | NPX | Ansible | SSH | Addon requirements |
 |---|---|---|---|---|---|
-| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog`, `coaching-recurring-patterns` | disabled | disabled | disabled | profile requirements |
+| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog`, `coaching-recurring-patterns` | disabled | disabled | enabled | profile requirements |
 | `universal-system-architect` | all shared skills | enabled | enabled | enabled | Ansible/cloud requirements |
-| `universal-system-administrator` | all shared skills + 3 profile-specific skills | enabled | enabled | disabled | Ansible requirements |
+| `universal-system-administrator` | all shared skills + 3 profile-specific skills | enabled | enabled | enabled | Ansible requirements |
 
 Explicit `HERMES_NPX_SETUP`, `HERMES_ANSIBLE_SETUP`, `HERMES_SSH_SETUP`, `HERMES_ADDON_REQUIREMENTS`, and `HERMES_ANSIBLE_VERSION` values override profile defaults.
 
@@ -328,7 +328,8 @@ See [`docs/security.md`](docs/security.md).
 |------|-------|----------------|
 | `profile-composition.sh` | Bootstrap profiles | Skill allowlists, shared vs. profile-specific file layout, SSH/Ansible/NPX flag propagation, operator-variable overrides, custom `ANSIBLE_CONFIG` preservation. Runs `apply_profile_defaults()` + `compose_profile_bootstrap()` in matching sequences. |
 | `configure.sh` | Wizard artifacts | Interactive and `--from-answers` generation: env file mode 0600, credential absence from answers, correct `HERMES_*` values per profile, bootstrap config.yaml contract, prepared archive content, answer reuse/replay, replay-security against unowned directories. |
-| `matrix.sh` | Manifest rendering | All 8 optional-component combinations (Dash/WebUI/Browser on/off), 16 profile/Ansible/requirements combinations, injection-attack rejection (multiline YAML, invalid namespace). Each case renders the full manifest and validates resource presence/absence with Python + PyYAML. |
+| `matrix.sh` | Manifest rendering | All 8 optional-component combinations (Dash/WebUI/Browser on/off), 24 profile/Ansible/requirements combinations, injection-attack rejection (multiline YAML, invalid namespace). Each case renders the full manifest and validates resource presence/absence with Python + PyYAML. |
+| `ssh-identity.sh` | Persistent SSH identity | Executes the rendered init-job SSH block twice and verifies exactly one preserved key, safe modes, effective ordinary `ssh -G` selection through the shared wrapper, operator-config preservation, and no `.ssh` `subPath` dependency. |
 | `backup.sh` | Backup/restore lifecycle | Encrypted archive creation, passphrase delivery, checksum validation, traversal/link/type rejection, dry-run restore, K3s-version/namespace policy enforcement, force override behavior, and malformed-archive handling. |
 | `credentials.sh` | Secret lifecycle | Explicit-vs-generated-vs-reused credential precedence, malformed/empty/missing Secret detection, weak-key rejection, and cross-credential boundary tests (Dashboard vs API vs Browserless). |
 | `qa-contract.sh` | Live-deployment contract | Shared conventions and assertion style used by all tests; documents the mandatory-live-acceptance policy referenced by `docs/qa.md`. |

@@ -113,6 +113,7 @@ python3 -m py_compile scripts/render_template.py scripts/prepare_requirements.py
 ./tests/profile-composition.sh
 ./tests/configure.sh
 ./tests/matrix.sh
+./tests/ssh-identity.sh
 ./tests/credentials.sh
 ./tests/backup.sh
 rm -rf scripts/__pycache__
@@ -159,7 +160,7 @@ Changes to profile composition, defaults, bootstrap archives, init behavior, SSH
 2. Install K3s, wait for the node, DNS, storage provisioner, metrics server, and Traefik to become ready, and use a lab-only TLS certificate whose names are public-safe placeholders in any committed report.
 3. Deploy the minimum required matrix from clean namespaces/PVCs: Agent-only, Dashboard, WebUI, Browserless, and full stack. For any change touching shared manifests or installer sequencing, the full-stack case is mandatory. Require every enabled deployment and the init job to become ready; a single healthy Agent does not satisfy this gate.
 4. After every rollout, inspect `get pods`, events, current logs, and `--previous` logs for each enabled deployment. A `CrashLoopBackOff`, startup exit, failed readiness probe, or image/package build failure is a hard failure even if other components are healthy.
-5. Verify the personal runtime has exactly `markdown-pdf` and `hermes-workspace-manager`, no generated SSH key, no `/workspace/ansible`, an empty `ANSIBLE_CONFIG`, and no Ansible package. Exercise the Markdown-to-PDF renderer and validate the produced PDF header, page count, and extracted text.
+5. Verify the personal runtime has exactly `markdown-pdf` and `hermes-workspace-manager`, exactly one persistent SSH key selected by OpenSSH from every runtime account home, no `/workspace/ansible`, an empty `ANSIBLE_CONFIG`, and no Ansible package. Exercise the Markdown-to-PDF renderer and validate the produced PDF header, page count, and extracted text.
 6. Run the Hermes CLI directly in the Agent container (`hermes --version`) and exercise any changed interactive CLI path through a real TTY. Do not use `sh -lc` as proof of CLI absence because login shells can reset the image `PATH`.
 7. Use real Chromium against the deployed HTTPS ingress whenever WebUI is enabled. Verify the login page, rejection of an invalid password, acceptance of the configured password, authenticated UI content, a clean authenticated browser console, and a visually inspected screenshot. Curl-only checks do not satisfy WebUI validation.
 8. Rerun `install.sh` unchanged for the same deployment and prove rollout success, Secret hash stability, PVC identity preservation, and persistence of a test artifact.
@@ -401,7 +402,9 @@ Redact tokens before sharing output.
 
 ## Persistent HOME and SSH
 
-The Agent, Dashboard, and WebUI deployments set `HOME=/opt/data` and XDG dirs under `/opt/data` so CLI state persists on the `hermes-home` PVC. When `HERMES_SSH_SETUP=true`, the init job prepares `/opt/data/.ssh` and generates an SSH keypair if the key is missing. Existing keys must be preserved; key generation is first-install/missing-only. Never commit private keys or real known_hosts/config data into public examples.
+The Agent, Dashboard, and WebUI deployments set `HOME=/opt/data` and XDG dirs under `/opt/data` so CLI state persists on the `hermes-home` PVC. Every bundled profile enables `HERMES_SSH_SETUP` by default. The init job prepares `/opt/data/.ssh`, generates exactly one SSH keypair if the selected key is missing, writes an installer-managed OpenSSH selection block, and puts a PVC-backed `ssh` wrapper first on every runtime PATH so passwd-home differences cannot select another identity. Existing keys must be preserved; key generation is first-install/missing-only. Never commit private keys or real known_hosts/config data into public examples.
+
+Keep authentication roles separate: `/opt/data/.ssh/id_ed25519` is the single identity for SSH access to managed targets; `GITHUB_TOKEN` in mode-`0600` `/opt/data/.env` is the GitHub API/HTTPS credential. Never require the managed-target SSH key to be registered with GitHub when the token is available.
 
 Validation points should cover Agent, Dashboard, and WebUI:
 

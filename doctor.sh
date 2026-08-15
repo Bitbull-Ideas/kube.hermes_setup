@@ -274,6 +274,30 @@ check_home_ssh() {
       ok "$app persistent SSH keypair exists with safe modes"
     else
       fail "$app persistent SSH keypair missing or wrong modes (private=${key_mode:-missing}, public=${pub_mode:-missing})"
+      continue
+    fi
+
+    ssh_contract="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
+      set -eu
+      key="$0"
+      config_mode="$(stat -c %a /opt/data/.ssh/config)"
+      test "$(command -v ssh)" = /opt/data/hermes-managed/bin/ssh
+      identity="$(ssh -G example.invalid 2>/dev/null | awk '\''$1 == "identityfile" { print $2; exit }'\'')"
+      identities_only="$(ssh -G example.invalid 2>/dev/null | awk '\''$1 == "identitiesonly" { print $2; exit }'\'')"
+      derived="$(ssh-keygen -y -f "$key" | ssh-keygen -lf - | awk '\''{ print $2 }'\'')"
+      stored="$(ssh-keygen -lf "$key.pub" | awk '\''{ print $2 }'\'')"
+      printf "%s|%s|%s|%s|%s" "$config_mode" "$identity" "$identities_only" "$derived" "$stored"
+    ' "$key_path" 2>/dev/null || true)"
+    IFS='|' read -r config_mode effective_identity identities_only derived_fingerprint stored_fingerprint <<< "$ssh_contract"
+    if [[ "$config_mode" == "600" && "$effective_identity" == "$key_path" && "$identities_only" == "yes" ]]; then
+      ok "$app OpenSSH selects the persistent identity with IdentitiesOnly=yes"
+    else
+      fail "$app OpenSSH persistent identity selection invalid"
+    fi
+    if [[ -n "$derived_fingerprint" && "$derived_fingerprint" == "$stored_fingerprint" ]]; then
+      ok "$app SSH private/public fingerprints match"
+    else
+      fail "$app SSH private/public fingerprint mismatch"
     fi
   done
 }
