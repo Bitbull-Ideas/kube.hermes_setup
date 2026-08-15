@@ -1,7 +1,7 @@
 ---
 name: github-setup-access
 description: Use when configuring GitHub access for a Hermes Kubernetes installation that should read public repositories and contribute pull requests without access to private repositories. Guide the user through a dedicated low-privilege GitHub account, a classic PAT limited to public_repo, secure placement in /opt/data/.env, and non-disclosing verification.
-version: 2.0.1
+version: 2.0.2
 author: Hermes Agent
 license: MIT
 platforms: [linux]
@@ -110,6 +110,20 @@ In `kube.hermes_setup`, `/opt/data` is the persistent Hermes home shared by the 
 ```text
 /opt/data/.env
 ```
+
+### Choose the execution path
+
+First determine whether this Hermes session is already running inside an Agent, Dashboard, or WebUI container with the active profile mounted at `/opt/data`:
+
+```bash
+printf 'HERMES_HOME=%s\nHOME=%s\n' "${HERMES_HOME:-}" "$HOME"
+stat -c '%n %a %U:%G' /opt/data /opt/data/.env 2>/dev/null || true
+test -w /opt/data && echo 'active Hermes PVC is writable'
+```
+
+If `HERMES_HOME=/opt/data` and the active profile/PVC is writable, configure `/opt/data/.env` **directly in the current runtime container**. Do not require `kubectl`, root, `/srv/backup`, `/CHANGES.md`, `systemd`, host OS change logging, or target-host backup procedure. Those controls are for Linux systems Hermes manages, not for routine self-maintenance of its own container/PVC. Do not create an extra plaintext backup copy of `.env`; that would duplicate the secret. Preserve unrelated assignments, enforce mode `0600`, and verify without printing values.
+
+If the current session is outside the Hermes runtime, use the Agent deployment path below. Do not rely only on `/.dockerenv` or a mounted Kubernetes ServiceAccount token: hardened containers may omit both. Prefer the live `HERMES_HOME`, writable `/opt/data`, runtime user, mounted paths, and installer architecture as evidence.
 
 Use the Agent deployment and replace `<namespace>` with the actual Hermes namespace:
 
@@ -230,7 +244,7 @@ PY
 '
 ```
 
-Do not print `/opt/data/.env`, run `env`, enable `set -x`, or include authorization headers in logs. For a target repository, inspect the API's effective `permissions` object and report booleans such as `pull=true` or `push=true`; never infer write access merely because a public clone succeeds.
+Do not print `/opt/data/.env`, run `env`, enable `set -x`, or include authorization headers in logs. For a target repository, inspect the API's effective `permissions` object and report booleans such as `pull=true` or `push=true`; never infer write access merely because a public clone succeeds. Git identity and a credential helper may be configured in the active runtime user's persistent home when requested. Keep the token only in `/opt/data/.env`; the helper must read it at use time rather than copy it into `.gitconfig`, `.git-credentials`, or a remote URL.
 
 Verification is complete only when:
 
@@ -276,6 +290,7 @@ If the token may have leaked, revoke it immediately, inspect recent account acti
 8. **Assuming a public repository is writable.** Use a fork-based PR when direct push is not granted.
 9. **Forgetting backups.** `/opt/data/.env` can be present in PVC backups; protect and retain them as secrets.
 10. **Restarting automatically.** Ask before disrupting deployments; a new session may be sufficient.
+11. **Treating the Hermes container as a managed Linux target.** Routine changes under writable `/opt/data` and `/workspace` are runtime/PVC self-maintenance. Do not invent `/srv/backup` or `/CHANGES.md` prerequisites, and do not duplicate `.env` as a backup.
 
 ## Verification Checklist
 
@@ -286,6 +301,7 @@ If the token may have leaked, revoke it immediately, inspect recent account acti
 - [ ] Parent `repo`, `workflow`, organization, package, hook, gist, and user scopes are absent
 - [ ] Token has a short, intentional expiration
 - [ ] Exactly one `GITHUB_TOKEN` assignment exists in `/opt/data/.env`
+- [ ] Runtime-vs-external execution path was identified from live Hermes paths, not generic container heuristics alone
 - [ ] `/opt/data/.env` has mode `0600`
 - [ ] No token value was printed, committed, logged, or pasted into chat
 - [ ] Authenticated login matches the intended dedicated account
