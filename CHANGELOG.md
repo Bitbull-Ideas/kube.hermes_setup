@@ -14,6 +14,8 @@ All notable changes to this project are documented in this file.
 - Documents the complete PVC/container architecture, persistent directories, init-container mounts, service wiring, and repository-injected environment variables.
 - Makes the interactive wizard honor the selected profile's SSH default, while retaining explicit yes/no overrides.
 - Preserves system-wide OpenSSH configuration and inherited helper paths for `ProxyCommand`, `LocalCommand`, and `KnownHostsCommand` without allowing the managed wrapper to recurse.
+- Makes a selected bootstrap profile's SOUL effective in `missing` mode when the PVC contains only a recognized generic Hermes/installer identity, while preserving customized, symlinked, and multiply linked `SOUL.md` files and disabled-bootstrap behavior; bootstrap archives are now byte-reproducible so unchanged reruns do not churn the Kubernetes Secret.
+- Sets `CODEX_HOME=/opt/data` in every Hermes workload so the Codex CLI uses the persisted OAuth state instead of reporting `Not logged in` after reinstall or Pod replacement.
 
 ## [v2.2.2] - 2026-08-12
 

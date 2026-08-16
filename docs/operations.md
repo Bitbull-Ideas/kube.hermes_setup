@@ -137,7 +137,7 @@ The recommended configuration lifecycle is:
 ./configure.sh --from-answers --no-install
 ```
 
-`setup.sh` remains a compatibility wrapper around `configure.sh`. `current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present, but it discards manual changes made after the wizard; reapply required customization before installing. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves non-password answers with mode `0600`; plaintext passwords are never written there or to `hermes.env`. Both paths are Git-ignored. Bootstrap mode `missing` seeds only absent PVC files; `overwrite` replaces same-path files and merges source directories, while destination-only entries remain until removed separately.
+`setup.sh` remains a compatibility wrapper around `configure.sh`. `current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present, but it discards manual changes made after the wizard; reapply required customization before installing. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves non-password answers with mode `0600`; plaintext passwords are never written there or to `hermes.env`. Both paths are Git-ignored. Bootstrap mode `missing` seeds absent PVC files and upgrades only exact stock Hermes/installer `SOUL.md` content to the selected bootstrap identity; every customized `SOUL.md` remains untouched. `overwrite` replaces same-path files and merges source directories, while destination-only entries remain until removed separately.
 
 When `configuration_answers` already exists, starting `./configure.sh` interactively offers to reuse it. Answer `y` to pre-seed the interactive questions with the saved non-secret answers; pressing Enter accepts each saved value, while entering a new value overrides it. Answer `n` to use the normal built-in defaults instead. In both cases the questions remain interactive. Use `--from-answers` only for non-interactive replay without the questions.
 
@@ -192,7 +192,7 @@ workspace/               -> /workspace/
 auth.json                -> /opt/data/auth.json only with HERMES_BOOTSTRAP_INCLUDE_AUTH=true
 ```
 
-Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite` only when you intentionally want the bootstrap source to replace existing files. Bootstrap data, `current_config/`, and `configuration_answers` can contain personal data or credentials; keep them out of Git.
+Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. In this mode, a selected bootstrap profile replaces only recognized generic Hermes or installer SOUL text (ignoring trailing newline characters); any operator content or other customization is preserved. Use `overwrite` only when you intentionally want the bootstrap source to replace all existing same-path files. Bootstrap data, `current_config/`, and `configuration_answers` can contain personal data or credentials; keep them out of Git.
 
 ## Credential status
 

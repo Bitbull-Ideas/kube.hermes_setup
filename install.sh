@@ -2,7 +2,7 @@
 # Purpose: Render, validate, and install the Hermes Kubernetes/K3s stack.
 # Scope: Parse configuration, compose bootstrap data, manage Kubernetes Secrets, render
 #        manifests, apply resources, and verify enabled deployment rollouts.
-# Requirements: Bash, kubectl, Python 3, OpenSSL, base64, tar, and a configured cluster.
+# Requirements: Bash, kubectl, Python 3, OpenSSL, base64, GNU tar, gzip, and a configured cluster.
 # Usage: ENV_FILE=./hermes.env ./install.sh
 # Exit status: 0 means installation completed; non-zero stops before claiming success.
 set -euo pipefail
@@ -233,6 +233,11 @@ enabled_deployments() {
 validate() {
   require_cmd kubectl
   require_cmd openssl
+  require_cmd tar
+  require_cmd gzip
+  local tar_version
+  tar_version="$(tar --version 2>/dev/null)" || fail "Unable to inspect tar implementation"
+  [[ "$tar_version" == *"GNU tar"* ]] || fail "GNU tar is required for reproducible bootstrap archives"
   local scalar scalar_name
   for scalar_name in HERMES_NAMESPACE WEBUI_HOST DASHBOARD_HOST TLS_SECRET_NAME STORAGE_CLASS_NAME MODEL_PROVIDER MODEL_NAME HERMES_AGENT_IMAGE HERMES_WEBUI_IMAGE HERMES_BROWSER_IMAGE HERMES_IMAGE_PULL_POLICY HERMES_SSH_KEY_PATH HERMES_UV_DIR HERMES_ADDON_VENV; do
     scalar="${!scalar_name-}"
@@ -527,7 +532,16 @@ create_bootstrap_archive() {
     return 0
   fi
 
-  tar -C "$BOOTSTRAP_STAGE" -czf "$BOOTSTRAP_ARCHIVE" .
+  # Keep the archive byte-reproducible so unchanged bootstrap content does not
+  # churn the Kubernetes Secret on every installer rerun.
+  tar -C "$BOOTSTRAP_STAGE" \
+    --sort=name \
+    --mtime='@0' \
+    --owner=0 \
+    --group=0 \
+    --numeric-owner \
+    --mode='u+rwX,go+rX,go-w' \
+    -cf - . | gzip -n > "$BOOTSTRAP_ARCHIVE"
   chmod 600 "$BOOTSTRAP_ARCHIVE"
 }
 

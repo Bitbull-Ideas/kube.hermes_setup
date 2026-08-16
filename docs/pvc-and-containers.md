@@ -95,7 +95,7 @@ The init Job and PVC-consuming application Pods use the configured `HERMES_RUNTI
 
 ## What resides on `hermes-home`
 
-`hermes-home` is the shared persistent Hermes home. All three Hermes application containers set both `HERMES_HOME` and `HOME` to `/opt/data`.
+`hermes-home` is the shared persistent Hermes home. All three Hermes application containers set `HERMES_HOME`, `HOME`, and `CODEX_HOME` to `/opt/data` so Hermes and the Codex CLI share the persisted OAuth state at `/opt/data/auth.json`.
 
 | Path under `/opt/data` | Purpose | Sensitivity |
 |---|---|---|
@@ -153,6 +153,7 @@ The tables below document variables explicitly injected by this repository. Base
 |---|:---:|:---:|:---:|---|
 | `HERMES_HOME` | Yes | Yes | Yes | `/opt/data` |
 | `HOME` | Yes | Yes | Yes | `/opt/data` |
+| `CODEX_HOME` | Yes | Yes | Yes | `/opt/data`; makes the Codex CLI use persistent `/opt/data/auth.json` |
 | `XDG_CONFIG_HOME` | Yes | Yes | Yes | `/opt/data/.config` |
 | `XDG_CACHE_HOME` | Yes | Yes | Yes | `/opt/data/.cache` |
 | `LANG`, `LC_ALL` | Yes | Yes | Yes | `C.UTF-8` |

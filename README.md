@@ -15,7 +15,7 @@ The repository is template-driven. Deployment-specific configuration, generated 
 
 On the admin workstation:
 
-- `git`, `kubectl`, `age`, `openssl`, `bash`, `python3`, `tar`, and `sha256sum`
+- `git`, `kubectl`, `age`, `openssl`, `bash`, `python3`, GNU `tar`, `gzip`, and `sha256sum`
 - a working Kubernetes context
 - permission to manage the namespace and rendered Deployments, Services, Secrets, Jobs, PVCs, NetworkPolicies, Ingresses, and applicable Traefik CRDs
 - when Dashboard or WebUI should be publicly reachable, an Ingress controller compatible with standard Kubernetes Ingress
@@ -103,7 +103,7 @@ This file becomes persistent `/opt/data/config.yaml` through the bootstrap init 
 
 Bootstrap modes:
 
-- `missing` copies only files absent from the PVC. It applies pre-install customization but does not update a file that already exists after installation.
+- `missing` copies files absent from the PVC. For `SOUL.md` only, it also replaces a recognized stock Hermes/installer identity with the selected profile identity; customized, symlinked, or multiply linked operator SOUL files remain unchanged.
 - `overwrite` replaces same-path files and merges source directories on the next installer run. Destination-only files remain until removed separately. Use it deliberately, verify the result, then return to `missing`.
 - `disabled` skips bootstrap content.
 
@@ -171,7 +171,7 @@ ${EDITOR:-vi} current_config/hermes.env
 ./doctor.sh
 ```
 
-With `HERMES_BOOTSTRAP_MODE=missing`, edits to `current_config/bootstrap/` do not replace files already present on the PVC. To replace same-path files and merge generated directories, set `HERMES_BOOTSTRAP_MODE=overwrite`, run `./install.sh`, verify the resulting PVC content, and return the setting to `missing`. Files present only on the PVC remain until removed separately.
+With `HERMES_BOOTSTRAP_MODE=missing`, edits to `current_config/bootstrap/` do not replace files already present on the PVC, except that a recognized generic `SOUL.md` is upgraded to the selected profile identity. Customized SOUL content is preserved. To replace other same-path files and merge generated directories, set `HERMES_BOOTSTRAP_MODE=overwrite`, run `./install.sh`, verify the resulting PVC content, and return the setting to `missing`. Files present only on the PVC remain until removed separately.
 
 Do **not** replay answers for ordinary changes. `./configure.sh --from-answers` rebuilds wizard-owned `current_config/` and discards manual edits made after the wizard. Use replay only when you intentionally want to regenerate configuration, then reapply required customization before installing.
 

@@ -111,6 +111,7 @@ Run these before committing normal repo changes:
 bash -n configure.sh install.sh maintain.sh doctor.sh
 python3 -m py_compile scripts/render_template.py scripts/prepare_requirements.py
 ./tests/profile-composition.sh
+./tests/bootstrap-soul.sh
 ./tests/configure.sh
 ./tests/matrix.sh
 ./tests/ssh-identity.sh

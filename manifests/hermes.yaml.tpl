@@ -140,6 +140,25 @@ spec:
           if [ "${HERMES_NPX_SETUP}" = "true" ] || [ "${HERMES_NPX_SETUP}" = "TRUE" ] || [ "${HERMES_NPX_SETUP}" = "1" ] || [ "${HERMES_NPX_SETUP}" = "yes" ] || [ "${HERMES_NPX_SETUP}" = "YES" ] || [ "${HERMES_NPX_SETUP}" = "on" ] || [ "${HERMES_NPX_SETUP}" = "ON" ]; then
             mkdir -p /opt/data/.npm
           fi
+          installer_default_soul() {
+            printf '%s\n' 'You are Hermes Agent, an intelligent AI assistant. Be helpful, direct, technically precise, and security-conscious.'
+            printf '%s\n' ''
+            printf '%s\n' '## Browser usage policy'
+            printf '%s\n' 'A real Chromium browser is available through Hermes browser tools via the `BROWSER_CDP_URL` environment variable. Use browser tools for real UI/web verification, especially WebUI issues, JavaScript-rendered pages, login flows, Ingress checks, screenshots, browser console errors, and reproducing frontend problems. Use curl for HTTP status/headers/health endpoints, but do not rely only on curl for UI problems. Never print the full `BROWSER_CDP_URL`; it contains a token.'
+          }
+          write_installer_default_soul() {
+            installer_default_soul > "$1"
+          }
+          bootstrap_soul_is_generic() {
+            soul="$1"
+            [ -f "$soul" ] && [ ! -L "$soul" ] || return 1
+            [ "$(stat -c '%h' "$soul")" = "1" ] || return 1
+            soul_content="$(cat "$soul")" || return 1
+            if [ "$soul_content" = 'You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.' ]; then
+              return 0
+            fi
+            [ "$soul_content" = "$(installer_default_soul)" ]
+          }
           bootstrap_copy_missing() {
             src="$1"
             dest="$2"
@@ -182,6 +201,12 @@ spec:
                 bootstrap_copy_overwrite /tmp/hermes-bootstrap/opt-data /opt/data
                 bootstrap_copy_overwrite /tmp/hermes-bootstrap/workspace /workspace
               else
+                # A stock Hermes/installer identity carries no operator intent and
+                # must not block the explicitly selected bootstrap profile. Preserve
+                # every other existing SOUL.md exactly in non-destructive mode.
+                if [ -f /tmp/hermes-bootstrap/opt-data/SOUL.md ] && [ ! -L /tmp/hermes-bootstrap/opt-data/SOUL.md ] && bootstrap_soul_is_generic /opt/data/SOUL.md; then
+                  cp -a /tmp/hermes-bootstrap/opt-data/SOUL.md /opt/data/SOUL.md
+                fi
                 bootstrap_copy_missing /tmp/hermes-bootstrap/opt-data /opt/data
                 bootstrap_copy_missing /tmp/hermes-bootstrap/workspace /workspace
               fi
@@ -287,12 +312,7 @@ spec:
           fi
           chmod 600 /opt/data/.env
           if [ ! -f /opt/data/SOUL.md ]; then
-            {
-              printf '%s\n' 'You are Hermes Agent, an intelligent AI assistant. Be helpful, direct, technically precise, and security-conscious.'
-              printf '%s\n' ''
-              printf '%s\n' '## Browser usage policy'
-              printf '%s\n' 'A real Chromium browser is available through Hermes browser tools via the `BROWSER_CDP_URL` environment variable. Use browser tools for real UI/web verification, especially WebUI issues, JavaScript-rendered pages, login flows, Ingress checks, screenshots, browser console errors, and reproducing frontend problems. Use curl for HTTP status/headers/health endpoints, but do not rely only on curl for UI problems. Never print the full `BROWSER_CDP_URL`; it contains a token.'
-            } > /opt/data/SOUL.md
+            write_installer_default_soul /opt/data/SOUL.md
           fi
           if [ "${HERMES_ANSIBLE_SETUP}" = "true" ] || [ "${HERMES_ANSIBLE_SETUP}" = "TRUE" ] || [ "${HERMES_ANSIBLE_SETUP}" = "1" ] || [ "${HERMES_ANSIBLE_SETUP}" = "yes" ] || [ "${HERMES_ANSIBLE_SETUP}" = "YES" ] || [ "${HERMES_ANSIBLE_SETUP}" = "on" ] || [ "${HERMES_ANSIBLE_SETUP}" = "ON" ]; then
             mkdir -p /workspace/ansible/collections /workspace/ansible/group_vars /workspace/ansible/host_vars /workspace/ansible/inventory /workspace/ansible/playbooks /workspace/ansible/roles /opt/data/ansible/cp /opt/data/ansible/tmp
@@ -422,6 +442,8 @@ spec:
         - name: HERMES_HOME
           value: /opt/data
         - name: HOME
+          value: /opt/data
+        - name: CODEX_HOME
           value: /opt/data
         - name: XDG_CONFIG_HOME
           value: /opt/data/.config
@@ -564,6 +586,8 @@ spec:
         - name: HERMES_HOME
           value: /opt/data
         - name: HOME
+          value: /opt/data
+        - name: CODEX_HOME
           value: /opt/data
         - name: XDG_CONFIG_HOME
           value: /opt/data/.config
@@ -734,6 +758,8 @@ spec:
         - name: HERMES_HOME
           value: /opt/data
         - name: HOME
+          value: /opt/data
+        - name: CODEX_HOME
           value: /opt/data
         - name: XDG_CONFIG_HOME
           value: /opt/data/.config
