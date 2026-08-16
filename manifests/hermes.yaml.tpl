@@ -331,6 +331,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -392,6 +394,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -532,6 +536,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -673,6 +679,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
           chmod 700 /opt/data/webui
         volumeMounts:
         - name: home

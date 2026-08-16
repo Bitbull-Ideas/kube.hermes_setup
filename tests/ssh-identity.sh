@@ -29,6 +29,7 @@ done
   export HERMES_WEBUI_ENABLED=true
   export HERMES_BROWSER_ENABLED=false
   export HERMES_BOOTSTRAP_MODE=disabled
+  export HERMES_NPX_SETUP=false
   export HERMES_ADDON_REQUIREMENTS=
   export HERMES_SSH_SETUP=true
   export HERMES_SSH_GENERATE_KEY=true
@@ -63,6 +64,13 @@ for deployment_name in ("hermes-agent", "hermes-dashboard", "hermes-webui"):
     )
     mounts = container.get("volumeMounts", [])
     assert not any(mount.get("subPath") == ".ssh" for mount in mounts), deployment_name
+    init_scripts = "\n".join(
+        str(arg)
+        for init in deployment["spec"]["template"]["spec"].get("initContainers", [])
+        for arg in init.get("args", [])
+    )
+    assert "chmod 600 /opt/data/.ssh/config" in init_scripts, deployment_name
+    assert "chmod 755 /opt/data/hermes-managed/bin/ssh" in init_scripts, deployment_name
 
 disabled_documents = [doc for doc in yaml.safe_load_all(disabled_manifest_path.read_text()) if doc]
 for deployment in (doc for doc in disabled_documents if doc.get("kind") == "Deployment"):
