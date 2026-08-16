@@ -55,6 +55,13 @@ for enabled, name in (
 assert (("Ingress", "hermes-dashboard") in resources) == (dashboard == "true")
 assert (("Ingress", "hermes-webui") in resources) == (webui == "true")
 assert (("NetworkPolicy", "hermes-browser-restrict") in resources) == (browser == "true")
+for name in ("hermes-agent", "hermes-dashboard", "hermes-webui"):
+    matches = [doc for doc in docs if doc["kind"] == "Deployment" and doc["metadata"]["name"] == name]
+    if not matches:
+        continue
+    env = {item["name"]: item.get("value") for item in matches[0]["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["HOME"] == "/opt/data"
+    assert env["CODEX_HOME"] == "/opt/data"
 PY
       )
       component_cases=$((component_cases + 1))

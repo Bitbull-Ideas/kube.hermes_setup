@@ -196,6 +196,16 @@ else
       printf 'Choose a number or profile name from the list above.\n' >&2
     done
 
+  profile_ssh_default="$(
+    unset HERMES_SSH_SETUP HERMES_NPX_SETUP HERMES_ANSIBLE_SETUP HERMES_ADDON_REQUIREMENTS
+    apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
+    printf '%s' "$HERMES_SSH_SETUP"
+  )"
+  [[ "$profile_ssh_default" == true || "$profile_ssh_default" == false ]] || {
+    printf 'ERROR: invalid profile SSH default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
+    exit 1
+  }
+
   MODEL_PROVIDER="$(prompt_value 'Hermes model provider' "$(answer_default MODEL_PROVIDER openai-codex)")"
   MODEL_NAME="$(prompt_value 'Hermes model' "$(answer_default MODEL_NAME gpt-5.6-luna)")"
 
@@ -236,7 +246,7 @@ else
 
   HERMES_ANSIBLE_SETUP="$(answer_bool_default HERMES_ANSIBLE_SETUP false)"
   HERMES_ANSIBLE_VERSION="$(answer_default HERMES_ANSIBLE_VERSION '')"
-  HERMES_SSH_SETUP="$(answer_bool_default HERMES_SSH_SETUP false)"
+  HERMES_SSH_SETUP="$(answer_bool_default HERMES_SSH_SETUP "$profile_ssh_default")"
   if ask_yes_no 'Install and configure Ansible?' "$HERMES_ANSIBLE_SETUP"; then
     HERMES_ANSIBLE_SETUP=true
     while true; do

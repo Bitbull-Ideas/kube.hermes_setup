@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.2.3] - 2026-08-15
+
+### Fixed
+
+- Enables persistent SSH setup by default for every bundled profile so fresh installations create one ED25519 identity under `$HOME/.ssh/` without profile-specific surprises.
+- Makes ordinary `ssh` select `/opt/data/.ssh/id_ed25519` with `IdentitiesOnly yes` through a PVC-backed wrapper on every runtime PATH, independent of container passwd-home differences, while preserving operator-managed SSH config content.
+- Preserves the existing private-key fingerprint across installer reruns and adds doctor checks for effective identity selection, safe permissions, and matching private/public fingerprints.
+- Adds a hermetic SSH identity regression test covering first run, unchanged rerun, one-key count, no Kubernetes `subPath` dependency, and effective ordinary `ssh -G` output.
+- Keeps the Browserless CDP credential out of the rendered PodSpec; the init Job now expands the `secretKeyRef`-backed environment variable only inside the running container.
+- Documents the complete PVC/container architecture, persistent directories, init-container mounts, service wiring, and repository-injected environment variables.
+- Makes the interactive wizard honor the selected profile's SSH default, while retaining explicit yes/no overrides.
+- Preserves system-wide OpenSSH configuration and inherited helper paths for `ProxyCommand`, `LocalCommand`, and `KnownHostsCommand` without allowing the managed wrapper to recurse.
+- Makes a selected bootstrap profile's SOUL effective in `missing` mode when the PVC contains only a recognized generic Hermes/installer identity, while preserving customized, symlinked, and multiply linked `SOUL.md` files and disabled-bootstrap behavior; bootstrap archives are now byte-reproducible so unchanged reruns do not churn the Kubernetes Secret.
+- Sets `CODEX_HOME=/opt/data` in every Hermes workload so the Codex CLI uses the persisted OAuth state instead of reporting `Not logged in` after reinstall or Pod replacement.
+
 ## [v2.2.2] - 2026-08-12
 
 ### Fixed

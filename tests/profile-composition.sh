@@ -56,7 +56,7 @@ assert_file "$personal_stage/workspace/POST_SETUP.md"
 assert_absent "$personal_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$personal_stage/workspace/POST_SETUP.md"
 assert_absent "$personal_stage/workspace/ansible"
-[[ "$HERMES_SSH_SETUP" == false && "$HERMES_ANSIBLE_SETUP" == false ]]
+[[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == false ]]
 [[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/personal-assistant/requirements.txt" ]]
 

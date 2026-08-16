@@ -1,6 +1,6 @@
 # kube.hermes_setup
 
-Current release: **v2.2.2** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
+Current release: **v2.2.3** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
 
 Production-oriented Kubernetes/K3s installer for a [Hermes Agent](https://github.com/nousresearch/hermes-agent) stack:
 
@@ -15,7 +15,7 @@ The repository is template-driven. Deployment-specific configuration, generated 
 
 On the admin workstation:
 
-- `git`, `kubectl`, `age`, `openssl`, `bash`, `python3`, `tar`, and `sha256sum`
+- `git`, `kubectl`, `age`, `openssl`, `bash`, `python3`, GNU `tar`, `gzip`, and `sha256sum`
 - a working Kubernetes context
 - permission to manage the namespace and rendered Deployments, Services, Secrets, Jobs, PVCs, NetworkPolicies, Ingresses, and applicable Traefik CRDs
 - when Dashboard or WebUI should be publicly reachable, an Ingress controller compatible with standard Kubernetes Ingress
@@ -103,7 +103,7 @@ This file becomes persistent `/opt/data/config.yaml` through the bootstrap init 
 
 Bootstrap modes:
 
-- `missing` copies only files absent from the PVC. It applies pre-install customization but does not update a file that already exists after installation.
+- `missing` copies files absent from the PVC. For `SOUL.md` only, it also replaces a recognized stock Hermes/installer identity with the selected profile identity; customized, symlinked, or multiply linked operator SOUL files remain unchanged.
 - `overwrite` replaces same-path files and merges source directories on the next installer run. Destination-only files remain until removed separately. Use it deliberately, verify the result, then return to `missing`.
 - `disabled` skips bootstrap content.
 
@@ -159,7 +159,7 @@ kubectl -n "$HERMES_NAMESPACE" logs deploy/hermes-webui
 kubectl -n "$HERMES_NAMESPACE" logs deploy/hermes-browser
 ```
 
-See [`docs/qa.md`](docs/qa.md) for the mandatory live acceptance matrix, [`docs/troubleshooting.md`](docs/troubleshooting.md), [`docs/operations.md`](docs/operations.md), and [`docs/ansible.md`](docs/ansible.md).
+See [`docs/qa.md`](docs/qa.md) for the mandatory live acceptance matrix, [`docs/pvc-and-containers.md`](docs/pvc-and-containers.md) for the PVC/container wiring and environment-variable map, [`docs/troubleshooting.md`](docs/troubleshooting.md), [`docs/operations.md`](docs/operations.md), and [`docs/ansible.md`](docs/ansible.md).
 
 ### 5. Reconfigure
 
@@ -171,7 +171,7 @@ ${EDITOR:-vi} current_config/hermes.env
 ./doctor.sh
 ```
 
-With `HERMES_BOOTSTRAP_MODE=missing`, edits to `current_config/bootstrap/` do not replace files already present on the PVC. To replace same-path files and merge generated directories, set `HERMES_BOOTSTRAP_MODE=overwrite`, run `./install.sh`, verify the resulting PVC content, and return the setting to `missing`. Files present only on the PVC remain until removed separately.
+With `HERMES_BOOTSTRAP_MODE=missing`, edits to `current_config/bootstrap/` do not replace files already present on the PVC, except that a recognized generic `SOUL.md` is upgraded to the selected profile identity. Customized SOUL content is preserved. To replace other same-path files and merge generated directories, set `HERMES_BOOTSTRAP_MODE=overwrite`, run `./install.sh`, verify the resulting PVC content, and return the setting to `missing`. Files present only on the PVC remain until removed separately.
 
 Do **not** replay answers for ordinary changes. `./configure.sh --from-answers` rebuilds wizard-owned `current_config/` and discards manual edits made after the wizard. Use replay only when you intentionally want to regenerate configuration, then reapply required customization before installing.
 
@@ -241,9 +241,9 @@ Supported components are `data`, `config`, `bootstrap`, and `full`. The output d
 
 | Profile | Skills | NPX | Ansible | SSH | Addon requirements |
 |---|---|---|---|---|---|
-| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog`, `coaching-recurring-patterns` | disabled | disabled | disabled | profile requirements |
+| `personal-assistant` | `markdown-pdf`, `hermes-workspace-manager`, `hermes-log-watchdog`, `coaching-recurring-patterns` | disabled | disabled | enabled | profile requirements |
 | `universal-system-architect` | all shared skills | enabled | enabled | enabled | Ansible/cloud requirements |
-| `universal-system-administrator` | all shared skills + 3 profile-specific skills | enabled | enabled | disabled | Ansible requirements |
+| `universal-system-administrator` | all shared skills + 3 profile-specific skills | enabled | enabled | enabled | Ansible requirements |
 
 Explicit `HERMES_NPX_SETUP`, `HERMES_ANSIBLE_SETUP`, `HERMES_SSH_SETUP`, `HERMES_ADDON_REQUIREMENTS`, and `HERMES_ANSIBLE_VERSION` values override profile defaults.
 
@@ -328,7 +328,8 @@ See [`docs/security.md`](docs/security.md).
 |------|-------|----------------|
 | `profile-composition.sh` | Bootstrap profiles | Skill allowlists, shared vs. profile-specific file layout, SSH/Ansible/NPX flag propagation, operator-variable overrides, custom `ANSIBLE_CONFIG` preservation. Runs `apply_profile_defaults()` + `compose_profile_bootstrap()` in matching sequences. |
 | `configure.sh` | Wizard artifacts | Interactive and `--from-answers` generation: env file mode 0600, credential absence from answers, correct `HERMES_*` values per profile, bootstrap config.yaml contract, prepared archive content, answer reuse/replay, replay-security against unowned directories. |
-| `matrix.sh` | Manifest rendering | All 8 optional-component combinations (Dash/WebUI/Browser on/off), 16 profile/Ansible/requirements combinations, injection-attack rejection (multiline YAML, invalid namespace). Each case renders the full manifest and validates resource presence/absence with Python + PyYAML. |
+| `matrix.sh` | Manifest rendering | All 8 optional-component combinations (Dash/WebUI/Browser on/off), 24 profile/Ansible/requirements combinations, injection-attack rejection (multiline YAML, invalid namespace). Each case renders the full manifest and validates resource presence/absence with Python + PyYAML. |
+| `ssh-identity.sh` | Persistent SSH identity | Executes the rendered init-job SSH block twice and verifies exactly one preserved key, safe modes, effective ordinary `ssh -G` selection through the shared wrapper, operator-config preservation, and no `.ssh` `subPath` dependency. |
 | `backup.sh` | Backup/restore lifecycle | Encrypted archive creation, passphrase delivery, checksum validation, traversal/link/type rejection, dry-run restore, K3s-version/namespace policy enforcement, force override behavior, and malformed-archive handling. |
 | `credentials.sh` | Secret lifecycle | Explicit-vs-generated-vs-reused credential precedence, malformed/empty/missing Secret detection, weak-key rejection, and cross-credential boundary tests (Dashboard vs API vs Browserless). |
 | `qa-contract.sh` | Live-deployment contract | Shared conventions and assertion style used by all tests; documents the mandatory-live-acceptance policy referenced by `docs/qa.md`. |

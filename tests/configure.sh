@@ -13,7 +13,9 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
-printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\nn\nn\n' | \
+# Accept the profile, provider, image, pull-policy, and SSH defaults while
+# explicitly disabling unrelated optional components.
+printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\n\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
     --answers-file "$TMP_DIR/profile-answers" > "$profile_output"
@@ -23,6 +25,12 @@ grep -E '^  [0-9]+\) personal-assistant$' "$profile_output"
 grep -E '^  [0-9]+\) universal-system-architect$' "$profile_output"
 grep -E '^  [0-9]+\) universal-system-administrator$' "$profile_output"
 grep -Fqx '  Credentials: Kubernetes Secrets only; values are not stored locally or printed' "$profile_output"
+# The default interactive personal-assistant profile must carry its profile SSH
+# default through the wizard when the SSH prompt is accepted unchanged.
+# shellcheck disable=SC1090
+source "$TMP_DIR/profile-config/hermes.env"
+[[ "$HERMES_BOOTSTRAP_PROFILE" == personal-assistant ]]
+[[ "$HERMES_SSH_SETUP" == true ]]
 
 # Verify operational-script environment-file fallback and process-variable precedence.
 # Operational scripts prefer an existing root hermes.env, then discover the

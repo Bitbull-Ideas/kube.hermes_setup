@@ -105,10 +105,60 @@ spec:
               chmod 600 "${HERMES_SSH_KEY_PATH}"
               [ ! -f "${HERMES_SSH_KEY_PATH}.pub" ] || chmod 644 "${HERMES_SSH_KEY_PATH}.pub"
             fi
+            if [ -f "${HERMES_SSH_KEY_PATH}" ]; then
+              ssh_config=/opt/data/.ssh/config
+              ssh_config_tmp="$ssh_config.$$.tmp"
+              touch "$ssh_config"
+              sed '/^# BEGIN kube\.hermes_setup SSH identity$/,/^# END kube\.hermes_setup SSH identity$/d' "$ssh_config" |
+                sed '/^# BEGIN kube\.hermes_setup system SSH config$/,/^# END kube\.hermes_setup system SSH config$/d' > "$ssh_config_tmp"
+              {
+                printf '%s\n' '# BEGIN kube.hermes_setup SSH identity'
+                printf '%s\n' 'Host *'
+                printf '%s\n' '    IdentityFile ${HERMES_SSH_KEY_PATH}'
+                printf '%s\n' '    IdentitiesOnly yes'
+                printf '%s\n' '# END kube.hermes_setup SSH identity'
+                cat "$ssh_config_tmp"
+                printf '%s\n' '# BEGIN kube.hermes_setup system SSH config'
+                printf '%s\n' 'Host *'
+                printf '%s\n' '    Include /etc/ssh/ssh_config'
+                printf '%s\n' '# END kube.hermes_setup system SSH config'
+              } > "$ssh_config"
+              rm -f "$ssh_config_tmp"
+              chmod 600 "$ssh_config"
+              mkdir -p /opt/data/hermes-managed/bin
+              {
+                printf '%s\n' '#!/bin/sh'
+                printf '%s\n' '# Managed by kube.hermes_setup; use the persistent runtime SSH config.'
+                printf '%s\n' 'ssh_binary="$(PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin command -v ssh)" || exit 127'
+                printf '%s\n' 'exec "$ssh_binary" -F /opt/data/.ssh/config "$@"'
+              } > /opt/data/hermes-managed/bin/ssh
+              chmod 755 /opt/data/hermes-managed/bin/ssh
+            fi
+          else
+            rm -f /opt/data/hermes-managed/bin/ssh
           fi
           if [ "${HERMES_NPX_SETUP}" = "true" ] || [ "${HERMES_NPX_SETUP}" = "TRUE" ] || [ "${HERMES_NPX_SETUP}" = "1" ] || [ "${HERMES_NPX_SETUP}" = "yes" ] || [ "${HERMES_NPX_SETUP}" = "YES" ] || [ "${HERMES_NPX_SETUP}" = "on" ] || [ "${HERMES_NPX_SETUP}" = "ON" ]; then
             mkdir -p /opt/data/.npm
           fi
+          installer_default_soul() {
+            printf '%s\n' 'You are Hermes Agent, an intelligent AI assistant. Be helpful, direct, technically precise, and security-conscious.'
+            printf '%s\n' ''
+            printf '%s\n' '## Browser usage policy'
+            printf '%s\n' 'A real Chromium browser is available through Hermes browser tools via the `BROWSER_CDP_URL` environment variable. Use browser tools for real UI/web verification, especially WebUI issues, JavaScript-rendered pages, login flows, Ingress checks, screenshots, browser console errors, and reproducing frontend problems. Use curl for HTTP status/headers/health endpoints, but do not rely only on curl for UI problems. Never print the full `BROWSER_CDP_URL`; it contains a token.'
+          }
+          write_installer_default_soul() {
+            installer_default_soul > "$1"
+          }
+          bootstrap_soul_is_generic() {
+            soul="$1"
+            [ -f "$soul" ] && [ ! -L "$soul" ] || return 1
+            [ "$(stat -c '%h' "$soul")" = "1" ] || return 1
+            soul_content="$(cat "$soul")" || return 1
+            if [ "$soul_content" = 'You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.' ]; then
+              return 0
+            fi
+            [ "$soul_content" = "$(installer_default_soul)" ]
+          }
           bootstrap_copy_missing() {
             src="$1"
             dest="$2"
@@ -151,6 +201,12 @@ spec:
                 bootstrap_copy_overwrite /tmp/hermes-bootstrap/opt-data /opt/data
                 bootstrap_copy_overwrite /tmp/hermes-bootstrap/workspace /workspace
               else
+                # A stock Hermes/installer identity carries no operator intent and
+                # must not block the explicitly selected bootstrap profile. Preserve
+                # every other existing SOUL.md exactly in non-destructive mode.
+                if [ -f /tmp/hermes-bootstrap/opt-data/SOUL.md ] && [ ! -L /tmp/hermes-bootstrap/opt-data/SOUL.md ] && bootstrap_soul_is_generic /opt/data/SOUL.md; then
+                  cp -a /tmp/hermes-bootstrap/opt-data/SOUL.md /opt/data/SOUL.md
+                fi
                 bootstrap_copy_missing /tmp/hermes-bootstrap/opt-data /opt/data
                 bootstrap_copy_missing /tmp/hermes-bootstrap/workspace /workspace
               fi
@@ -189,7 +245,7 @@ spec:
           mkdir -p /opt/data/home
           {
             printf '%s\n' '# Managed by kube.hermes_setup; do not put secrets in this file.'
-            printf '%s\n' 'export PATH="${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:$PATH"'
+            printf '%s\n' 'export PATH="/opt/data/hermes-managed/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:$PATH"'
             printf '%s\n' 'export npm_config_yes=true'
             printf '%s\n' 'export LANG="C.UTF-8"'
             printf '%s\n' 'export LC_ALL="C.UTF-8"'
@@ -245,23 +301,18 @@ spec:
             tmp_env="/opt/data/.env.$$.tmp"
             while IFS= read -r line || [ -n "$line" ]; do
               case "$line" in
-                BROWSER_CDP_URL=*) printf '%s\n' "BROWSER_CDP_URL=${BROWSER_CDP_URL}" ;;
+                BROWSER_CDP_URL=*) printf '%s\n' "BROWSER_CDP_URL=$BROWSER_CDP_URL" ;;
                 *) printf '%s\n' "$line" ;;
               esac
             done < /opt/data/.env > "$tmp_env"
             cat "$tmp_env" > /opt/data/.env
             rm -f "$tmp_env"
           else
-            printf '%s\n' "BROWSER_CDP_URL=${BROWSER_CDP_URL}" >> /opt/data/.env
+            printf '%s\n' "BROWSER_CDP_URL=$BROWSER_CDP_URL" >> /opt/data/.env
           fi
           chmod 600 /opt/data/.env
           if [ ! -f /opt/data/SOUL.md ]; then
-            {
-              printf '%s\n' 'You are Hermes Agent, an intelligent AI assistant. Be helpful, direct, technically precise, and security-conscious.'
-              printf '%s\n' ''
-              printf '%s\n' '## Browser usage policy'
-              printf '%s\n' 'A real Chromium browser is available through Hermes browser tools via the `BROWSER_CDP_URL` environment variable. Use browser tools for real UI/web verification, especially WebUI issues, JavaScript-rendered pages, login flows, Ingress checks, screenshots, browser console errors, and reproducing frontend problems. Use curl for HTTP status/headers/health endpoints, but do not rely only on curl for UI problems. Never print the full `BROWSER_CDP_URL`; it contains a token.'
-            } > /opt/data/SOUL.md
+            write_installer_default_soul /opt/data/SOUL.md
           fi
           if [ "${HERMES_ANSIBLE_SETUP}" = "true" ] || [ "${HERMES_ANSIBLE_SETUP}" = "TRUE" ] || [ "${HERMES_ANSIBLE_SETUP}" = "1" ] || [ "${HERMES_ANSIBLE_SETUP}" = "yes" ] || [ "${HERMES_ANSIBLE_SETUP}" = "YES" ] || [ "${HERMES_ANSIBLE_SETUP}" = "on" ] || [ "${HERMES_ANSIBLE_SETUP}" = "ON" ]; then
             mkdir -p /workspace/ansible/collections /workspace/ansible/group_vars /workspace/ansible/host_vars /workspace/ansible/inventory /workspace/ansible/playbooks /workspace/ansible/roles /opt/data/ansible/cp /opt/data/ansible/tmp
@@ -306,6 +357,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -367,6 +420,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -387,6 +442,8 @@ spec:
         - name: HERMES_HOME
           value: /opt/data
         - name: HOME
+          value: /opt/data
+        - name: CODEX_HOME
           value: /opt/data
         - name: XDG_CONFIG_HOME
           value: /opt/data/.config
@@ -415,7 +472,7 @@ spec:
         - name: ANSIBLE_CONFIG
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
-          value: /opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          value: /opt/data/hermes-managed/bin:/opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: API_SERVER_ENABLED
           value: "true"
         - name: API_SERVER_HOST
@@ -507,6 +564,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -527,6 +586,8 @@ spec:
         - name: HERMES_HOME
           value: /opt/data
         - name: HOME
+          value: /opt/data
+        - name: CODEX_HOME
           value: /opt/data
         - name: XDG_CONFIG_HOME
           value: /opt/data/.config
@@ -555,7 +616,7 @@ spec:
         - name: ANSIBLE_CONFIG
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
-          value: /opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          value: /opt/data/hermes-managed/bin:/opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
           valueFrom:
             secretKeyRef:
@@ -648,6 +709,8 @@ spec:
           [ ! -f /opt/data/.ssh/known_hosts ] || chmod 644 /opt/data/.ssh/known_hosts
           find /opt/data/.ssh -type f -name 'id_*' ! -name '*.pub' -exec chmod 600 {} + 2>/dev/null || true
           find /opt/data/.ssh -type f -name 'id_*.pub' -exec chmod 644 {} + 2>/dev/null || true
+          [ ! -f /opt/data/.ssh/config ] || chmod 600 /opt/data/.ssh/config
+          [ ! -f /opt/data/hermes-managed/bin/ssh ] || chmod 755 /opt/data/hermes-managed/bin/ssh
           chmod 700 /opt/data/webui
         volumeMounts:
         - name: home
@@ -695,6 +758,8 @@ spec:
         - name: HERMES_HOME
           value: /opt/data
         - name: HOME
+          value: /opt/data
+        - name: CODEX_HOME
           value: /opt/data
         - name: XDG_CONFIG_HOME
           value: /opt/data/.config
@@ -744,7 +809,7 @@ spec:
         - name: ANSIBLE_CONFIG
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
-          value: ${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          value: /opt/data/hermes-managed/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         - name: HERMES_API_URL
           value: http://hermes-agent:8642
         - name: HERMES_API_KEY

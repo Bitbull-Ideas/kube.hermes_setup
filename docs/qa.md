@@ -131,6 +131,7 @@ For ordinary reinstall tests:
 ./tests/profile-composition.sh
 ./tests/configure.sh
 ./tests/matrix.sh
+./tests/ssh-identity.sh
 ./tests/credentials.sh
 
 # Live run, with an explicitly isolated namespace and generated env file.

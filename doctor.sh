@@ -241,12 +241,13 @@ check_home_ssh() {
     home="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c 'printf %s "${HOME:-}"' 2>/dev/null || true)"
     xdg_config="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c 'printf %s "${XDG_CONFIG_HOME:-}"' 2>/dev/null || true)"
     xdg_cache="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c 'printf %s "${XDG_CACHE_HOME:-}"' 2>/dev/null || true)"
+    codex_home="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c 'printf %s "${CODEX_HOME:-}"' 2>/dev/null || true)"
     ansible_config="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c 'printf %s "${ANSIBLE_CONFIG:-}"' 2>/dev/null || true)"
 
-    if [[ "$home" == "/opt/data" && "$xdg_config" == "/opt/data/.config" && "$xdg_cache" == "/opt/data/.cache" ]]; then
-      ok "$app HOME/XDG point to persistent /opt/data"
+    if [[ "$home" == "/opt/data" && "$xdg_config" == "/opt/data/.config" && "$xdg_cache" == "/opt/data/.cache" && "$codex_home" == "/opt/data" ]]; then
+      ok "$app HOME/XDG/CODEX_HOME point to persistent /opt/data"
     else
-      fail "$app HOME/XDG are not persistent (HOME=${home:-unset}, XDG_CONFIG_HOME=${xdg_config:-unset}, XDG_CACHE_HOME=${xdg_cache:-unset})"
+      fail "$app HOME/XDG/CODEX_HOME are not persistent (HOME=${home:-unset}, XDG_CONFIG_HOME=${xdg_config:-unset}, XDG_CACHE_HOME=${xdg_cache:-unset}, CODEX_HOME=${codex_home:-unset})"
     fi
 
     if [[ "${HERMES_ANSIBLE_SETUP:-false}" =~ ^(1|true|TRUE|yes|YES|on|ON)$ && -n "$HERMES_ANSIBLE_CONFIG" && "$ansible_config" == "$HERMES_ANSIBLE_CONFIG" ]]; then
@@ -274,6 +275,30 @@ check_home_ssh() {
       ok "$app persistent SSH keypair exists with safe modes"
     else
       fail "$app persistent SSH keypair missing or wrong modes (private=${key_mode:-missing}, public=${pub_mode:-missing})"
+      continue
+    fi
+
+    ssh_contract="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
+      set -eu
+      key="$0"
+      config_mode="$(stat -c %a /opt/data/.ssh/config)"
+      test "$(command -v ssh)" = /opt/data/hermes-managed/bin/ssh
+      identity="$(ssh -G example.invalid 2>/dev/null | awk '\''$1 == "identityfile" { print $2; exit }'\'')"
+      identities_only="$(ssh -G example.invalid 2>/dev/null | awk '\''$1 == "identitiesonly" { print $2; exit }'\'')"
+      derived="$(ssh-keygen -y -f "$key" | ssh-keygen -lf - | awk '\''{ print $2 }'\'')"
+      stored="$(ssh-keygen -lf "$key.pub" | awk '\''{ print $2 }'\'')"
+      printf "%s|%s|%s|%s|%s" "$config_mode" "$identity" "$identities_only" "$derived" "$stored"
+    ' "$key_path" 2>/dev/null || true)"
+    IFS='|' read -r config_mode effective_identity identities_only derived_fingerprint stored_fingerprint <<< "$ssh_contract"
+    if [[ "$config_mode" == "600" && "$effective_identity" == "$key_path" && "$identities_only" == "yes" ]]; then
+      ok "$app OpenSSH selects the persistent identity with IdentitiesOnly=yes"
+    else
+      fail "$app OpenSSH persistent identity selection invalid"
+    fi
+    if [[ -n "$derived_fingerprint" && "$derived_fingerprint" == "$stored_fingerprint" ]]; then
+      ok "$app SSH private/public fingerprints match"
+    else
+      fail "$app SSH private/public fingerprint mismatch"
     fi
   done
 }

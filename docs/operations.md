@@ -137,7 +137,7 @@ The recommended configuration lifecycle is:
 ./configure.sh --from-answers --no-install
 ```
 
-`setup.sh` remains a compatibility wrapper around `configure.sh`. `current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present, but it discards manual changes made after the wizard; reapply required customization before installing. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves non-password answers with mode `0600`; plaintext passwords are never written there or to `hermes.env`. Both paths are Git-ignored. Bootstrap mode `missing` seeds only absent PVC files; `overwrite` replaces same-path files and merges source directories, while destination-only entries remain until removed separately.
+`setup.sh` remains a compatibility wrapper around `configure.sh`. `current_config/` is wizard-owned and contains the composed bootstrap, `hermes.env`, and installer artifacts. Replay safely replaces this directory only when its ownership marker is present, but it discards manual changes made after the wizard; reapply required customization before installing. The wizard writes the Agent-native configuration to `current_config/bootstrap/config.yaml`; the installer injects it as `/opt/data/config.yaml` on the persistent `hermes-home` PVC, so a Pod restart preserves it. The root-level `configuration_answers` file preserves non-password answers with mode `0600`; plaintext passwords are never written there or to `hermes.env`. Both paths are Git-ignored. Bootstrap mode `missing` seeds absent PVC files and upgrades only exact stock Hermes/installer `SOUL.md` content to the selected bootstrap identity; every customized `SOUL.md` remains untouched. `overwrite` replaces same-path files and merges source directories, while destination-only entries remain until removed separately.
 
 When `configuration_answers` already exists, starting `./configure.sh` interactively offers to reuse it. Answer `y` to pre-seed the interactive questions with the saved non-secret answers; pressing Enter accepts each saved value, while entering a new value overrides it. Answer `n` to use the normal built-in defaults instead. In both cases the questions remain interactive. Use `--from-answers` only for non-interactive replay without the questions.
 
@@ -192,7 +192,7 @@ workspace/               -> /workspace/
 auth.json                -> /opt/data/auth.json only with HERMES_BOOTSTRAP_INCLUDE_AUTH=true
 ```
 
-Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. Use `overwrite` only when you intentionally want the bootstrap source to replace existing files. Bootstrap data, `current_config/`, and `configuration_answers` can contain personal data or credentials; keep them out of Git.
+Use `HERMES_BOOTSTRAP_MODE=missing` for normal installs/upgrades. In this mode, a selected bootstrap profile replaces only recognized generic Hermes or installer SOUL text (ignoring trailing newline characters); any operator content or other customization is preserved. Use `overwrite` only when you intentionally want the bootstrap source to replace all existing same-path files. Bootstrap data, `current_config/`, and `configuration_answers` can contain personal data or credentials; keep them out of Git.
 
 ## Credential status
 
@@ -360,7 +360,7 @@ export PATH=/opt/data/addon-venv/bin:/opt/data/uv/bin:$PATH
 
 Agent, Dashboard, and WebUI always use `/opt/data` as persistent Unix home on the `hermes-home` PVC.
 
-SSH setup defaults to `false` for `personal-assistant` and `true` for `universal-system-architect`. Override it explicitly when needed:
+SSH setup defaults to `true` for every bundled profile so a fresh setup has one usable persistent identity out of the box. Override it explicitly with `HERMES_SSH_SETUP=false` when a profile must not have an SSH identity:
 
 ```bash
 HERMES_SSH_SETUP=true
@@ -373,6 +373,9 @@ Operational behavior:
 - `HOME=/opt/data`, `XDG_CONFIG_HOME=/opt/data/.config`, and `XDG_CACHE_HOME=/opt/data/.cache` are set on Agent, Dashboard, and WebUI processes.
 - If `HERMES_SSH_SETUP=true`, `/opt/data/.ssh` is created with mode `700`, `known_hosts` is created with mode `644`, and the init job generates the key only when `HERMES_SSH_KEY_PATH` does not already exist. Existing keys are preserved.
 - Private keys are forced to mode `600`; public keys are forced to mode `644`.
+- `/opt/data/.ssh/config` selects the persistent key with `IdentitiesOnly yes` and includes `/etc/ssh/ssh_config`, preserving image/site-wide OpenSSH policy. A PVC-backed wrapper at `/opt/data/hermes-managed/bin/ssh` is first on the Agent, Dashboard, WebUI, and terminal subprocess PATH. It resolves the system `ssh` on a recursion-safe lookup path, then executes it without replacing the inherited runtime PATH, so `ProxyCommand`, `LocalCommand`, and `KnownHostsCommand` helpers remain discoverable. Ordinary `ssh` therefore uses the same persistent config independently of passwd-home differences. No `.ssh` Kubernetes `subPath` mount is required.
+- Do not bypass the wrapper with `/usr/bin/ssh` or a sanitized `PATH` that excludes `/opt/data/hermes-managed/bin`. OpenSSH derives its default `~/.ssh` location from the runtime account's passwd entry rather than relying only on the overridden `HOME=/opt/data`; a direct system-client invocation can therefore search the image account home and miss the PVC identity.
+- Rerunning the installer updates only its marked SSH config block, preserves operator-managed config lines, and never rotates an existing key.
 
 Fetch the generated public key:
 
@@ -380,16 +383,16 @@ Fetch the generated public key:
 kubectl -n <namespace> exec deploy/hermes-agent -- cat /opt/data/.ssh/id_ed25519.pub
 ```
 
-Manual setup is possible and persistent:
+Do not run `ssh-keygen` merely because a shell reports a different passwd home. Verify the effective identity first:
 
 ```bash
-kubectl -n <namespace> exec -it deploy/hermes-agent -- /bin/bash
-mkdir -p /opt/data/.ssh
-ssh-keygen -t ed25519 -N '' -f /opt/data/.ssh/id_ed25519
-chmod 700 /opt/data/.ssh
-chmod 600 /opt/data/.ssh/id_ed25519
-chmod 644 /opt/data/.ssh/id_ed25519.pub
+kubectl -n <namespace> exec deploy/hermes-agent -- \
+  ssh -G example.invalid | grep -E '^(identityfile|identitiesonly) '
 ```
+
+If SSH is explicitly disabled, a fresh PVC receives no SSH key or wrapper; on an existing PVC the installer removes only its managed wrapper and preserves existing key/config data. Generating, replacing, rotating, importing, or deleting an existing key is a separate credential-lifecycle action and must be intentional.
+
+The SSH key is for SSH access to managed target systems. GitHub access is separate: use `GITHUB_TOKEN` from mode-`0600` `/opt/data/.env` for GitHub API and HTTPS Git operations. Do not add the managed-target SSH key to GitHub merely to make repository access work, and never put either private keys or token values in Git, remote URLs, logs, or PR text.
 
 Keep host key checking enabled. Prefer maintaining `/opt/data/.ssh/known_hosts` or using reviewed per-host `accept-new` entries in `/opt/data/.ssh/config`; do not use global `StrictHostKeyChecking=no` as a default.
 
