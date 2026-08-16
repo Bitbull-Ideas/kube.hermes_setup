@@ -26,13 +26,16 @@ The administrative workstation needs:
 git clone https://github.com/Bitbull-Ideas/kube.hermes_setup.git
 cd kube.hermes_setup
 ./configure.sh --no-install
-./install.sh
-./doctor.sh
 ```
 
 The configurator writes Git-ignored deployment files under `current_config/`. Review them before installation. Use [`examples/hermes.env.example`](examples/hermes.env.example) as the complete configuration-variable reference.
 
-For production use, read the security, operations, and QA guides before installing.
+For production use, read the security, operations, and QA guides before continuing:
+
+```bash
+./install.sh
+./doctor.sh
+```
 
 ## Bootstrap profiles
 
