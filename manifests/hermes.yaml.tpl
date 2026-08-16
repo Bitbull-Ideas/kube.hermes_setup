@@ -270,14 +270,14 @@ spec:
             tmp_env="/opt/data/.env.$$.tmp"
             while IFS= read -r line || [ -n "$line" ]; do
               case "$line" in
-                BROWSER_CDP_URL=*) printf '%s\n' "BROWSER_CDP_URL=${BROWSER_CDP_URL}" ;;
+                BROWSER_CDP_URL=*) printf '%s\n' "BROWSER_CDP_URL=$BROWSER_CDP_URL" ;;
                 *) printf '%s\n' "$line" ;;
               esac
             done < /opt/data/.env > "$tmp_env"
             cat "$tmp_env" > /opt/data/.env
             rm -f "$tmp_env"
           else
-            printf '%s\n' "BROWSER_CDP_URL=${BROWSER_CDP_URL}" >> /opt/data/.env
+            printf '%s\n' "BROWSER_CDP_URL=$BROWSER_CDP_URL" >> /opt/data/.env
           fi
           chmod 600 /opt/data/.env
           if [ ! -f /opt/data/SOUL.md ]; then

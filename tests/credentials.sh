@@ -111,6 +111,7 @@ source "$ROOT_DIR/install.sh"
 prepare_paths
 prepare_defaults
 resolve_runtime_credentials
+render_manifest
 printf 'dashboard=%s api=%s browser=%s\n' "$CREDENTIAL_SOURCE_DASHBOARD" "$CREDENTIAL_SOURCE_API" "$CREDENTIAL_SOURCE_BROWSER" > "$TMP_DIR/$TEST_LABEL.sources"
 printf 'dashboard_password_sha=%s\n' "$(printf '%s' "$DASHBOARD_AUTH_PASSWORD" | sha256sum | cut -d' ' -f1)" > "$TMP_DIR/$TEST_LABEL.result"
 printf 'dashboard_user_sha=%s\n' "$(printf '%s' "$DASHBOARD_AUTH_USER" | sha256sum | cut -d' ' -f1)" >> "$TMP_DIR/$TEST_LABEL.result"
@@ -198,6 +199,12 @@ reset_state
 run_resolver explicit explicit
 grep -qx 'dashboard=explicit api=explicit browser=explicit' "$TMP_DIR/explicit.sources"
 ! grep -q 'get ' "$TMP_DIR/state/calls"
+# The generated CDP credential must be loaded only through secretKeyRef. The
+# rendered init script must defer expansion to the Pod shell instead of
+# embedding the credential in the PodSpec.
+! grep -Fq 'explicit-browser-token' "$TMP_DIR/render-explicit/hermes.yaml"
+grep -Fq 'BROWSER_CDP_URL=$BROWSER_CDP_URL' "$TMP_DIR/render-explicit/hermes.yaml"
+grep -Fq 'key: BROWSER_CDP_URL' "$TMP_DIR/render-explicit/hermes.yaml"
 
 # Disabled optional components remain empty and are not looked up.
 reset_state

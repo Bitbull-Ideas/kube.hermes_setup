@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
 - Makes ordinary `ssh` select `/opt/data/.ssh/id_ed25519` with `IdentitiesOnly yes` through a PVC-backed wrapper on every runtime PATH, independent of container passwd-home differences, while preserving operator-managed SSH config content.
 - Preserves the existing private-key fingerprint across installer reruns and adds doctor checks for effective identity selection, safe permissions, and matching private/public fingerprints.
 - Adds a hermetic SSH identity regression test covering first run, unchanged rerun, one-key count, no Kubernetes `subPath` dependency, and effective ordinary `ssh -G` output.
+- Keeps the Browserless CDP credential out of the rendered PodSpec; the init Job now expands the `secretKeyRef`-backed environment variable only inside the running container.
+- Documents the complete PVC/container architecture, persistent directories, init-container mounts, service wiring, and repository-injected environment variables.
 
 ## [v2.2.2] - 2026-08-12
 

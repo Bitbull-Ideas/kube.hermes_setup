@@ -159,7 +159,7 @@ kubectl -n "$HERMES_NAMESPACE" logs deploy/hermes-webui
 kubectl -n "$HERMES_NAMESPACE" logs deploy/hermes-browser
 ```
 
-See [`docs/qa.md`](docs/qa.md) for the mandatory live acceptance matrix, [`docs/troubleshooting.md`](docs/troubleshooting.md), [`docs/operations.md`](docs/operations.md), and [`docs/ansible.md`](docs/ansible.md).
+See [`docs/qa.md`](docs/qa.md) for the mandatory live acceptance matrix, [`docs/pvc-and-containers.md`](docs/pvc-and-containers.md) for the PVC/container wiring and environment-variable map, [`docs/troubleshooting.md`](docs/troubleshooting.md), [`docs/operations.md`](docs/operations.md), and [`docs/ansible.md`](docs/ansible.md).
 
 ### 5. Reconfigure
 
