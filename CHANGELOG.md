@@ -12,6 +12,8 @@ All notable changes to this project are documented in this file.
 - Adds a hermetic SSH identity regression test covering first run, unchanged rerun, one-key count, no Kubernetes `subPath` dependency, and effective ordinary `ssh -G` output.
 - Keeps the Browserless CDP credential out of the rendered PodSpec; the init Job now expands the `secretKeyRef`-backed environment variable only inside the running container.
 - Documents the complete PVC/container architecture, persistent directories, init-container mounts, service wiring, and repository-injected environment variables.
+- Makes the interactive wizard honor the selected profile's SSH default, while retaining explicit yes/no overrides.
+- Preserves system-wide OpenSSH configuration and inherited helper paths for `ProxyCommand`, `LocalCommand`, and `KnownHostsCommand` without allowing the managed wrapper to recurse.
 
 ## [v2.2.2] - 2026-08-12
 

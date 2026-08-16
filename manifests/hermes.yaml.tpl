@@ -109,7 +109,8 @@ spec:
               ssh_config=/opt/data/.ssh/config
               ssh_config_tmp="$ssh_config.$$.tmp"
               touch "$ssh_config"
-              sed '/^# BEGIN kube\.hermes_setup SSH identity$/,/^# END kube\.hermes_setup SSH identity$/d' "$ssh_config" > "$ssh_config_tmp"
+              sed '/^# BEGIN kube\.hermes_setup SSH identity$/,/^# END kube\.hermes_setup SSH identity$/d' "$ssh_config" |
+                sed '/^# BEGIN kube\.hermes_setup system SSH config$/,/^# END kube\.hermes_setup system SSH config$/d' > "$ssh_config_tmp"
               {
                 printf '%s\n' '# BEGIN kube.hermes_setup SSH identity'
                 printf '%s\n' 'Host *'
@@ -117,6 +118,10 @@ spec:
                 printf '%s\n' '    IdentitiesOnly yes'
                 printf '%s\n' '# END kube.hermes_setup SSH identity'
                 cat "$ssh_config_tmp"
+                printf '%s\n' '# BEGIN kube.hermes_setup system SSH config'
+                printf '%s\n' 'Host *'
+                printf '%s\n' '    Include /etc/ssh/ssh_config'
+                printf '%s\n' '# END kube.hermes_setup system SSH config'
               } > "$ssh_config"
               rm -f "$ssh_config_tmp"
               chmod 600 "$ssh_config"
@@ -124,7 +129,8 @@ spec:
               {
                 printf '%s\n' '#!/bin/sh'
                 printf '%s\n' '# Managed by kube.hermes_setup; use the persistent runtime SSH config.'
-                printf '%s\n' 'exec env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ssh -F /opt/data/.ssh/config "$@"'
+                printf '%s\n' 'ssh_binary="$(PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin command -v ssh)" || exit 127'
+                printf '%s\n' 'exec "$ssh_binary" -F /opt/data/.ssh/config "$@"'
               } > /opt/data/hermes-managed/bin/ssh
               chmod 755 /opt/data/hermes-managed/bin/ssh
             fi

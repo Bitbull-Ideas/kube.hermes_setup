@@ -87,12 +87,19 @@ end = script.index('if [ "false" = "true"', start)
 block = script[start:end]
 for required in (
     "# BEGIN kube.hermes_setup SSH identity",
+    "# BEGIN kube.hermes_setup system SSH config",
+    "Include /etc/ssh/ssh_config",
     "IdentityFile /opt/data/.ssh/id_ed25519",
     "IdentitiesOnly yes",
     "/opt/data/hermes-managed/bin/ssh",
 ):
     assert required in block, required
-block_path.write_text("set -eu\n" + block.replace("/opt/data", "__TEST_HOME__"))
+block_path.write_text(
+    "set -eu\n"
+    + block.replace("/opt/data", "__TEST_HOME__").replace(
+        "/etc/ssh/ssh_config", "__TEST_SYSTEM_CONFIG__"
+    )
+)
 
 disabled_job = next(
     doc
@@ -109,7 +116,10 @@ PY
 
 home="$TMP_DIR/home"
 mkdir -p "$home"
-sed "s#__TEST_HOME__#$home#g" "$ssh_block" > "$TMP_DIR/run-ssh-init.sh"
+system_config="$TMP_DIR/system-ssh-config"
+printf '%s\n' 'Host system-only.invalid' '    User system-user' '    HashKnownHosts yes' > "$system_config"
+sed -e "s#__TEST_HOME__#$home#g" -e "s#__TEST_SYSTEM_CONFIG__#$system_config#g" \
+  "$ssh_block" > "$TMP_DIR/run-ssh-init.sh"
 chmod 700 "$TMP_DIR/run-ssh-init.sh"
 
 disabled_home="$TMP_DIR/disabled-home"
@@ -135,12 +145,41 @@ printf '%s\n' stale-wrapper > "$disabled_home/hermes-managed/bin/ssh"
 [[ "$(find "$home/.ssh" -maxdepth 1 -type f -name 'id_*' ! -name '*.pub' | wc -l)" == 1 ]]
 
 first_fingerprint="$(ssh-keygen -lf "$home/.ssh/id_ed25519.pub" | awk '{print $2}')"
-printf '%s\n' 'Host operator.example' '    User preserved-operator' >> "$home/.ssh/config"
+printf '%s\n' 'Host operator.example' '    User preserved-operator' '    HashKnownHosts no' >> "$home/.ssh/config"
 "$TMP_DIR/run-ssh-init.sh"
 second_fingerprint="$(ssh-keygen -lf "$home/.ssh/id_ed25519.pub" | awk '{print $2}')"
 [[ "$first_fingerprint" == "$second_fingerprint" ]]
 [[ "$(grep -Fc '# BEGIN kube.hermes_setup SSH identity' "$home/.ssh/config")" == 1 ]]
+[[ "$(grep -Fc '# BEGIN kube.hermes_setup system SSH config' "$home/.ssh/config")" == 1 ]]
+[[ "$(grep -Fc "Include $system_config" "$home/.ssh/config")" == 1 ]]
 grep -Fqx '    User preserved-operator' "$home/.ssh/config"
+operator_effective="$(PATH="$home/hermes-managed/bin:$PATH" ssh -G operator.example 2>/dev/null)"
+grep -Fqx 'user preserved-operator' <<< "$operator_effective"
+grep -Fqx 'hashknownhosts no' <<< "$operator_effective"
+system_effective="$(PATH="$home/hermes-managed/bin:$PATH" ssh -G system-only.invalid 2>/dev/null)"
+grep -Fqx 'user system-user' <<< "$system_effective"
+grep -Fqx 'hashknownhosts yes' <<< "$system_effective"
+
+# The wrapper must preserve the inherited PATH for ProxyCommand and other SSH
+# helpers while resolving the real client without recursively invoking itself.
+helper_bin="$TMP_DIR/helper-bin"
+mkdir -p "$helper_bin"
+cat > "$helper_bin/hermes-proxy-helper" <<'EOF'
+#!/bin/sh
+printf '%s\n' helper-ran > "$HERMES_PROXY_MARKER"
+exit 0
+EOF
+chmod 755 "$helper_bin/hermes-proxy-helper"
+cat >> "$home/.ssh/config" <<'EOF'
+Host helper-test.invalid
+    ProxyCommand hermes-proxy-helper %h %p
+    BatchMode yes
+EOF
+proxy_marker="$TMP_DIR/proxy-helper-ran"
+HERMES_PROXY_MARKER="$proxy_marker" PATH="$home/hermes-managed/bin:$helper_bin:$PATH" \
+  ssh helper-test.invalid true >/dev/null 2>&1 || true
+grep -Fqx helper-ran "$proxy_marker"
+! grep -Fq 'exec env PATH=' "$home/hermes-managed/bin/ssh"
 
 ssh_effective="$(PATH="$home/hermes-managed/bin:$PATH" ssh -G example.invalid 2>/dev/null)"
 grep -Fqx "identityfile $home/.ssh/id_ed25519" <<< "$ssh_effective"
