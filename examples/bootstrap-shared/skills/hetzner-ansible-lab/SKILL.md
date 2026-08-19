@@ -7,7 +7,7 @@ license: MIT
 metadata:
   hermes:
     tags: [hetzner, hcloud, ansible, lab, qa, cloud, devops]
-    related_skills: [ansible_lab, ansible-role-development, github-operations]
+    related_skills: []
     source: https://github.com/Bitbull-Ideas/hermes.skills/tree/e7056a42855bbe2b6588786cb07c2daa3f4384f8/skills/devops/hetzner-ansible-lab
     source_commit: e7056a42855bbe2b6588786cb07c2daa3f4384f8
     modified: true

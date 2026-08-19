@@ -74,6 +74,20 @@ assert_file "$architect_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-architect/requirements.txt" ]]
+python3 - "$architect_stage/skills/hetzner-ansible-lab/SKILL.md" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+assert text.startswith("---\n"), f"{path}: missing YAML frontmatter"
+frontmatter_text, separator, body = text[4:].partition("\n---\n")
+assert separator and body.strip(), f"{path}: empty frontmatter or body"
+frontmatter = yaml.safe_load(frontmatter_text)
+assert frontmatter["name"] == path.parent.name, f"{path}: name mismatch"
+assert frontmatter["metadata"]["hermes"]["related_skills"] == [], f"{path}: unclassified related skill"
+PY
 
 # ---- universal-system-administrator ----
 reset_profile_env
@@ -137,5 +151,18 @@ HERMES_ADDON_REQUIREMENTS=
 prepare_defaults
 [[ "$HERMES_BOOTSTRAP_DIR" == "$custom_bootstrap" ]]
 assert_file "$custom_bootstrap/workspace/ansible/operator.cfg"
+
+# Installer defaults must match the public example used by manual installs.
+(
+  reset_profile_env
+  unset HERMES_WEBUI_MEMORY_LIMIT
+  HERMES_BOOTSTRAP_PROFILE=personal-assistant
+  HERMES_DASHBOARD_ENABLED=false
+  HERMES_WEBUI_ENABLED=false
+  HERMES_BROWSER_ENABLED=false
+  HERMES_ADDON_REQUIREMENTS=
+  prepare_defaults
+  [[ "$HERMES_WEBUI_MEMORY_LIMIT" == 2Gi ]]
+)
 
 printf 'profile composition tests passed\n'
