@@ -66,7 +66,7 @@ HERMES_BOOTSTRAP_PROFILE=universal-system-architect
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 architect_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$architect_stage" github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager markdown-pdf
+assert_skill_set "$architect_stage" github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab markdown-pdf
 assert_file "$architect_stage/workspace/POST_SETUP.md"
 assert_absent "$architect_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$architect_stage/workspace/POST_SETUP.md"
@@ -74,6 +74,20 @@ assert_file "$architect_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-architect/requirements.txt" ]]
+python3 - "$architect_stage/skills/hetzner-ansible-lab/SKILL.md" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+assert text.startswith("---\n"), f"{path}: missing YAML frontmatter"
+frontmatter_text, separator, body = text[4:].partition("\n---\n")
+assert separator and body.strip(), f"{path}: empty frontmatter or body"
+frontmatter = yaml.safe_load(frontmatter_text)
+assert frontmatter["name"] == path.parent.name, f"{path}: name mismatch"
+assert frontmatter["metadata"]["hermes"]["related_skills"] == [], f"{path}: unclassified related skill"
+PY
 
 # ---- universal-system-administrator ----
 reset_profile_env
@@ -81,7 +95,7 @@ HERMES_BOOTSTRAP_PROFILE=universal-system-administrator
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 admin_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$admin_stage" ansible-fleet-change github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager linux-change-safety linux-triage markdown-pdf
+assert_skill_set "$admin_stage" ansible-fleet-change github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab linux-change-safety linux-triage markdown-pdf
 assert_file "$admin_stage/workspace/POST_SETUP.md"
 assert_absent "$admin_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$admin_stage/workspace/POST_SETUP.md"
@@ -89,11 +103,19 @@ assert_file "$admin_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-administrator/requirements.txt" ]]
+for admin_requirement in Markdown Pygments fpdf2 pypdf pyvim; do
+  grep -qx "$admin_requirement" "$HERMES_ADDON_REQUIREMENTS"
+done
 grep -q 'Scope boundary: Hermes runtime vs. managed targets' "$admin_stage/SOUL.md"
 grep -q 'Do not administer the runtime as a target host' "$admin_stage/SOUL.md"
 grep -q 'Do \*\*not\*\* use this skill for routine self-maintenance' "$admin_stage/skills/linux-change-safety/SKILL.md"
 grep -q 'Do not require `kubectl`, root, `/srv/backup`, `/CHANGES.md`' "$admin_stage/skills/github-setup-access/SKILL.md"
 grep -q 'Routine self-maintenance of the active Hermes runtime' "$admin_stage/workspace/AGENTS.md"
+
+for shared_admin_skill in ansible-fleet-change linux-change-safety linux-triage; do
+  assert_file "$ROOT_DIR/examples/bootstrap-shared/skills/$shared_admin_skill/SKILL.md"
+  assert_absent "$ROOT_DIR/examples/bootstrap-profiles/universal-system-administrator/skills/$shared_admin_skill"
+done
 
 # ---- operator override test ----
 reset_profile_env
@@ -129,5 +151,18 @@ HERMES_ADDON_REQUIREMENTS=
 prepare_defaults
 [[ "$HERMES_BOOTSTRAP_DIR" == "$custom_bootstrap" ]]
 assert_file "$custom_bootstrap/workspace/ansible/operator.cfg"
+
+# Installer defaults must match the public example used by manual installs.
+(
+  reset_profile_env
+  unset HERMES_WEBUI_MEMORY_LIMIT
+  HERMES_BOOTSTRAP_PROFILE=personal-assistant
+  HERMES_DASHBOARD_ENABLED=false
+  HERMES_WEBUI_ENABLED=false
+  HERMES_BROWSER_ENABLED=false
+  HERMES_ADDON_REQUIREMENTS=
+  prepare_defaults
+  [[ "$HERMES_WEBUI_MEMORY_LIMIT" == 2Gi ]]
+)
 
 printf 'profile composition tests passed\n'

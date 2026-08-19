@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.3.0] - 2026-08-19
+
+### Added
+
+- Adds `hetzner-ansible-lab` to the canonical shared bootstrap skill catalog with exact upstream provenance, sanitized reporting requirements, labelled temporary-resource cleanup, and mandatory provider-console SSH host-key verification through a run-specific `known_hosts` file.
+- Enables `hetzner-ansible-lab` by default for the `universal-system-architect` and `universal-system-administrator` profiles.
+- Adds Markdown/PDF runtime packages and `pyvim` to the administrator profile's persistent addon environment.
+
+### Changed
+
+- Moves `ansible-fleet-change`, `linux-change-safety`, and `linux-triage` from profile-local storage into the canonical shared skill catalog while keeping them selected only by `universal-system-administrator`.
+- Describes `universal-system-architect` as a curated shared-skill profile instead of claiming that it installs every shared skill.
+- Raises the WebUI memory limit default from `1Gi` to `2Gi` in both the public example and the installer fallback.
+
+### Fixed
+
+- Makes WebUI diagnostics require `BROWSER_CDP_URL` only when Browserless is enabled and run WebUI Ansible login-shell checks only when Ansible setup is enabled.
+- Adds regression coverage for shared-skill locations and allowlists, imported-skill frontmatter, administrator addon requirements, the WebUI memory fallback/rendered limit, and optional WebUI diagnostic gates.
+
+### Verification
+
+- Passes the complete local test suite and 24 profile/Ansible/requirements matrix combinations.
+- Passes isolated live K3s acceptance for Agent-only, Dashboard, WebUI, Browserless, full Architect, full Administrator, invalid-profile failure, and unchanged reinstall cases.
+- Verifies real Chromium authentication with trusted TLS and a clean console, Browserless token/CDP/WebSocket behavior, persistent PVC and Secret identity, installed profile skill sets, and complete namespace/PV cleanup.
+
 ## [v2.2.3] - 2026-08-15
 
 ### Fixed

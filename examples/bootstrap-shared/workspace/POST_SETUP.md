@@ -13,10 +13,15 @@ https://github.com/Bitbull-Ideas/kube.hermes_setup/tree/main/examples/bootstrap-
 Select a bootstrap profile; its `skills.txt` installs only the required skills from this canonical shared directory. Current shared skills include:
 
 ```text
+ansible-fleet-change
 github-setup-access
+hermes-log-watchdog
 hermes-workspace-ansible
 hermes-workspace-git
 hermes-workspace-manager
+hetzner-ansible-lab
+linux-change-safety
+linux-triage
 markdown-pdf
 ```
 

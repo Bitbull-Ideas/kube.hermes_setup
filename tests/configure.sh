@@ -295,7 +295,7 @@ export BROWSER_CDP_URL=ws://hermes-browser:3000/chromium HERMES_ANSIBLE_SETUP=fa
 export MODEL_PROVIDER=openai-codex MODEL_NAME=test HERMES_WEBUI_MAX_UPLOAD_MB=220
 export HERMES_AGENT_CPU_REQUEST=100m HERMES_AGENT_MEMORY_REQUEST=256Mi HERMES_AGENT_CPU_LIMIT=1 HERMES_AGENT_MEMORY_LIMIT=1Gi
 export HERMES_DASHBOARD_CPU_REQUEST=100m HERMES_DASHBOARD_MEMORY_REQUEST=96Mi HERMES_DASHBOARD_CPU_LIMIT=1 HERMES_DASHBOARD_MEMORY_LIMIT=1Gi
-export HERMES_WEBUI_CPU_REQUEST=100m HERMES_WEBUI_MEMORY_REQUEST=256Mi HERMES_WEBUI_CPU_LIMIT=1 HERMES_WEBUI_MEMORY_LIMIT=1Gi
+export HERMES_WEBUI_CPU_REQUEST=100m HERMES_WEBUI_MEMORY_REQUEST=256Mi HERMES_WEBUI_CPU_LIMIT=1 HERMES_WEBUI_MEMORY_LIMIT=2Gi
 export HERMES_BROWSER_CPU_REQUEST=100m HERMES_BROWSER_MEMORY_REQUEST=128Mi HERMES_BROWSER_CPU_LIMIT=1 HERMES_BROWSER_MEMORY_LIMIT=1Gi
 export API_SERVER_KEY=test BROWSER_CONCURRENT=4 BROWSER_QUEUED=10 BROWSER_TIMEOUT_MS=30000
 python3 "$ROOT_DIR/scripts/render_template.py" "$ROOT_DIR/manifests/hermes.yaml.tpl" "$rendered"
@@ -319,6 +319,7 @@ for document in yaml.safe_load_all(open(sys.argv[1])):
     if document and document.get('kind') == 'Deployment' and document.get('metadata', {}).get('name') == 'hermes-webui':
         env = {item['name']: item.get('value') for item in document['spec']['template']['spec']['containers'][0]['env']}
         assert env['HERMES_NIX_BUILD'] == '1'
+        assert document['spec']['template']['spec']['containers'][0]['resources']['limits']['memory'] == '2Gi'
         assert document['spec']['template']['spec']['automountServiceAccountToken'] is False
         assert document['spec']['template']['spec']['securityContext']['seccompProfile']['type'] == 'RuntimeDefault'
         assert document['spec']['template']['spec']['containers'][0]['securityContext']['allowPrivilegeEscalation'] is False

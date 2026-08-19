@@ -4,5 +4,6 @@ github-setup-access
 hermes-workspace-ansible
 hermes-workspace-git
 hermes-workspace-manager
+hetzner-ansible-lab
 markdown-pdf
 hermes-log-watchdog
