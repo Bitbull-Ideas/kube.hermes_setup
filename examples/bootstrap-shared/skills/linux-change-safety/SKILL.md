@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [linux, backup, change-management, safety, compliance]
     related_skills: [linux-triage, ansible-fleet-change]
+    related_skill_classifications:
+      linux-triage: bundled
+      ansible-fleet-change: bundled
 ---
 
 # Linux Change Safety

@@ -74,19 +74,39 @@ assert_file "$architect_stage/workspace/ansible/ansible.cfg"
 [[ "$HERMES_SSH_SETUP" == true && "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_ADDON_REQUIREMENTS" == "$ROOT_DIR/examples/bootstrap-profiles/universal-system-architect/requirements.txt" ]]
-python3 - "$architect_stage/skills/hetzner-ansible-lab/SKILL.md" <<'PY'
+python3 - "$ROOT_DIR" <<'PY'
 from pathlib import Path
 import sys
 import yaml
 
-path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
-assert text.startswith("---\n"), f"{path}: missing YAML frontmatter"
-frontmatter_text, separator, body = text[4:].partition("\n---\n")
-assert separator and body.strip(), f"{path}: empty frontmatter or body"
-frontmatter = yaml.safe_load(frontmatter_text)
-assert frontmatter["name"] == path.parent.name, f"{path}: name mismatch"
-assert frontmatter["metadata"]["hermes"]["related_skills"] == [], f"{path}: unclassified related skill"
+root = Path(sys.argv[1])
+skill_paths = sorted((root / "examples/bootstrap-shared/skills").glob("*/SKILL.md"))
+skill_paths += sorted((root / "examples/bootstrap-profiles").glob("*/skills/*/SKILL.md"))
+allowed_classifications = {"bundled", "external-runtime", "optional-reference"}
+# bundled: shipped by this repository and must resolve in the bootstrap tree.
+# external-runtime: expected from the Hermes runtime but not shipped here.
+# optional-reference: useful integration that is not required for this bootstrap.
+bundled_names = {path.parent.name for path in skill_paths}
+
+for path in skill_paths:
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), f"{path}: missing YAML frontmatter"
+    frontmatter_text, separator, body = text[4:].partition("\n---\n")
+    assert separator and body.strip(), f"{path}: empty frontmatter or body"
+    frontmatter = yaml.safe_load(frontmatter_text)
+    assert frontmatter["name"] == path.parent.name, f"{path}: name mismatch"
+    hermes = frontmatter["metadata"]["hermes"]
+    related = hermes.get("related_skills", [])
+    classifications = hermes.get("related_skill_classifications", {})
+    assert isinstance(related, list), f"{path}: related_skills must be a list"
+    assert all(isinstance(name, str) and name for name in related), f"{path}: related_skills entries must be non-empty strings"
+    assert len(related) == len(set(related)), f"{path}: related_skills entries must be unique"
+    assert isinstance(classifications, dict), f"{path}: related_skill_classifications must be a mapping"
+    assert set(classifications) == set(related), f"{path}: every related skill must have exactly one classification"
+    for name, classification in classifications.items():
+        assert classification in allowed_classifications, f"{path}: invalid classification for {name}: {classification}"
+        if classification == "bundled":
+            assert name in bundled_names, f"{path}: bundled related skill does not resolve: {name}"
 PY
 
 # ---- universal-system-administrator ----

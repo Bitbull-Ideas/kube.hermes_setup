@@ -9,6 +9,11 @@ metadata:
   hermes:
     tags: [git, workspace, repositories, cleanup, archive, collaboration]
     related_skills: [github-pr-workflow, github-repo-management, hermes-workspace-manager, hermes-workspace-ansible]
+    related_skill_classifications:
+      github-pr-workflow: external-runtime
+      github-repo-management: external-runtime
+      hermes-workspace-manager: bundled
+      hermes-workspace-ansible: bundled
 ---
 
 # Hermes Workspace Git

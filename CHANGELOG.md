@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.3.1] - 2026-08-19
+
+### Fixed
+
+- Classifies every non-empty bootstrap `related_skills` reference as `bundled`, `external-runtime`, or `optional-reference` while preserving the loader-compatible string lists.
+- Validates the complete shared and profile-local bootstrap skill tree: valid YAML frontmatter, non-empty body, matching name/directory, non-empty unique related-skill names, exact classification parity, allowed classification values, and resolution of every bundled reference.
+
 ## [v2.3.0] - 2026-08-19
 
 ### Added

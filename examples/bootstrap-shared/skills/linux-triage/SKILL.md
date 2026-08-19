@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [linux, triage, diagnostics, troubleshooting, incident-response]
     related_skills: [linux-change-safety, ansible-fleet-change]
+    related_skill_classifications:
+      linux-change-safety: bundled
+      ansible-fleet-change: bundled
 ---
 
 # Linux Triage

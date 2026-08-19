@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [ansible, workspace, ssh, cleanup, collaboration]
     related_skills: [hermes-workspace-manager, hermes-workspace-git]
+    related_skill_classifications:
+      hermes-workspace-manager: bundled
+      hermes-workspace-git: bundled
 ---
 
 # Hermes Ansible Workspace
