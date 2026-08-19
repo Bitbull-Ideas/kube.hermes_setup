@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [github, authentication, kubernetes, token, pull-requests]
     related_skills: [github-auth, github-pr-workflow]
+    related_skill_classifications:
+      github-auth: external-runtime
+      github-pr-workflow: external-runtime
 ---
 
 # GitHub Setup Access

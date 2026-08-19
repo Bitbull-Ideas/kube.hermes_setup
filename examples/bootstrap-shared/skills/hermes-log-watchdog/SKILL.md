@@ -8,6 +8,8 @@ metadata:
   hermes:
     tags: [hermes, logs, cron, watchdog, monitoring]
     related_skills: [hermes-agent]
+    related_skill_classifications:
+      hermes-agent: external-runtime
 ---
 
 # Hermes Log Watchdog

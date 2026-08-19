@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [workspace, session-management, topic-folders, artifacts, archiving, follow-up]
     related_skills: [hermes-workspace-git, hermes-workspace-ansible]
+    related_skill_classifications:
+      hermes-workspace-git: bundled
+      hermes-workspace-ansible: bundled
 ---
 
 # Hermes Workspace Manager

@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [markdown, pdf, documents, publishing, typography, weasyprint]
     related_skills: [nano-pdf, ocr-and-documents]
+    related_skill_classifications:
+      nano-pdf: optional-reference
+      ocr-and-documents: optional-reference
 ---
 
 # Markdown PDF
