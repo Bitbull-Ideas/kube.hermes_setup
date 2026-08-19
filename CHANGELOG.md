@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.3.1] - 2026-08-19
+
+### Fixed
+
+- Classifies every non-empty bootstrap `related_skills` reference as `bundled`, `external-runtime`, or `optional-reference` while preserving the loader-compatible string lists.
+- Validates the complete shared and profile-local bootstrap skill tree: valid YAML frontmatter, non-empty body, matching name/directory, non-empty unique related-skill names, exact classification parity, allowed classification values, and resolution of every bundled reference.
+
 ## [v2.3.0] - 2026-08-19
 
 ### Added
@@ -13,7 +20,6 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 - Moves `ansible-fleet-change`, `linux-change-safety`, and `linux-triage` from profile-local storage into the canonical shared skill catalog while keeping them selected only by `universal-system-administrator`.
-- Classifies every bootstrap `related_skills` reference as bundled, external-runtime, or optional-reference and verifies that every bundled reference resolves inside the bootstrap skill tree.
 - Describes `universal-system-architect` as a curated shared-skill profile instead of claiming that it installs every shared skill.
 - Raises the WebUI memory limit default from `1Gi` to `2Gi` in both the public example and the installer fallback.
 
