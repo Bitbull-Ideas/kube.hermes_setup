@@ -13,6 +13,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 - Moves `ansible-fleet-change`, `linux-change-safety`, and `linux-triage` from profile-local storage into the canonical shared skill catalog while keeping them selected only by `universal-system-administrator`.
+- Classifies every bootstrap `related_skills` reference as bundled, external-runtime, or optional-reference and verifies that every bundled reference resolves inside the bootstrap skill tree.
 - Describes `universal-system-architect` as a curated shared-skill profile instead of claiming that it installs every shared skill.
 - Raises the WebUI memory limit default from `1Gi` to `2Gi` in both the public example and the installer fallback.
 

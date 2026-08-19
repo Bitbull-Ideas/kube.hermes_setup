@@ -9,6 +9,9 @@ metadata:
   hermes:
     tags: [ansible, fleet, multi-host, automation, playbook]
     related_skills: [linux-triage, linux-change-safety]
+    related_skill_classifications:
+      linux-triage: bundled
+      linux-change-safety: bundled
 ---
 
 # Ansible Fleet Change

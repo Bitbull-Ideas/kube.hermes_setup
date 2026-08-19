@@ -9,6 +9,8 @@ metadata:
   hermes:
     tags: [coaching, recurring-patterns, values-work, daily-practice, resource-activation]
     related_skills: [systemische-psychologie]
+    related_skill_classifications:
+      systemische-psychologie: bundled
 ---
 
 # Coaching – Recurring Patterns & Daily Practice
