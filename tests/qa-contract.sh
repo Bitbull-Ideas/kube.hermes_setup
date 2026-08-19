@@ -38,4 +38,19 @@ for needle in \
   grep -Fqi "$needle" "$QA_DOC"
 done
 
+# Doctor must validate optional WebUI dependencies only when their features are enabled.
+python3 - "$ROOT_DIR/doctor.sh" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+webui_source = text.split("check_webui_agent_source() {", 1)[1].split("\n}", 1)[0]
+addon_runtime = text.split("check_addon_python_runtime() {", 1)[1].split("\n}", 1)[0]
+
+assert 'is_truthy "$HERMES_BROWSER_ENABLED" || return 0' in webui_source
+assert 'webui agent source mount exists' in webui_source
+assert 'webui BROWSER_CDP_URL configured' in webui_source
+assert 'is_truthy "${HERMES_ANSIBLE_SETUP:-false}" || return 0' in addon_runtime
+PY
+
 printf 'QA contract checks passed\n'

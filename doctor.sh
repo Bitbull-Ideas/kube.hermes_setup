@@ -308,10 +308,16 @@ check_webui_agent_source() {
   local pod
   pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app=hermes-webui --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
   [[ -n "$pod" ]] || { fail "no running hermes-webui pod"; return; }
-  if kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -lc 'test -f /home/hermeswebui/.hermes/hermes-agent/run_agent.py && test -n "$BROWSER_CDP_URL"' >/dev/null 2>&1; then
-    ok "webui agent source mount and BROWSER_CDP_URL"
+  if kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -lc 'test -f /home/hermeswebui/.hermes/hermes-agent/run_agent.py' >/dev/null 2>&1; then
+    ok "webui agent source mount exists"
   else
-    fail "webui agent source mount or BROWSER_CDP_URL missing"
+    fail "webui agent source mount missing"
+  fi
+  is_truthy "$HERMES_BROWSER_ENABLED" || return 0
+  if kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -lc 'test -n "$BROWSER_CDP_URL"' >/dev/null 2>&1; then
+    ok "webui BROWSER_CDP_URL configured"
+  else
+    fail "webui BROWSER_CDP_URL missing while Browserless is enabled"
   fi
 }
 
@@ -345,6 +351,7 @@ check_addon_python_runtime() {
   done
 
   is_truthy "$HERMES_WEBUI_ENABLED" || return 0
+  is_truthy "${HERMES_ANSIBLE_SETUP:-false}" || return 0
 
   # A direct kubectl exec inherits the Pod PATH and can pass while Hermes'
   # login-shell snapshot has already lost the addon paths. First verify the
