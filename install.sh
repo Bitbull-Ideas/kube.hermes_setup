@@ -560,6 +560,25 @@ preflight_manifest() {
   )
 }
 
+render_pre_init_manifest() {
+  local output="$RENDER_DIR/pre-init.yaml"
+  python3 - "$MANIFEST_OUT" "$output" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source, output = map(Path, sys.argv[1:])
+documents = source.read_text().split("\n---\n")
+selected = []
+for document in documents:
+    kind = re.search(r"(?m)^kind:\s*(\S+)\s*$", document)
+    if not kind or kind.group(1) != "Deployment":
+        selected.append(document)
+output.write_text("\n---\n".join(selected))
+PY
+  printf '%s' "$output"
+}
+
 create_namespace_and_secrets() {
   log "Creating namespace and secrets"
   kubectl create namespace "$HERMES_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
@@ -621,10 +640,26 @@ resolve_api_key_revision() {
 }
 
 apply_and_wait() {
+  local pre_init_manifest d generation
+  local deployments=() restart_deployments=()
+  declare -A generation_before=()
+
   log "Recreating init job if it already exists"
   kubectl -n "$HERMES_NAMESPACE" delete job hermes-init-config --ignore-not-found=true --wait=true >/dev/null
 
-  log "Applying manifest"
+  pre_init_manifest="$(render_pre_init_manifest)"
+  log "Applying non-Deployment resources and init job"
+  kubectl apply -f "$pre_init_manifest"
+
+  log "Waiting for init config job"
+  kubectl -n "$HERMES_NAMESPACE" wait --for=condition=complete job/hermes-init-config --timeout=300s
+
+  mapfile -t deployments < <(enabled_deployments)
+  for d in "${deployments[@]}"; do
+    generation_before["$d"]="$(kubectl -n "$HERMES_NAMESPACE" get deployment "$d" --ignore-not-found -o jsonpath='{.metadata.generation}')"
+  done
+
+  log "Applying initialized workloads"
   kubectl apply -f "$MANIFEST_OUT"
 
   is_truthy "$HERMES_DASHBOARD_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete deploy,svc,ingress hermes-dashboard --ignore-not-found=true >/dev/null
@@ -636,13 +671,16 @@ apply_and_wait() {
     kubectl -n "$HERMES_NAMESPACE" delete networkpolicy hermes-browser-restrict --ignore-not-found=true >/dev/null
   fi
 
-  log "Waiting for init config job"
-  kubectl -n "$HERMES_NAMESPACE" wait --for=condition=complete job/hermes-init-config --timeout=300s
-
-  log "Restarting deployments to pick up refreshed secrets"
-  local deployments=()
-  mapfile -t deployments < <(enabled_deployments)
-  kubectl -n "$HERMES_NAMESPACE" rollout restart "${deployments[@]/#/deploy/}" >/dev/null
+  for d in "${deployments[@]}"; do
+    generation="$(kubectl -n "$HERMES_NAMESPACE" get deployment "$d" -o jsonpath='{.metadata.generation}')"
+    if [[ -n "${generation_before[$d]}" && "$generation" == "${generation_before[$d]}" ]]; then
+      restart_deployments+=("deploy/$d")
+    fi
+  done
+  if ((${#restart_deployments[@]} > 0)); then
+    log "Restarting unchanged deployments to pick up refreshed secrets"
+    kubectl -n "$HERMES_NAMESPACE" rollout restart "${restart_deployments[@]}" >/dev/null
+  fi
 
   log "Waiting for rollouts"
   for d in "${deployments[@]}"; do

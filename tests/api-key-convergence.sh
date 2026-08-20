@@ -74,6 +74,26 @@ PY
 ! grep -Fq "$api_key" "$rendered"
 ! grep -Fq "$old_api_key" "$old_rendered"
 
+pre_init_manifest="$(
+  HERMES_INSTALL_LIB_ONLY=true HERMES_RENDER_DIR="$TMP_DIR/render-new" \
+  bash -c 'source "$1"; prepare_paths; printf %s "$(render_pre_init_manifest)"' _ "$ROOT_DIR/install.sh"
+)"
+python3 - "$pre_init_manifest" <<'PY'
+import sys, yaml
+documents = [doc for doc in yaml.safe_load_all(open(sys.argv[1])) if doc]
+assert any(doc.get('kind') == 'Job' and doc.get('metadata', {}).get('name') == 'hermes-init-config' for doc in documents)
+assert not any(doc.get('kind') == 'Deployment' for doc in documents)
+PY
+python3 - "$ROOT_DIR/install.sh" <<'PY'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text()
+body = text.split('apply_and_wait() {', 1)[1].split('\n}', 1)[0]
+assert body.index('kubectl apply -f "$pre_init_manifest"') < body.index('wait --for=condition=complete job/hermes-init-config')
+assert body.index('wait --for=condition=complete job/hermes-init-config') < body.index('kubectl apply -f "$MANIFEST_OUT"')
+assert 'generation_before' in body and 'restart_deployments' in body
+PY
+
 server_info="$TMP_DIR/health-server"
 python3 - "$api_key" "$server_info" <<'PY' &
 import http.server, pathlib, sys
@@ -211,5 +231,14 @@ grep -Fq 'API server key Secret revision missing or unreadable' <<<"$unsafe_revi
 grep -Fq 'fail_count=1' <<<"$unsafe_revision_output"
 ! grep -Fq 'revision drift' <<<"$unsafe_revision_output"
 ! grep -Fq "$api_key" <<<"$unsafe_revision_output"
+
+printf '%s\n' 'HERMES_DOCTOR_LIB_ONLY=true' > "$TMP_DIR/doctor.env"
+set +e
+ENV_FILE="$TMP_DIR/doctor.env" KUBECONFIG="$TMP_DIR/missing-kubeconfig" timeout 20s \
+  bash "$ROOT_DIR/doctor.sh" >"$TMP_DIR/doctor-main.out" 2>&1
+doctor_status=$?
+set -e
+[[ "$doctor_status" -ne 0 && "$doctor_status" -ne 124 ]]
+grep -Eq 'FAIL|check\(s\) failed' "$TMP_DIR/doctor-main.out"
 
 printf 'API-key convergence tests passed\n'

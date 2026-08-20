@@ -13,6 +13,7 @@ if [[ ! -f "$DEFAULT_ENV_FILE" && -f "$ROOT_DIR/current_config/hermes.env" ]]; t
   DEFAULT_ENV_FILE="$ROOT_DIR/current_config/hermes.env"
 fi
 ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
+readonly DOCTOR_LIB_ONLY_FROM_PROCESS="${HERMES_DOCTOR_LIB_ONLY:-false}"
 parse_env_file() {
   local key encoded value
   while IFS=$'\t' read -r key encoded; do
@@ -506,6 +507,6 @@ main() {
   fi
   printf '\nAll mandatory checks passed.\n'
 }
-if [[ "${HERMES_DOCTOR_LIB_ONLY:-false}" != true ]]; then
+if [[ "$DOCTOR_LIB_ONLY_FROM_PROCESS" != true ]]; then
   main "$@"
 fi

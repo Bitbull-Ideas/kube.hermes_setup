@@ -486,6 +486,20 @@ restore_kubernetes_snapshot() {
   log "Applied encrypted Kubernetes resource and credential snapshot"
 }
 
+refresh_restored_api_key_revisions() {
+  local revision d patch
+  revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}')" || fail 'Unable to read restored API server key Secret revision'
+  [[ "$revision" =~ ^[A-Za-z0-9._:-]+$ ]] || fail 'Restored API server key Secret revision is empty or unsafe'
+  patch="$(printf '{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kube-hermes-setup.example.com/api-key-revision\":\"%s\"}}}}}' "$revision")"
+  for d in "$@"; do
+    case "$d" in
+      hermes-agent|hermes-dashboard|hermes-webui)
+        kubectl -n "$HERMES_NAMESPACE" patch deployment "$d" --type=merge -p "$patch" >/dev/null
+        ;;
+    esac
+  done
+}
+
 restore() {
   local in='' plain='' tmpdir='' arg full=false dry_run=false force=false
   local -a password_args=()
@@ -541,7 +555,7 @@ restore() {
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail "HERMES_RUNTIME_GID must be numeric"
   local deployments=() d replicas
   if [[ "$full" == true ]]; then
-    mapfile -t deployments < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); print("\\n".join(item["metadata"]["name"] for item in data["items"] if item.get("kind") == "Deployment"))' "$tmpdir/resources.json")
+    mapfile -t deployments < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); print("\n".join(item["metadata"]["name"] for item in data["items"] if item.get("kind") == "Deployment"))' "$tmpdir/resources.json")
   else
     mapfile -t deployments < <(enabled_write_deployments)
   fi
@@ -568,6 +582,9 @@ restore() {
   log "Scaling down write-heavy deployments"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
+  if [[ "$full" == true ]]; then
+    refresh_restored_api_key_revisions "${deployments[@]}"
+  fi
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   create_storage_helper_pod hermes-restore restore
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
