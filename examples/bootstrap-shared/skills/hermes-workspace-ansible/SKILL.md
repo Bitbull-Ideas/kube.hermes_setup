@@ -174,7 +174,7 @@ State explicitly when check mode, idempotency, or live-system verification is un
 
 ## 6. Preserve Reusable Inventory Before Cleanup
 
-Before deleting, replacing, or archiving inventory sources during cleanup, identify systems that Hermes successfully accessed and consolidate their non-secret connection metadata into the active shared inventory when the workspace uses one.
+Before deleting, replacing, or archiving inventory sources during cleanup, identify systems that Hermes successfully accessed, confirm which targets are intended to persist after cleanup, and consolidate only those systems' non-secret connection metadata into the active shared inventory when the workspace uses one. Explicitly exclude disposable labs, temporary VMs, short-lived test instances, decommissioned hosts, and provider-recyclable addresses. If persistence is uncertain, do not retain the target; ask or leave its inventory with the task-specific artifacts.
 
 Preserve only verified facts needed for future access, such as:
 
@@ -189,7 +189,7 @@ Do not copy passwords, private keys, vault values, tokens, raw SSH configuration
 
 Merge retained hosts into the established inventory structure instead of creating duplicate inventory files. Preserve unrelated groups, variables, aliases, and comments. For public repositories, replace real infrastructure details with documented placeholders; keep real operational inventory only in an approved private or local workspace.
 
-After consolidation, run `ansible-inventory --list` or `ansible-inventory --graph` with the workspace configuration and confirm that every retained host parses into the intended groups without exposing secret values. Inventory retention records connection knowledge only; it is not proof of current connectivity and does not authorize a managed-target connection or change.
+After consolidation, run `ansible-inventory --graph` without `--vars` using the workspace configuration and confirm that every retained host appears in the intended groups. Do not use `ansible-inventory --list` for this validation: it can expand host and group variables, including values obtained from dynamic inventory or an available vault, into captured output. Do not add `--vars`, print expanded inventory, or retain validation output in logs. Inventory retention records connection knowledge only; it is not proof of current connectivity and does not authorize a managed-target connection or change.
 
 ## 7. Clean Up and Archive Completed Work
 
@@ -242,7 +242,7 @@ Cleanup is complete only when disposable task-owned residue is gone, approved cl
 6. **Assuming sudo.** Follow the user's selected account and privilege model; verify it before execution.
 7. **Treating every SSH failure as missing authorization.** Diagnose network, host-key, account, and sudo errors first.
 8. **Leaking credentials.** Public keys may be shared for authorization; private keys and secrets must never be exposed.
-9. **Discarding verified access metadata during cleanup.** Consolidate non-secret, verified connection facts into the active shared inventory before removing old inventory sources; validate parsing and keep host-key trust separate.
+9. **Discarding verified access metadata or retaining dead targets during cleanup.** Consolidate non-secret, verified connection facts only for systems confirmed to persist; exclude disposable or provider-recyclable targets, validate with `ansible-inventory --graph` without variables, and keep host-key trust separate.
 10. **Claiming success after syntax check alone.** Verify target behavior and idempotency when access and risk permit.
 
 ## Verification Checklist
@@ -256,8 +256,8 @@ Cleanup is complete only when disposable task-owned residue is gone, approved cl
 - [ ] SSH account and privilege behavior match the user's direction
 - [ ] Private keys and secrets were not disclosed
 - [ ] Syntax, lint, check mode, live behavior, and idempotency were verified where applicable
-- [ ] Verified non-secret connection metadata was consolidated into the active shared inventory before old inventory sources were removed or archived
-- [ ] Retained inventory parses with the workspace configuration and does not imply current reachability, authorization, or host-key trust
+- [ ] Verified non-secret connection metadata was consolidated only for targets confirmed to persist; disposable, decommissioned, and provider-recyclable targets were excluded before old inventory sources were removed or archived
+- [ ] Retained inventory parses with `ansible-inventory --graph` without variables or logged expanded output and does not imply current reachability, authorization, or host-key trust
 - [ ] Disposable task-owned files under `ansible/` were removed
 - [ ] At PR creation, exact cleanup candidates were offered and user consent was obtained before archival
 - [ ] Approved files were moved to `ansible_archive/` with relative paths preserved
