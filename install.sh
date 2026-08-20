@@ -546,10 +546,18 @@ create_bootstrap_archive() {
 }
 
 render_manifest() {
+  [[ -n "${API_SERVER_KEY_REVISION:-}" ]] || fail "API server key Secret revision is required before rendering"
   mkdir -p "$RENDER_DIR"
   python3 "$ROOT_DIR/scripts/render_template.py" \
     "$ROOT_DIR/manifests/hermes.yaml.tpl" \
     "$MANIFEST_OUT"
+}
+
+preflight_manifest() {
+  (
+    export API_SERVER_KEY_REVISION=preflight-resource-version
+    render_manifest
+  )
 }
 
 create_namespace_and_secrets() {
@@ -604,6 +612,12 @@ create_namespace_and_secrets() {
     --dry-run=client -o yaml | kubectl apply -f -
   trap - ERR
   rm -rf -- "$secret_tmpdir"
+}
+
+resolve_api_key_revision() {
+  API_SERVER_KEY_REVISION="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}')" || fail "Unable to read API server key Secret revision"
+  [[ "$API_SERVER_KEY_REVISION" =~ ^[A-Za-z0-9._:-]+$ ]] || fail "API server key Secret revision is empty or unsafe to render"
+  export API_SERVER_KEY_REVISION
 }
 
 apply_and_wait() {
@@ -676,8 +690,10 @@ main() {
   resolve_runtime_credentials
   validate
   create_bootstrap_archive
-  render_manifest
+  preflight_manifest
   create_namespace_and_secrets
+  resolve_api_key_revision
+  render_manifest
   apply_and_wait
   print_summary
 }

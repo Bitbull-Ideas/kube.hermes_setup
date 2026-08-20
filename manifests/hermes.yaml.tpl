@@ -394,6 +394,8 @@ spec:
       app: hermes-agent
   template:
     metadata:
+      annotations:
+        kube-hermes-setup.example.com/api-key-revision: "${API_SERVER_KEY_REVISION}"
       labels:
         app: hermes-agent
     spec:
@@ -538,6 +540,8 @@ spec:
       app: hermes-dashboard
   template:
     metadata:
+      annotations:
+        kube-hermes-setup.example.com/api-key-revision: "${API_SERVER_KEY_REVISION}"
       labels:
         app: hermes-dashboard
     spec:
@@ -686,6 +690,8 @@ spec:
       app: hermes-webui
   template:
     metadata:
+      annotations:
+        kube-hermes-setup.example.com/api-key-revision: "${API_SERVER_KEY_REVISION}"
       labels:
         app: hermes-webui
     spec:

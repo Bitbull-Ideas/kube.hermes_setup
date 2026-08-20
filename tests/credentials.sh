@@ -111,6 +111,7 @@ source "$ROOT_DIR/install.sh"
 prepare_paths
 prepare_defaults
 resolve_runtime_credentials
+API_SERVER_KEY_REVISION=test-resource-version
 render_manifest
 printf 'dashboard=%s api=%s browser=%s\n' "$CREDENTIAL_SOURCE_DASHBOARD" "$CREDENTIAL_SOURCE_API" "$CREDENTIAL_SOURCE_BROWSER" > "$TMP_DIR/$TEST_LABEL.sources"
 printf 'dashboard_password_sha=%s\n' "$(printf '%s' "$DASHBOARD_AUTH_PASSWORD" | sha256sum | cut -d' ' -f1)" > "$TMP_DIR/$TEST_LABEL.result"

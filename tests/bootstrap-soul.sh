@@ -39,6 +39,7 @@ render_case() {
     prepare_paths
     prepare_defaults
     create_bootstrap_archive
+    API_SERVER_KEY_REVISION=test-resource-version
     render_manifest
   )
 }

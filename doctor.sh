@@ -111,6 +111,40 @@ check_rollouts() {
   done < <(enabled_deployments)
 }
 
+check_api_key_convergence() {
+  local expected_revision app template_revision pod pod_revision runtime_health
+  expected_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || true)"
+  [[ "$expected_revision" =~ ^[A-Za-z0-9._:-]+$ ]] || { fail "API server key Secret revision missing or unreadable"; return; }
+
+  for app in $(enabled_apps); do
+    template_revision="$(kubectl -n "$HERMES_NAMESPACE" get deployment "$app" -o 'go-template={{ index .spec.template.metadata.annotations "kube-hermes-setup.example.com/api-key-revision" }}' 2>/dev/null || true)"
+    pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    [[ -n "$pod" ]] || { fail "no running $app pod for API key revision check"; continue; }
+    pod_revision="$(kubectl -n "$HERMES_NAMESPACE" get pod "$pod" -o 'go-template={{ index .metadata.annotations "kube-hermes-setup.example.com/api-key-revision" }}' 2>/dev/null || true)"
+    runtime_health="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
+      PY="$(command -v python3 || command -v python || true)"
+      [ -n "$PY" ] || PY=/opt/hermes/.venv/bin/python
+      [ -x "$PY" ] || PY=/app/venv/bin/python
+      "$PY" -c '\''
+import os
+from urllib.request import Request, urlopen
+value = os.environ.get("API_SERVER_KEY", os.environ.get("HERMES_API_KEY", ""))
+url = os.environ.get("HERMES_API_URL", os.environ.get("GATEWAY_HEALTH_URL", "http://hermes-agent:8642")).rstrip("/") + "/health/detailed"
+request = Request(url, headers={"Authorization": f"Bearer {value}"})
+with urlopen(request, timeout=10) as response:
+    if response.status != 200:
+        raise SystemExit(f"health endpoint returned HTTP {response.status}")
+print("ok")
+'\''
+    ' 2>/dev/null || true)"
+    if [[ "$template_revision" == "$expected_revision" && "$pod_revision" == "$expected_revision" && "$runtime_health" == ok ]]; then
+      ok "$app API key revision matches Secret, running process, and authenticated health"
+    else
+      fail "$app API key revision drift or authenticated health failure detected"
+    fi
+  done
+}
+
 check_internal_health() {
   local image="curlimages/curl:8.11.1" commands
   commands='set -e; curl -fsS http://hermes-agent:8642/health >/dev/null'
@@ -456,6 +490,7 @@ main() {
   check_cmd timeout
   check_k8s
   check_rollouts
+  check_api_key_convergence
   check_internal_health
   check_home_ssh
   check_webui_agent_source
@@ -471,4 +506,6 @@ main() {
   fi
   printf '\nAll mandatory checks passed.\n'
 }
-main "$@"
+if [[ "${HERMES_DOCTOR_LIB_ONLY:-false}" != true ]]; then
+  main "$@"
+fi
