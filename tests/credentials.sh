@@ -183,9 +183,9 @@ HERMES_INSTALL_LIB_ONLY=true HERMES_RENDER_DIR="$TMP_DIR/render-fresh" bash -c '
 reset_state
 touch "$TMP_DIR/state/namespace"
 put_secret hermes-dashboard-auth username existing-user
-put_secret hermes-dashboard-auth password existing-dashboard-password
+put_secret hermes-dashboard-auth password 'Existing passphrase! # $ café'
 put_secret hermes-api-server api-key existing-api-key-long-enough
-put_secret hermes-browser-token token existing-browser-token
+put_secret hermes-browser-token token 'existing browser token !#$'
 run_resolver reuse
 grep -qx 'dashboard=reused api=reused browser=reused' "$TMP_DIR/reuse.sources"
 grep -q 'dashboard_password_sha=' "$TMP_DIR/reuse.result"
@@ -195,7 +195,7 @@ grep -q 'browser_sha=' "$TMP_DIR/reuse.result"
 expected_user_sha="$(printf '%s' existing-user | sha256sum | cut -d' ' -f1)"
 grep -qx "dashboard_user_sha=$expected_user_sha" "$TMP_DIR/reuse.result"
 ! compgen -G "$TMP_DIR/render-reuse/generated-credentials.txt" >/dev/null
-expected_cdp_sha="$(printf '%s' 'ws://hermes-browser:3000/chromium?token=existing-browser-token' | sha256sum | cut -d' ' -f1)"
+expected_cdp_sha="$(printf '%s' 'ws://hermes-browser:3000/chromium?token=existing browser token !#$' | sha256sum | cut -d' ' -f1)"
 grep -qx "cdp_sha=$expected_cdp_sha" "$TMP_DIR/reuse.result"
 cp "$TMP_DIR/reuse.result" "$TMP_DIR/reuse-first.result"
 run_resolver reuse-second
@@ -284,7 +284,7 @@ put_secret hermes-dashboard-auth username existing-user
 put_secret hermes-dashboard-auth password existing-dashboard-password
 put_secret hermes-api-server api-key '~existing-api-key-long-enough'
 put_secret hermes-browser-token token existing-browser-token
-assert_failed reused-tilde-api 'Unable to safely resolve API server key' none
+assert_failed reused-tilde-api 'API_SERVER_KEY contains characters that cannot be safely persisted' none
 reset_state
 touch "$TMP_DIR/state/namespace"
 put_secret hermes-dashboard-auth username existing-user

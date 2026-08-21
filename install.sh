@@ -121,15 +121,14 @@ read_existing_secret_value() {
 import base64
 import binascii
 import os
-import re
 
 encoded = os.environ["ENCODED_SECRET_VALUE"]
 try:
     raw = base64.b64decode(encoded, validate=True)
-    value = raw.decode("ascii")
+    value = raw.decode("utf-8")
 except (binascii.Error, UnicodeDecodeError):
     raise SystemExit(1)
-if not value or not re.fullmatch(r"[A-Za-z0-9._:/+=@%-]+", value):
+if not value or "\n" in value or "\r" in value or "\0" in value:
     raise SystemExit(1)
 print(value, end="")
 PY
