@@ -15,13 +15,13 @@ PROFILES = ROOT / "examples" / "bootstrap-profiles"
 TIMEOUT = 20.0
 
 
-def profile_ansible_default(profile: Path) -> bool:
+def profile_bool_default(profile: Path, setting: str) -> bool:
     for line in (profile / "defaults.conf").read_text().splitlines():
-        if line.startswith("HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP="):
+        if line.startswith(setting + "="):
             value = line.split("=", 1)[1]
             if value in {"true", "false"}:
                 return value == "true"
-    raise AssertionError(f"{profile.name}: missing valid Ansible profile default")
+    raise AssertionError(f"{profile.name}: missing valid {setting} profile default")
 
 
 def expect(fd: int, transcript: bytearray, needle: str) -> None:
@@ -106,7 +106,8 @@ def terminate_and_reap(pid: int) -> None:
 
 
 def run_profile(profile: Path, work: Path) -> None:
-    expected = profile_ansible_default(profile)
+    expected = profile_bool_default(profile, "HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP")
+    expected_ssh = profile_bool_default(profile, "HERMES_PROFILE_DEFAULT_SSH_SETUP")
     config = work / f"config-{profile.name}"
     answers = work / f"answers-{profile.name}"
     env = os.environ.copy()
@@ -156,7 +157,8 @@ def run_profile(profile: Path, work: Path) -> None:
         if expected:
             answer(fd, transcript, "Ansible package version [14.1.0]:")
         else:
-            answer(fd, transcript, "Prepare a persistent SSH keypair? [Y/n]:")
+            ssh_suffix = "Y/n" if expected_ssh else "y/N"
+            answer(fd, transcript, f"Prepare a persistent SSH keypair? [{ssh_suffix}]:")
         answer(fd, transcript, "Prepare Node.js/npx for MCP and skill support?", "n")
         answer(fd, transcript, "Install addon Python packages? [y/N]:", "n")
         answer(fd, transcript, "Overwrite existing bootstrap-managed files on the PVC? [y/N]:", "n")
@@ -197,6 +199,7 @@ def run_profile(profile: Path, work: Path) -> None:
     assert summary in output, f"{profile.name}: summary mismatch\n{output[-2000:]}"
     if expected:
         assert read_assignment(config / "hermes.env", "HERMES_SSH_SETUP") == "true"
+        assert read_assignment(answers, "HERMES_SSH_SETUP") == "true"
         assert "SSH key setup enabled because Ansible was selected." in output
 
 
