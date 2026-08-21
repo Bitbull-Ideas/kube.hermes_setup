@@ -439,8 +439,38 @@ PY
   trap - EXIT
   extract_cleanup
 }
+validate_snapshot_api_key() {
+  python3 - "$1" <<'PY'
+import base64
+import binascii
+import json
+import re
+import sys
+from pathlib import Path
+
+data = json.loads(Path(sys.argv[1]).read_text())
+matches = [
+    item for item in data.get("items", [])
+    if item.get("kind") == "Secret" and item.get("metadata", {}).get("name") == "hermes-api-server"
+]
+if len(matches) != 1:
+    raise SystemExit("Kubernetes snapshot must contain exactly one hermes-api-server Secret")
+encoded = matches[0].get("data", {}).get("api-key", "")
+try:
+    raw = base64.b64decode(encoded, validate=True)
+    key = raw.decode("ascii")
+except (binascii.Error, UnicodeDecodeError):
+    raise SystemExit("Kubernetes snapshot API server key is malformed")
+if len(key) < 16:
+    raise SystemExit("Kubernetes snapshot API server key is shorter than 16 characters")
+if not re.fullmatch(r"[A-Za-z0-9._~:/+=@%-]+", key):
+    raise SystemExit("Kubernetes snapshot API server key cannot be safely persisted")
+PY
+}
+
 restore_kubernetes_snapshot() {
   local snapshot="$1" tmpdir="$2" force="$3" dry_run="$4" backup_version='' current_version namespace_json resources_json backup_namespace namespace_state
+  validate_snapshot_api_key "$snapshot/resources.json" || fail 'Kubernetes snapshot API server key validation failed before apply'
   if [[ -f "$snapshot/cluster-version.txt" ]]; then
     backup_version="$(tr -d '[:space:]' < "$snapshot/cluster-version.txt")"
   elif [[ "$force" == true ]]; then

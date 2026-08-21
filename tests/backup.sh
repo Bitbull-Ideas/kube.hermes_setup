@@ -88,8 +88,9 @@ for resource in pvc deployment service job ingress networkpolicy serviceaccount 
 {"apiVersion":"v1","kind":"${resource^}","metadata":{"name":"hermes-$resource","namespace":"bob","uid":"drop-me","resourceVersion":"drop-me"},"spec":{},"status":{"phase":"drop-me"}}
 JSON
 done
-cat > "$TMP_DIR/raw/secret.json" <<'JSON'
-{"apiVersion":"v1","kind":"Secret","metadata":{"name":"hermes-dashboard-auth","namespace":"bob","uid":"drop-me"},"data":{"password":"REDACTED-TEST-DATA"}}
+api_key_b64="$(printf '%s' 'restored-api-key-long-enough' | base64 -w0)"
+cat > "$TMP_DIR/raw/secret.json" <<JSON
+{"apiVersion":"v1","kind":"List","items":[{"apiVersion":"v1","kind":"Secret","metadata":{"name":"hermes-dashboard-auth","namespace":"bob","uid":"drop-me"},"data":{"password":"REDACTED-TEST-DATA"}},{"apiVersion":"v1","kind":"Secret","metadata":{"name":"hermes-api-server","namespace":"bob","uid":"drop-me"},"data":{"api-key":"$api_key_b64"}}]}
 JSON
 cat > "$TMP_DIR/raw/cluster-version.txt" <<'EOF'
 v1.31.0+k3s1
@@ -100,11 +101,50 @@ python3 - "$TMP_DIR/resources.json" "$TMP_DIR/resources-list.json" <<'PY'
 import json, sys
 snapshot = json.load(open(sys.argv[1]))
 resources = json.load(open(sys.argv[2]))
-assert len(snapshot['items']) == 10
+assert len(snapshot['items']) == 11
 assert resources['items']
 assert all('uid' not in item.get('metadata', {}) for item in snapshot['items'])
 assert all('status' not in item for item in snapshot['items'])
 assert any(item['kind'] == 'Secret' for item in snapshot['items'])
+PY
+
+HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; validate_snapshot_api_key "$2"' _ "$ROOT_DIR/maintain.sh" "$TMP_DIR/resources.json"
+python3 - "$TMP_DIR/resources.json" "$TMP_DIR" <<'PY'
+import base64, copy, json, sys
+source, output_dir = sys.argv[1:]
+data=json.load(open(source))
+secret=next(item for item in data['items'] if item.get('kind')=='Secret' and item.get('metadata',{}).get('name')=='hermes-api-server')
+
+def write(name, value):
+    payload=copy.deepcopy(data)
+    if name == 'missing':
+        payload['items']=[item for item in payload['items'] if not (item.get('kind')=='Secret' and item.get('metadata',{}).get('name')=='hermes-api-server')]
+    elif name == 'duplicate':
+        payload['items'].append(copy.deepcopy(secret))
+    else:
+        target=next(item for item in payload['items'] if item.get('kind')=='Secret' and item.get('metadata',{}).get('name')=='hermes-api-server')
+        target['data']['api-key']=value
+    json.dump(payload,open(f'{output_dir}/resources-invalid-{name}.json','w'))
+
+write('missing', None)
+write('duplicate', None)
+write('malformed-base64', '%%%')
+write('non-ascii', base64.b64encode(b'\xff'*16).decode())
+write('short', base64.b64encode(b'short').decode())
+write('dotenv-unsafe', base64.b64encode(b'1234567890123456 #suffix').decode())
+PY
+for invalid_case in missing duplicate malformed-base64 non-ascii short dotenv-unsafe; do
+  if HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; validate_snapshot_api_key "$2"' _ "$ROOT_DIR/maintain.sh" "$TMP_DIR/resources-invalid-$invalid_case.json" >/dev/null 2>&1; then
+    printf 'snapshot validator unexpectedly accepted %s API key case\n' "$invalid_case" >&2
+    exit 1
+  fi
+done
+python3 - "$ROOT_DIR/maintain.sh" <<'PY'
+from pathlib import Path
+import sys
+body=Path(sys.argv[1]).read_text().split('restore_kubernetes_snapshot() {',1)[1].split('\n}',1)[0]
+assert body.index('validate_snapshot_api_key') < body.index('kubectl apply -f "$namespace_json"')
+assert body.index('validate_snapshot_api_key') < body.index('kubectl apply -f "$resources_json"')
 PY
 
 python3 - "$TMP_DIR/resources.json" <<'PY'
