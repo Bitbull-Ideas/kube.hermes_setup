@@ -196,13 +196,17 @@ else
       printf 'Choose a number or profile name from the list above.\n' >&2
     done
 
-  profile_ssh_default="$(
+  read -r profile_ssh_default profile_ansible_default < <(
     unset HERMES_SSH_SETUP HERMES_NPX_SETUP HERMES_ANSIBLE_SETUP HERMES_ADDON_REQUIREMENTS
     apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
-    printf '%s' "$HERMES_SSH_SETUP"
-  )"
+    printf '%s %s\n' "$HERMES_SSH_SETUP" "$HERMES_ANSIBLE_SETUP"
+  )
   [[ "$profile_ssh_default" == true || "$profile_ssh_default" == false ]] || {
     printf 'ERROR: invalid profile SSH default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
+    exit 1
+  }
+  [[ "$profile_ansible_default" == true || "$profile_ansible_default" == false ]] || {
+    printf 'ERROR: invalid profile Ansible default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
     exit 1
   }
 
@@ -244,7 +248,7 @@ else
     DASHBOARD_AUTH_PASSWORD="$(prompt_password)"
   fi
 
-  HERMES_ANSIBLE_SETUP="$(answer_bool_default HERMES_ANSIBLE_SETUP false)"
+  HERMES_ANSIBLE_SETUP="$(answer_bool_default HERMES_ANSIBLE_SETUP "$profile_ansible_default")"
   HERMES_ANSIBLE_VERSION="$(answer_default HERMES_ANSIBLE_VERSION '')"
   HERMES_SSH_SETUP="$(answer_bool_default HERMES_SSH_SETUP "$profile_ssh_default")"
   if ask_yes_no 'Install and configure Ansible?' "$HERMES_ANSIBLE_SETUP"; then
