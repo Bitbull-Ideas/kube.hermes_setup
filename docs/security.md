@@ -120,6 +120,8 @@ The WebUI password is therefore the same value as `DASHBOARD_AUTH_PASSWORD`. `HE
 
 Hermes Agent refuses to start the API server when `API_SERVER_KEY` is a placeholder or shorter than 16 characters. `install.sh` requires the final explicit, reused, or generated value to be at least 16 characters. Use a high-entropy value such as `openssl rand -hex 32` for explicit production configuration.
 
+Because the resolved key is persisted as an unquoted dotenv/shell assignment on the shared PVC, explicit and restored API keys are restricted to `[A-Za-z0-9._:/+=@%-]`. Whitespace, `#`, `~`, control characters, non-ASCII bytes, and other shell-sensitive characters are rejected rather than normalized. Dashboard passwords, Browserless tokens, and usernames are not subject to this API-key-specific alphabet restriction.
+
 ## Bootstrap data
 
 `HERMES_BOOTSTRAP_DIR` can contain SOUL.md, memories, skills, plugins, cron jobs, `.env`, and optionally `auth.json`. Treat real bootstrap directories and `$HERMES_RENDER_DIR/bootstrap.tar.gz` as sensitive. The repo ignores local `bootstrap/`, `current_config/`, `configuration_answers`, and `.rendered/`; commit sanitized examples under `examples/bootstrap-shared/` and `examples/bootstrap-profiles/`.

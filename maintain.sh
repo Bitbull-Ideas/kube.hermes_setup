@@ -580,10 +580,28 @@ trap - 0 1 2 15
 SH
 }
 
+validate_encoded_api_key() {
+  printf '%s' "$1" | python3 -c '
+import base64
+import binascii
+import re
+import sys
+
+try:
+    raw = base64.b64decode(sys.stdin.read(), validate=True)
+    key = raw.decode("ascii")
+except (binascii.Error, UnicodeDecodeError):
+    raise SystemExit(1)
+if len(key) < 16 or not re.fullmatch(r"[A-Za-z0-9._:/+=@%-]+", key):
+    raise SystemExit(1)
+'
+}
+
 prepare_restored_api_key_sync() {
   local encoded script
   encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o "jsonpath={.data['api-key']}")" || fail 'Unable to read restored API server key Secret'
   [[ -n "$encoded" ]] || fail 'Restored API server key Secret is empty'
+  validate_encoded_api_key "$encoded" || fail 'Restored API server key Secret is invalid; refusing to replace persistent data'
   script="$(restored_api_key_sync_script)"
   printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-restore -- sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data/.env validate-only \
     || fail 'Restored API server key Secret is invalid; refusing to replace persistent data'
@@ -683,6 +701,7 @@ restore() {
     exit "$status"
   }
   trap restore_on_exit EXIT
+  restore_scale_up_on_cleanup=true
   log "Scaling down write-heavy deployments"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
@@ -694,6 +713,7 @@ restore() {
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
   prepare_restored_api_key_sync
   kubectl -n "$HERMES_NAMESPACE" cp "$plain" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
+  restore_scale_up_on_cleanup=false
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
   sync_restored_api_key
   restore_scale_up_on_cleanup=true

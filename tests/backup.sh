@@ -247,16 +247,46 @@ from pathlib import Path
 import sys
 text = Path(sys.argv[1]).read_text()
 body = text.split('restore() {', 1)[1].split('\nprompt_secret() {', 1)[0]
-assert body.index('prepare_restored_api_key_sync') < body.index('kubectl -n "$HERMES_NAMESPACE" cp "$plain"')
-assert body.index('prepare_restored_api_key_sync') < body.index('find /opt/data /workspace')
-assert body.index('sync_restored_api_key') < body.index('log "Scaling deployments up"')
-assert body.index('sync_restored_api_key') < body.index('restore_scale_up_on_cleanup=true')
-assert body.index('restore_scale_up_on_cleanup=true') < body.index('log "Scaling deployments up"')
+prepare = body.index('prepare_restored_api_key_sync')
+copy = body.index('kubectl -n "$HERMES_NAMESPACE" cp "$plain"')
+destructive = body.index('find /opt/data /workspace')
+sync = body.index('sync_restored_api_key')
+scale_down = body.index('log "Scaling down write-heavy deployments"')
+scale_up = body.index('log "Scaling deployments up"')
+cleanup_enabled_before = body.index('restore_scale_up_on_cleanup=true', 0, scale_down)
+cleanup_disabled = body.index('restore_scale_up_on_cleanup=false', copy, destructive)
+cleanup_enabled_after = body.index('restore_scale_up_on_cleanup=true', sync, scale_up)
+assert prepare < copy < cleanup_disabled < destructive < sync < cleanup_enabled_after < scale_up
+assert cleanup_enabled_before < scale_down
 assert 'if [[ "$restore_scale_up_on_cleanup" == true ]]' in body
 PY
 
 sync_script="$(HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; restored_api_key_sync_script' _ "$ROOT_DIR/maintain.sh")"
 grep -Fq 'mktemp "${env_file}.XXXXXX"' <<<"$sync_script"
+valid_encoded="$(printf '%s' 'restored-api-key-long-enough' | base64 -w0)"
+HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; validate_encoded_api_key "$2"' _ "$ROOT_DIR/maintain.sh" "$valid_encoded"
+punctuation_encoded="$(printf '%s' '1234567890123456._:/+=@%-' | base64 -w0)"
+HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; validate_encoded_api_key "$2"' _ "$ROOT_DIR/maintain.sh" "$punctuation_encoded"
+python3 - "$TMP_DIR" <<'PY'
+import base64, pathlib, sys
+root=pathlib.Path(sys.argv[1])
+cases={
+    'nul': b'restored-api-key-long-enough\0',
+    'short': b'short',
+    'non-ascii': b'\xff'*16,
+    'unsafe-ascii': b'1234567890123456 #suffix',
+}
+for name,value in cases.items():
+    (root/f'encoded-invalid-{name}').write_text(base64.b64encode(value).decode())
+(root/'encoded-invalid-malformed').write_text('%%%')
+PY
+for invalid_case in nul short non-ascii unsafe-ascii malformed; do
+  if HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; validate_encoded_api_key "$2"' _ \
+    "$ROOT_DIR/maintain.sh" "$(<"$TMP_DIR/encoded-invalid-$invalid_case")"; then
+    printf 'encoded-key validator unexpectedly accepted %s case\n' "$invalid_case" >&2
+    exit 1
+  fi
+done
 sync_env="$TMP_DIR/restored-runtime.env"
 printf '%s\n' 'UNRELATED_SETTING=keep-me' 'API_SERVER_KEY=stale-one' 'API_SERVER_KEY=stale-two' > "$sync_env"
 cp "$sync_env" "$TMP_DIR/validate-only.before"
