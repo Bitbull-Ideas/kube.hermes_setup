@@ -12,6 +12,7 @@ TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 TEST_TMP_DIR="$TMP_DIR/interactive-ansible" python3 "$ROOT_DIR/tests/interactive-ansible-defaults.py"
+TEST_TMP_DIR="$TMP_DIR/interactive-npx" python3 "$ROOT_DIR/tests/interactive-npx-defaults.py"
 
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
