@@ -206,6 +206,8 @@ elif [[ " $* " == *' get secret hermes-api-server '* && " $* " == *'jsonpath={.m
   printf 'restored-resource-version'
 elif [[ " $* " == *' get deploy '* && " $* " == *'jsonpath={.spec.replicas}'* ]]; then
   printf '1'
+elif [[ " $* " == *' cp '* && "${FAKE_CP_FAIL:-false}" == true ]]; then
+  exit 42
 elif [[ " $* " == *' exec -i hermes-restore '* ]]; then
   cat > "${FAKE_RESTORED_KEY_INPUT:?}"
 fi
@@ -242,6 +244,20 @@ grep -Fq 'restored-resource-version' "$TMP_DIR/kubectl.calls"
 grep -Fq 'get secret hermes-api-server' "$TMP_DIR/kubectl.calls"
 grep -Fq 'exec -i hermes-restore' "$TMP_DIR/kubectl.calls"
 grep -qx 'restored-api-key-long-enough' "$TMP_DIR/restored-key.input"
+
+: > "$TMP_DIR/failure.calls"
+if PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 \
+  FAKE_KUBECTL_CALLS="$TMP_DIR/failure.calls" FAKE_RESTORED_KEY_INPUT="$TMP_DIR/failure-key.input" FAKE_CP_FAIL=true \
+  ./maintain.sh restore "$TMP_DIR/full.tgz" --full --password-file "$TMP_DIR/password" >/dev/null 2>&1; then
+  printf 'injected pre-destructive restore failure unexpectedly succeeded\n' >&2
+  exit 1
+fi
+for deployment in hermes-agent hermes-dashboard hermes-webui; do
+  grep -Eq "scale .*deploy/$deployment.*--replicas=0" "$TMP_DIR/failure.calls"
+  grep -Fq "scale deploy/$deployment --replicas=1" "$TMP_DIR/failure.calls"
+done
+! grep -Fq 'find /opt/data /workspace' "$TMP_DIR/failure.calls"
+
 python3 - "$ROOT_DIR/maintain.sh" <<'PY'
 from pathlib import Path
 import sys
@@ -253,12 +269,18 @@ destructive = body.index('find /opt/data /workspace')
 sync = body.index('sync_restored_api_key')
 scale_down = body.index('log "Scaling down write-heavy deployments"')
 scale_up = body.index('log "Scaling deployments up"')
-cleanup_enabled_before = body.index('restore_scale_up_on_cleanup=true', 0, scale_down)
-cleanup_disabled = body.index('restore_scale_up_on_cleanup=false', copy, destructive)
-cleanup_enabled_after = body.index('restore_scale_up_on_cleanup=true', sync, scale_up)
+cleanup_enabled_before = body.index('RESTORE_SCALE_UP_ON_CLEANUP=true', 0, scale_down)
+cleanup_disabled = body.index('RESTORE_SCALE_UP_ON_CLEANUP=false', copy, destructive)
+cleanup_enabled_after = body.index('RESTORE_SCALE_UP_ON_CLEANUP=true', sync, scale_up)
 assert prepare < copy < cleanup_disabled < destructive < sync < cleanup_enabled_after < scale_up
 assert cleanup_enabled_before < scale_down
-assert 'if [[ "$restore_scale_up_on_cleanup" == true ]]' in body
+assert 'local RESTORE_SCALE_UP_ON_CLEANUP' not in body
+assert 'if [[ "${RESTORE_SCALE_UP_ON_CLEANUP:-false}" == true ]]' in body
+assert body.index('trap - EXIT') < body.index('unset RESTORE_SCALE_UP_ON_CLEANUP')
+assert 'RESTORE_DEPLOYMENTS=("${deployments[@]}")' in body
+assert 'declare -gA RESTORE_ORIGINAL_REPLICAS=()' in body
+assert 'for d in "${RESTORE_DEPLOYMENTS[@]:-}"' in body
+assert 'unset RESTORE_SCALE_UP_ON_CLEANUP RESTORE_DEPLOYMENTS RESTORE_ORIGINAL_REPLICAS' in body
 PY
 
 sync_script="$(HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; restored_api_key_sync_script' _ "$ROOT_DIR/maintain.sh")"

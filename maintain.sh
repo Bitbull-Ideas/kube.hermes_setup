@@ -684,12 +684,18 @@ restore() {
     replicas="$(kubectl -n "$HERMES_NAMESPACE" get deploy "$d" -o jsonpath='{.spec.replicas}')"
     original_replicas["$d"]="${replicas:-1}"
   done
-  local restore_scale_up_on_cleanup=false
+  RESTORE_DEPLOYMENTS=("${deployments[@]}")
+  unset RESTORE_ORIGINAL_REPLICAS
+  declare -gA RESTORE_ORIGINAL_REPLICAS=()
+  for d in "${deployments[@]}"; do
+    RESTORE_ORIGINAL_REPLICAS["$d"]="${original_replicas[$d]}"
+  done
+  RESTORE_SCALE_UP_ON_CLEANUP=false
   restore_cleanup() {
     kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
-    if [[ "$restore_scale_up_on_cleanup" == true ]]; then
-      for d in "${deployments[@]}"; do
-        kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}" >/dev/null 2>&1 || true
+    if [[ "${RESTORE_SCALE_UP_ON_CLEANUP:-false}" == true ]]; then
+      for d in "${RESTORE_DEPLOYMENTS[@]:-}"; do
+        kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${RESTORE_ORIGINAL_REPLICAS[$d]}" >/dev/null 2>&1 || true
       done
     fi
     restore_local_cleanup
@@ -701,7 +707,7 @@ restore() {
     exit "$status"
   }
   trap restore_on_exit EXIT
-  restore_scale_up_on_cleanup=true
+  RESTORE_SCALE_UP_ON_CLEANUP=true
   log "Scaling down write-heavy deployments"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
@@ -713,10 +719,10 @@ restore() {
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
   prepare_restored_api_key_sync
   kubectl -n "$HERMES_NAMESPACE" cp "$plain" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
-  restore_scale_up_on_cleanup=false
+  RESTORE_SCALE_UP_ON_CLEANUP=false
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
   sync_restored_api_key
-  restore_scale_up_on_cleanup=true
+  RESTORE_SCALE_UP_ON_CLEANUP=true
   log "Scaling deployments up"
   for d in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}"
@@ -726,9 +732,10 @@ restore() {
       kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
     fi
   done
-  restore_scale_up_on_cleanup=false
+  RESTORE_SCALE_UP_ON_CLEANUP=false
   trap - EXIT
   restore_cleanup
+  unset RESTORE_SCALE_UP_ON_CLEANUP RESTORE_DEPLOYMENTS RESTORE_ORIGINAL_REPLICAS
 }
 
 prompt_secret() {
