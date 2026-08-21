@@ -109,6 +109,10 @@ case "$TEST_SCENARIO" in
     export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
     export API_SERVER_KEY='1234567890123456 #suffix' BROWSER_TOKEN=explicit-browser-token
     ;;
+  tilde-api)
+    export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
+    export API_SERVER_KEY='~1234567890123456' BROWSER_TOKEN=explicit-browser-token
+    ;;
   disabled)
     export HERMES_DASHBOARD_ENABLED=false HERMES_WEBUI_ENABLED=false HERMES_BROWSER_ENABLED=false
     ;;
@@ -244,6 +248,13 @@ fi
 grep -Fq 'API_SERVER_KEY contains characters that cannot be safely persisted' "$TMP_DIR/dotenv-api.stderr"
 ! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
 reset_state
+if run_resolver tilde-api tilde-api; then
+  printf 'tilde API key unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'API_SERVER_KEY contains characters that cannot be safely persisted' "$TMP_DIR/tilde-api.stderr"
+! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
+reset_state
 touch "$TMP_DIR/state/namespace"
 assert_failed secret-error 'Unable to safely resolve Dashboard/WebUI credentials' secret
 reset_state
@@ -260,6 +271,28 @@ put_secret hermes-dashboard-auth password existing-dashboard-password
 put_secret hermes-api-server api-key short
 put_secret hermes-browser-token token existing-browser-token
 assert_failed weak-api 'API_SERVER_KEY must be at least 16 characters' none
+reset_state
+touch "$TMP_DIR/state/namespace"
+put_secret hermes-dashboard-auth username existing-user
+put_secret hermes-dashboard-auth password existing-dashboard-password
+put_secret hermes-api-server api-key $'existing-api-key-long-enough\n'
+put_secret hermes-browser-token token existing-browser-token
+assert_failed trailing-newline-api 'Unable to safely resolve API server key' none
+reset_state
+touch "$TMP_DIR/state/namespace"
+put_secret hermes-dashboard-auth username existing-user
+put_secret hermes-dashboard-auth password existing-dashboard-password
+put_secret hermes-api-server api-key '~existing-api-key-long-enough'
+put_secret hermes-browser-token token existing-browser-token
+assert_failed reused-tilde-api 'Unable to safely resolve API server key' none
+reset_state
+touch "$TMP_DIR/state/namespace"
+put_secret hermes-dashboard-auth username existing-user
+put_secret hermes-dashboard-auth password existing-dashboard-password
+mkdir -p "$TMP_DIR/state/secrets/hermes-api-server"
+printf 'existing-api-key-long-enough\0' | openssl base64 -A > "$TMP_DIR/state/secrets/hermes-api-server/api-key"
+put_secret hermes-browser-token token existing-browser-token
+assert_failed nul-api 'Unable to safely resolve API server key' none
 
 # No fixture Secret value may appear in test output.
 if grep -R -F -e existing-dashboard-password -e existing-api-key-long-enough -e existing-browser-token \

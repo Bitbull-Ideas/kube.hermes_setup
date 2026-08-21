@@ -269,10 +269,15 @@ Path(sys.argv[2]).write_text(version + '\n')
 PY
   kubectl get namespace "$HERMES_NAMESPACE" -o json > "$raw_dir/namespace.json"
   for resource in pvc deployment service job ingress networkpolicy serviceaccount secret; do
-    kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json --ignore-not-found > "$raw_dir/$resource.json" || true
+    if [[ "$resource" == secret ]]; then
+      kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json > "$raw_dir/$resource.json" || fail 'Unable to read Kubernetes Secrets for a recoverable backup'
+    else
+      kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json --ignore-not-found > "$raw_dir/$resource.json" || true
+    fi
   done
   kubectl -n "$HERMES_NAMESPACE" get middleware -o json --ignore-not-found > "$raw_dir/middleware.json" || true
   python3 "$ROOT_DIR/scripts/kube_snapshot.py" snapshot "$raw_dir" "$snapshot" "$HERMES_NAMESPACE"
+  validate_snapshot_api_key "$snapshot" || fail 'Backup snapshot API server key validation failed'
 }
 
 backup() {
@@ -463,7 +468,7 @@ except (binascii.Error, UnicodeDecodeError):
     raise SystemExit("Kubernetes snapshot API server key is malformed")
 if len(key) < 16:
     raise SystemExit("Kubernetes snapshot API server key is shorter than 16 characters")
-if not re.fullmatch(r"[A-Za-z0-9._~:/+=@%-]+", key):
+if not re.fullmatch(r"[A-Za-z0-9._:/+=@%-]+", key):
     raise SystemExit("Kubernetes snapshot API server key cannot be safely persisted")
 PY
 }
@@ -548,7 +553,7 @@ newline="${newline%X}"
 carriage_return="$(printf '\rX')"
 carriage_return="${carriage_return%X}"
 case "$api_key" in *"$newline"*|*"$carriage_return"*) exit 1 ;; esac
-case "$api_key" in *[!A-Za-z0-9._~:/+=@%-]*) exit 1 ;; esac
+case "$api_key" in *[!A-Za-z0-9._:/+=@%-]*) exit 1 ;; esac
 [ "$mode" = validate-only ] && exit 0
 tmp_env="$(mktemp "${env_file}.XXXXXX")"
 trap 'rm -f "$tmp_env"' 0 1 2 15

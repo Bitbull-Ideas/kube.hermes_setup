@@ -132,13 +132,36 @@ write('malformed-base64', '%%%')
 write('non-ascii', base64.b64encode(b'\xff'*16).decode())
 write('short', base64.b64encode(b'short').decode())
 write('dotenv-unsafe', base64.b64encode(b'1234567890123456 #suffix').decode())
+write('tilde-unsafe', base64.b64encode(b'~1234567890123456').decode())
 PY
-for invalid_case in missing duplicate malformed-base64 non-ascii short dotenv-unsafe; do
+for invalid_case in missing duplicate malformed-base64 non-ascii short dotenv-unsafe tilde-unsafe; do
   if HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; validate_snapshot_api_key "$2"' _ "$ROOT_DIR/maintain.sh" "$TMP_DIR/resources-invalid-$invalid_case.json" >/dev/null 2>&1; then
     printf 'snapshot validator unexpectedly accepted %s API key case\n' "$invalid_case" >&2
     exit 1
   fi
 done
+mkdir -p "$TMP_DIR/snapshot-fail-bin" "$TMP_DIR/snapshot-fail-raw"
+cat > "$TMP_DIR/snapshot-fail-bin/kubectl" <<'KUBECTL_FAIL'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == version ]]; then
+  printf '{"serverVersion":{"gitVersion":"v1.31.0+k3s1"}}\n'
+elif [[ "$1" == get && "$2" == namespace ]]; then
+  printf '{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"bob"}}\n'
+elif [[ " $* " == *' get secret '* ]]; then
+  exit 1
+elif [[ "$1" == -n && "$3" == get ]]; then
+  printf '{"apiVersion":"v1","kind":"List","items":[]}\n'
+fi
+KUBECTL_FAIL
+chmod 700 "$TMP_DIR/snapshot-fail-bin/kubectl"
+if PATH="$TMP_DIR/snapshot-fail-bin:$PATH" HERMES_NAMESPACE=bob HERMES_MAINTAIN_LIB_ONLY=true \
+  bash -c 'source "$1"; snapshot_kubernetes_state "$2" "$3" "$4"' _ "$ROOT_DIR/maintain.sh" \
+  "$TMP_DIR/snapshot-fail-raw" "$TMP_DIR/snapshot-fail.json" "$TMP_DIR/snapshot-fail-version.json" >/dev/null 2>&1; then
+  printf 'snapshot unexpectedly succeeded without Secret read access\n' >&2
+  exit 1
+fi
+[[ ! -e "$TMP_DIR/snapshot-fail.json" ]]
 python3 - "$ROOT_DIR/maintain.sh" <<'PY'
 from pathlib import Path
 import sys
