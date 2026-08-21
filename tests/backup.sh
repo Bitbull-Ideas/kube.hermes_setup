@@ -250,6 +250,9 @@ body = text.split('restore() {', 1)[1].split('\nprompt_secret() {', 1)[0]
 assert body.index('prepare_restored_api_key_sync') < body.index('kubectl -n "$HERMES_NAMESPACE" cp "$plain"')
 assert body.index('prepare_restored_api_key_sync') < body.index('find /opt/data /workspace')
 assert body.index('sync_restored_api_key') < body.index('log "Scaling deployments up"')
+assert body.index('sync_restored_api_key') < body.index('restore_scale_up_on_cleanup=true')
+assert body.index('restore_scale_up_on_cleanup=true') < body.index('log "Scaling deployments up"')
+assert 'if [[ "$restore_scale_up_on_cleanup" == true ]]' in body
 PY
 
 sync_script="$(HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; restored_api_key_sync_script' _ "$ROOT_DIR/maintain.sh")"
