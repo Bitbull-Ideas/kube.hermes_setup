@@ -105,6 +105,10 @@ case "$TEST_SCENARIO" in
     export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
     export API_SERVER_KEY=$'explicit-api-key\ninjected-setting=true' BROWSER_TOKEN=explicit-browser-token
     ;;
+  dotenv-api)
+    export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
+    export API_SERVER_KEY='1234567890123456 #suffix' BROWSER_TOKEN=explicit-browser-token
+    ;;
   disabled)
     export HERMES_DASHBOARD_ENABLED=false HERMES_WEBUI_ENABLED=false HERMES_BROWSER_ENABLED=false
     ;;
@@ -231,6 +235,13 @@ if run_resolver multiline-api multiline-api; then
   exit 1
 fi
 grep -Fq 'API_SERVER_KEY must be a single-line value' "$TMP_DIR/multiline-api.stderr"
+! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
+reset_state
+if run_resolver dotenv-api dotenv-api; then
+  printf 'dotenv-unsafe API key unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'API_SERVER_KEY contains characters that cannot be safely persisted' "$TMP_DIR/dotenv-api.stderr"
 ! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
 reset_state
 touch "$TMP_DIR/state/namespace"

@@ -126,6 +126,7 @@ read_existing_secret_value() {
 validate_api_server_key() {
   [[ "$API_SERVER_KEY" != *$'\n'* && "$API_SERVER_KEY" != *$'\r'* ]] || fail "API_SERVER_KEY must be a single-line value"
   [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+  [[ "$API_SERVER_KEY" =~ ^[A-Za-z0-9._~:/+=@%-]+$ ]] || fail "API_SERVER_KEY contains characters that cannot be safely persisted in the runtime environment file"
 }
 
 resolve_runtime_credentials() {

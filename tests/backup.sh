@@ -184,6 +184,8 @@ from pathlib import Path
 import sys
 text = Path(sys.argv[1]).read_text()
 body = text.split('restore() {', 1)[1].split('\nprompt_secret() {', 1)[0]
+assert body.index('prepare_restored_api_key_sync') < body.index('kubectl -n "$HERMES_NAMESPACE" cp "$plain"')
+assert body.index('prepare_restored_api_key_sync') < body.index('find /opt/data /workspace')
 assert body.index('sync_restored_api_key') < body.index('log "Scaling deployments up"')
 PY
 
@@ -191,6 +193,9 @@ sync_script="$(HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; restored_api_
 grep -Fq 'mktemp "${env_file}.XXXXXX"' <<<"$sync_script"
 sync_env="$TMP_DIR/restored-runtime.env"
 printf '%s\n' 'UNRELATED_SETTING=keep-me' 'API_SERVER_KEY=stale-one' 'API_SERVER_KEY=stale-two' > "$sync_env"
+cp "$sync_env" "$TMP_DIR/validate-only.before"
+printf '%s' 'restored-api-key-long-enough' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env" validate-only
+cmp -s "$sync_env" "$TMP_DIR/validate-only.before"
 printf '%s' 'restored-api-key-long-enough' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"
 grep -qx 'UNRELATED_SETTING=keep-me' "$sync_env"
 grep -qx 'API_SERVER_KEY=restored-api-key-long-enough' "$sync_env"
@@ -209,6 +214,11 @@ fi
 cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"
 if printf 'short' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"; then
   printf 'restore sync unexpectedly accepted weak API key\n' >&2
+  exit 1
+fi
+cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"
+if printf '1234567890123456 #suffix' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"; then
+  printf 'restore sync unexpectedly accepted dotenv-unsafe API key\n' >&2
   exit 1
 fi
 cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"

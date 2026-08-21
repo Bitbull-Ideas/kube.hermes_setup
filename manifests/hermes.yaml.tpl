@@ -324,6 +324,7 @@ spec:
               printf '%s=%s\n' "$env_name" "$env_value" >> "$tmp_env"
             fi
             chmod 600 "$tmp_env"
+            chown ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} "$tmp_env"
             mv -f "$tmp_env" /opt/data/.env
             trap - 0 1 2 15
           }

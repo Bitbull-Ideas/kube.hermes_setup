@@ -507,6 +507,7 @@ umask 077
 uid="$1"
 gid="$2"
 env_file="${3:-/opt/data/.env}"
+mode="${4:-write}"
 api_key_with_sentinel="$(cat; printf X)"
 api_key="${api_key_with_sentinel%X}"
 unset api_key_with_sentinel
@@ -517,6 +518,8 @@ newline="${newline%X}"
 carriage_return="$(printf '\rX')"
 carriage_return="${carriage_return%X}"
 case "$api_key" in *"$newline"*|*"$carriage_return"*) exit 1 ;; esac
+case "$api_key" in *[!A-Za-z0-9._~:/+=@%-]*) exit 1 ;; esac
+[ "$mode" = validate-only ] && exit 0
 tmp_env="$(mktemp "${env_file}.XXXXXX")"
 trap 'rm -f "$tmp_env"' 0 1 2 15
 touch "$env_file"
@@ -542,13 +545,24 @@ trap - 0 1 2 15
 SH
 }
 
-sync_restored_api_key() {
+prepare_restored_api_key_sync() {
   local encoded script
   encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o "jsonpath={.data['api-key']}")" || fail 'Unable to read restored API server key Secret'
   [[ -n "$encoded" ]] || fail 'Restored API server key Secret is empty'
   script="$(restored_api_key_sync_script)"
+  printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-restore -- sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data/.env validate-only \
+    || fail 'Restored API server key Secret is invalid; refusing to replace persistent data'
+  RESTORED_API_KEY_ENCODED="$encoded"
+}
+
+sync_restored_api_key() {
+  local encoded script
+  encoded="${RESTORED_API_KEY_ENCODED:-}"
+  [[ -n "$encoded" ]] || fail 'Restored API server key was not validated before persistent data replacement'
+  script="$(restored_api_key_sync_script)"
   printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-restore -- sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" \
     || fail 'Unable to synchronize restored API server key into persistent runtime environment'
+  unset RESTORED_API_KEY_ENCODED
 }
 
 restore() {
@@ -640,6 +654,7 @@ restore() {
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   create_storage_helper_pod hermes-restore restore
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
+  prepare_restored_api_key_sync
   kubectl -n "$HERMES_NAMESPACE" cp "$plain" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
   sync_restored_api_key
