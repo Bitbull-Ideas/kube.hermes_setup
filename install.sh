@@ -123,6 +123,11 @@ read_existing_secret_value() {
   printf '%s' "$decoded"
 }
 
+validate_api_server_key() {
+  [[ "$API_SERVER_KEY" != *$'\n'* && "$API_SERVER_KEY" != *$'\r'* ]] || fail "API_SERVER_KEY must be a single-line value"
+  [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+}
+
 resolve_runtime_credentials() {
   local namespace_exists existing status need_lookup=false
   local dashboard_enabled="${HERMES_DASHBOARD_ENABLED:-true}"
@@ -145,7 +150,7 @@ resolve_runtime_credentials() {
   fi
 
   if [[ "$need_lookup" == false ]]; then
-    [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+    validate_api_server_key
     if is_truthy "$browser_enabled"; then
       BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
     else
@@ -214,7 +219,7 @@ resolve_runtime_credentials() {
     fi
   fi
 
-  [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+  validate_api_server_key
   if is_truthy "$browser_enabled"; then
     BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
   else

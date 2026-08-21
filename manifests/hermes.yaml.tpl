@@ -306,7 +306,7 @@ spec:
           upsert_runtime_env() {
             env_name="$1"
             env_value="$2"
-            tmp_env="/opt/data/.env.$$.tmp"
+            tmp_env="$(mktemp /opt/data/.env.XXXXXX)"
             trap 'rm -f "$tmp_env"' 0 1 2 15
             found=false
             while IFS= read -r line || [ -n "$line" ]; do

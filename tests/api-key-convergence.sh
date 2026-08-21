@@ -83,6 +83,7 @@ script = container['args'][0]
 assert 'upsert_runtime_env API_SERVER_KEY "$API_SERVER_KEY"' in script
 assert 'upsert_runtime_env BROWSER_CDP_URL "$BROWSER_CDP_URL"' in script
 assert 'umask 077' in script
+assert 'mktemp /opt/data/.env.XXXXXX' in script
 assert 'mv -f "$tmp_env" /opt/data/.env' in script
 assert 'cat "$tmp_env" > /opt/data/.env' not in script
 assert 'chmod 600 /opt/data/.env' in script

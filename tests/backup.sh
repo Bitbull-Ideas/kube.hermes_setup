@@ -137,10 +137,14 @@ if [[ "$1" == version ]]; then
   printf '{"serverVersion":{"gitVersion":"%s"}}\n' "${FAKE_K3S_VERSION:-v1.31.0+k3s1}"
 elif [[ "$1" == get && "$2" == namespace ]]; then
   printf 'namespace/bob\n'
+elif [[ " $* " == *' get secret hermes-api-server '* && " $* " == *"jsonpath={.data['api-key']}"* ]]; then
+  printf '%s' 'restored-api-key-long-enough' | base64
 elif [[ " $* " == *' get secret hermes-api-server '* && " $* " == *'jsonpath={.metadata.resourceVersion}'* ]]; then
   printf 'restored-resource-version'
 elif [[ " $* " == *' get deploy '* && " $* " == *'jsonpath={.spec.replicas}'* ]]; then
   printf '1'
+elif [[ " $* " == *' exec -i hermes-restore '* ]]; then
+  cat > "${FAKE_RESTORED_KEY_INPUT:?}"
 fi
 KUBECTL
 chmod 700 "$TMP_DIR/bin/kubectl"
@@ -166,11 +170,52 @@ grep -Fq 'no K3s version metadata' "$TMP_DIR/no-version.out"
 PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.32.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" >/dev/null
 
 : > "$TMP_DIR/kubectl.calls"
-PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 FAKE_KUBECTL_CALLS="$TMP_DIR/kubectl.calls" \
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 FAKE_KUBECTL_CALLS="$TMP_DIR/kubectl.calls" FAKE_RESTORED_KEY_INPUT="$TMP_DIR/restored-key.input" \
   ./maintain.sh restore "$TMP_DIR/full.tgz" --full --password-file "$TMP_DIR/password" >/dev/null
 for deployment in hermes-agent hermes-dashboard hermes-webui; do
   grep -Fq "patch deployment $deployment --type=merge" "$TMP_DIR/kubectl.calls"
 done
 grep -Fq 'restored-resource-version' "$TMP_DIR/kubectl.calls"
+grep -Fq 'get secret hermes-api-server' "$TMP_DIR/kubectl.calls"
+grep -Fq 'exec -i hermes-restore' "$TMP_DIR/kubectl.calls"
+grep -qx 'restored-api-key-long-enough' "$TMP_DIR/restored-key.input"
+python3 - "$ROOT_DIR/maintain.sh" <<'PY'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text()
+body = text.split('restore() {', 1)[1].split('\nprompt_secret() {', 1)[0]
+assert body.index('sync_restored_api_key') < body.index('log "Scaling deployments up"')
+PY
+
+sync_script="$(HERMES_MAINTAIN_LIB_ONLY=true bash -c 'source "$1"; restored_api_key_sync_script' _ "$ROOT_DIR/maintain.sh")"
+grep -Fq 'mktemp "${env_file}.XXXXXX"' <<<"$sync_script"
+sync_env="$TMP_DIR/restored-runtime.env"
+printf '%s\n' 'UNRELATED_SETTING=keep-me' 'API_SERVER_KEY=stale-one' 'API_SERVER_KEY=stale-two' > "$sync_env"
+printf '%s' 'restored-api-key-long-enough' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"
+grep -qx 'UNRELATED_SETTING=keep-me' "$sync_env"
+grep -qx 'API_SERVER_KEY=restored-api-key-long-enough' "$sync_env"
+[[ "$(grep -c '^API_SERVER_KEY=' "$sync_env")" == 1 ]]
+[[ "$(stat -c %a "$sync_env")" == 600 ]]
+cp "$sync_env" "$TMP_DIR/restored-runtime.before"
+if printf 'bad\rkey-value-long-enough' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"; then
+  printf 'restore sync unexpectedly accepted carriage return\n' >&2
+  exit 1
+fi
+cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"
+if printf 'bad\nkey-value-long-enough' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"; then
+  printf 'restore sync unexpectedly accepted newline\n' >&2
+  exit 1
+fi
+cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"
+if printf 'short' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"; then
+  printf 'restore sync unexpectedly accepted weak API key\n' >&2
+  exit 1
+fi
+cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"
+if printf 'bad-key-value-long-enough\n' | sh -c "$sync_script" sh "$(id -u)" "$(id -g)" "$sync_env"; then
+  printf 'restore sync unexpectedly accepted trailing newline\n' >&2
+  exit 1
+fi
+cmp -s "$sync_env" "$TMP_DIR/restored-runtime.before"
 
 printf 'encrypted backup helper tests passed\n'

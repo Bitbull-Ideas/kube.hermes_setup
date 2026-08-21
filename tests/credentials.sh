@@ -101,6 +101,10 @@ case "$TEST_SCENARIO" in
     export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
     export API_SERVER_KEY=explicit-api-key-long BROWSER_TOKEN=explicit-browser-token
     ;;
+  multiline-api)
+    export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
+    export API_SERVER_KEY=$'explicit-api-key\ninjected-setting=true' BROWSER_TOKEN=explicit-browser-token
+    ;;
   disabled)
     export HERMES_DASHBOARD_ENABLED=false HERMES_WEBUI_ENABLED=false HERMES_BROWSER_ENABLED=false
     ;;
@@ -221,6 +225,13 @@ grep -qx "browser_sha=$empty_sha" "$TMP_DIR/disabled.result"
 # Fail closed for Kubernetes errors and malformed/weak existing Secrets.
 reset_state
 assert_failed namespace-error 'Unable to inspect namespace' namespace
+reset_state
+if run_resolver multiline-api multiline-api; then
+  printf 'multiline API key unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'API_SERVER_KEY must be a single-line value' "$TMP_DIR/multiline-api.stderr"
+! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
 reset_state
 touch "$TMP_DIR/state/namespace"
 assert_failed secret-error 'Unable to safely resolve Dashboard/WebUI credentials' secret
