@@ -107,6 +107,22 @@ assert all('status' not in item for item in snapshot['items'])
 assert any(item['kind'] == 'Secret' for item in snapshot['items'])
 PY
 
+python3 - "$TMP_DIR/resources.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path))
+for name in ('hermes-agent', 'hermes-dashboard', 'hermes-webui'):
+    data['items'].append({
+        'apiVersion': 'apps/v1',
+        'kind': 'Deployment',
+        'metadata': {'name': name, 'namespace': 'bob'},
+        'spec': {'replicas': 1, 'template': {'metadata': {'annotations': {
+            'kube-hermes-setup.example.com/api-key-revision': 'stale-backup-revision'
+        }}}},
+    })
+json.dump(data, open(path, 'w'))
+PY
+
 rm -f "$TMP_DIR/archive-root/opt/data/link"
 mkdir -p "$TMP_DIR/full-root/metadata/kubernetes"
 cp -a "$TMP_DIR/archive-root/." "$TMP_DIR/full-root/"
@@ -116,10 +132,15 @@ tar -czf "$TMP_DIR/full.tgz" -C "$TMP_DIR/full-root" opt/data workspace metadata
 cat > "$TMP_DIR/bin/kubectl" <<'KUBECTL'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ -z "${FAKE_KUBECTL_CALLS:-}" ]] || printf '%s\n' "$*" >> "$FAKE_KUBECTL_CALLS"
 if [[ "$1" == version ]]; then
   printf '{"serverVersion":{"gitVersion":"%s"}}\n' "${FAKE_K3S_VERSION:-v1.31.0+k3s1}"
 elif [[ "$1" == get && "$2" == namespace ]]; then
   printf 'namespace/bob\n'
+elif [[ " $* " == *' get secret hermes-api-server '* && " $* " == *'jsonpath={.metadata.resourceVersion}'* ]]; then
+  printf 'restored-resource-version'
+elif [[ " $* " == *' get deploy '* && " $* " == *'jsonpath={.spec.replicas}'* ]]; then
+  printf '1'
 fi
 KUBECTL
 chmod 700 "$TMP_DIR/bin/kubectl"
@@ -143,5 +164,13 @@ tar -czf "$TMP_DIR/no-version.tgz" -C "$TMP_DIR/full-root" opt/data workspace me
 PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 ./maintain.sh restore "$TMP_DIR/no-version.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" > "$TMP_DIR/no-version.out" 2>&1
 grep -Fq 'no K3s version metadata' "$TMP_DIR/no-version.out"
 PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.32.0+k3s1 ./maintain.sh restore "$TMP_DIR/full.tgz" --full --dry-run --force --password-file "$TMP_DIR/password" >/dev/null
+
+: > "$TMP_DIR/kubectl.calls"
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob FAKE_K3S_VERSION=v1.31.0+k3s1 FAKE_KUBECTL_CALLS="$TMP_DIR/kubectl.calls" \
+  ./maintain.sh restore "$TMP_DIR/full.tgz" --full --password-file "$TMP_DIR/password" >/dev/null
+for deployment in hermes-agent hermes-dashboard hermes-webui; do
+  grep -Fq "patch deployment $deployment --type=merge" "$TMP_DIR/kubectl.calls"
+done
+grep -Fq 'restored-resource-version' "$TMP_DIR/kubectl.calls"
 
 printf 'encrypted backup helper tests passed\n'

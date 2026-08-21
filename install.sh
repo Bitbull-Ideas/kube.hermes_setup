@@ -546,10 +546,37 @@ create_bootstrap_archive() {
 }
 
 render_manifest() {
+  [[ -n "${API_SERVER_KEY_REVISION:-}" ]] || fail "API server key Secret revision is required before rendering"
   mkdir -p "$RENDER_DIR"
   python3 "$ROOT_DIR/scripts/render_template.py" \
     "$ROOT_DIR/manifests/hermes.yaml.tpl" \
     "$MANIFEST_OUT"
+}
+
+preflight_manifest() {
+  (
+    export API_SERVER_KEY_REVISION=preflight-resource-version
+    render_manifest
+  )
+}
+
+render_pre_init_manifest() {
+  local output="$RENDER_DIR/pre-init.yaml"
+  python3 - "$MANIFEST_OUT" "$output" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source, output = map(Path, sys.argv[1:])
+documents = source.read_text().split("\n---\n")
+selected = []
+for document in documents:
+    kind = re.search(r"(?m)^kind:\s*(\S+)\s*$", document)
+    if not kind or kind.group(1) != "Deployment":
+        selected.append(document)
+output.write_text("\n---\n".join(selected))
+PY
+  printf '%s' "$output"
 }
 
 create_namespace_and_secrets() {
@@ -606,12 +633,35 @@ create_namespace_and_secrets() {
   rm -rf -- "$secret_tmpdir"
 }
 
+resolve_api_key_revision() {
+  API_SERVER_KEY_REVISION="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}')" || fail "Unable to read API server key Secret revision"
+  [[ "$API_SERVER_KEY_REVISION" =~ ^[A-Za-z0-9._:-]+$ ]] || fail "API server key Secret revision is empty or unsafe to render"
+  export API_SERVER_KEY_REVISION
+}
+
+deployment_template_digest() {
+  local deployment="$1" document
+  document="$(kubectl -n "$HERMES_NAMESPACE" get deployment "$deployment" --ignore-not-found -o json)"
+  [[ -n "$document" ]] || return 0
+  printf '%s' "$document" | python3 -c '
+import hashlib, json, sys
+document = json.load(sys.stdin)
+template = json.dumps(document["spec"]["template"], sort_keys=True, separators=(",", ":"))
+print(hashlib.sha256(template.encode()).hexdigest())
+'
+}
+
 apply_and_wait() {
+  local pre_init_manifest d template_after
+  local deployments=() restart_deployments=()
+  declare -A template_before=()
+
   log "Recreating init job if it already exists"
   kubectl -n "$HERMES_NAMESPACE" delete job hermes-init-config --ignore-not-found=true --wait=true >/dev/null
 
-  log "Applying manifest"
-  kubectl apply -f "$MANIFEST_OUT"
+  pre_init_manifest="$(render_pre_init_manifest)"
+  log "Applying non-Deployment resources and init job"
+  kubectl apply -f "$pre_init_manifest"
 
   is_truthy "$HERMES_DASHBOARD_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete deploy,svc,ingress hermes-dashboard --ignore-not-found=true >/dev/null
   is_truthy "$HERMES_DASHBOARD_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete ingress hermes-dashboard-login --ignore-not-found=true >/dev/null
@@ -625,10 +675,24 @@ apply_and_wait() {
   log "Waiting for init config job"
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=complete job/hermes-init-config --timeout=300s
 
-  log "Restarting deployments to pick up refreshed secrets"
-  local deployments=()
   mapfile -t deployments < <(enabled_deployments)
-  kubectl -n "$HERMES_NAMESPACE" rollout restart "${deployments[@]/#/deploy/}" >/dev/null
+  for d in "${deployments[@]}"; do
+    template_before["$d"]="$(deployment_template_digest "$d")"
+  done
+
+  log "Applying initialized workloads"
+  kubectl apply -f "$MANIFEST_OUT"
+
+  for d in "${deployments[@]}"; do
+    template_after="$(deployment_template_digest "$d")"
+    if [[ -n "${template_before[$d]}" && "$template_after" == "${template_before[$d]}" ]]; then
+      restart_deployments+=("deploy/$d")
+    fi
+  done
+  if ((${#restart_deployments[@]} > 0)); then
+    log "Restarting unchanged deployments to pick up refreshed secrets"
+    kubectl -n "$HERMES_NAMESPACE" rollout restart "${restart_deployments[@]}" >/dev/null
+  fi
 
   log "Waiting for rollouts"
   for d in "${deployments[@]}"; do
@@ -676,8 +740,10 @@ main() {
   resolve_runtime_credentials
   validate
   create_bootstrap_archive
-  render_manifest
+  preflight_manifest
   create_namespace_and_secrets
+  resolve_api_key_revision
+  render_manifest
   apply_and_wait
   print_summary
 }
