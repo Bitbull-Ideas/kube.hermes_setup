@@ -11,6 +11,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+TEST_TMP_DIR="$TMP_DIR/interactive-ansible" python3 "$ROOT_DIR/tests/interactive-ansible-defaults.py"
+
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
 # Accept the profile, provider, image, pull-policy, and SSH defaults while
