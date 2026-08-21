@@ -269,10 +269,15 @@ Path(sys.argv[2]).write_text(version + '\n')
 PY
   kubectl get namespace "$HERMES_NAMESPACE" -o json > "$raw_dir/namespace.json"
   for resource in pvc deployment service job ingress networkpolicy serviceaccount secret; do
-    kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json --ignore-not-found > "$raw_dir/$resource.json" || true
+    if [[ "$resource" == secret ]]; then
+      kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json > "$raw_dir/$resource.json" || fail 'Unable to read Kubernetes Secrets for a recoverable backup'
+    else
+      kubectl -n "$HERMES_NAMESPACE" get "$resource" -o json --ignore-not-found > "$raw_dir/$resource.json" || true
+    fi
   done
   kubectl -n "$HERMES_NAMESPACE" get middleware -o json --ignore-not-found > "$raw_dir/middleware.json" || true
   python3 "$ROOT_DIR/scripts/kube_snapshot.py" snapshot "$raw_dir" "$snapshot" "$HERMES_NAMESPACE"
+  validate_snapshot_api_key "$snapshot" || fail 'Backup snapshot API server key validation failed'
 }
 
 backup() {
@@ -439,8 +444,38 @@ PY
   trap - EXIT
   extract_cleanup
 }
+validate_snapshot_api_key() {
+  python3 - "$1" <<'PY'
+import base64
+import binascii
+import json
+import re
+import sys
+from pathlib import Path
+
+data = json.loads(Path(sys.argv[1]).read_text())
+matches = [
+    item for item in data.get("items", [])
+    if item.get("kind") == "Secret" and item.get("metadata", {}).get("name") == "hermes-api-server"
+]
+if len(matches) != 1:
+    raise SystemExit("Kubernetes snapshot must contain exactly one hermes-api-server Secret")
+encoded = matches[0].get("data", {}).get("api-key", "")
+try:
+    raw = base64.b64decode(encoded, validate=True)
+    key = raw.decode("ascii")
+except (binascii.Error, UnicodeDecodeError):
+    raise SystemExit("Kubernetes snapshot API server key is malformed")
+if len(key) < 16:
+    raise SystemExit("Kubernetes snapshot API server key is shorter than 16 characters")
+if not re.fullmatch(r"[A-Za-z0-9._:/+=@%-]+", key):
+    raise SystemExit("Kubernetes snapshot API server key cannot be safely persisted")
+PY
+}
+
 restore_kubernetes_snapshot() {
   local snapshot="$1" tmpdir="$2" force="$3" dry_run="$4" backup_version='' current_version namespace_json resources_json backup_namespace namespace_state
+  validate_snapshot_api_key "$snapshot/resources.json" || fail 'Kubernetes snapshot API server key validation failed before apply'
   if [[ -f "$snapshot/cluster-version.txt" ]]; then
     backup_version="$(tr -d '[:space:]' < "$snapshot/cluster-version.txt")"
   elif [[ "$force" == true ]]; then
@@ -500,6 +535,89 @@ refresh_restored_api_key_revisions() {
   done
 }
 
+restored_api_key_sync_script() {
+  cat <<'SH'
+set -eu
+umask 077
+uid="$1"
+gid="$2"
+env_file="${3:-/opt/data/.env}"
+mode="${4:-write}"
+api_key_with_sentinel="$(cat; printf X)"
+api_key="${api_key_with_sentinel%X}"
+unset api_key_with_sentinel
+[ -n "$api_key" ] || exit 1
+[ "${#api_key}" -ge 16 ] || exit 1
+newline="$(printf '\nX')"
+newline="${newline%X}"
+carriage_return="$(printf '\rX')"
+carriage_return="${carriage_return%X}"
+case "$api_key" in *"$newline"*|*"$carriage_return"*) exit 1 ;; esac
+case "$api_key" in *[!A-Za-z0-9._:/+=@%-]*) exit 1 ;; esac
+[ "$mode" = validate-only ] && exit 0
+tmp_env="$(mktemp "${env_file}.XXXXXX")"
+trap 'rm -f "$tmp_env"' 0 1 2 15
+touch "$env_file"
+found=false
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    API_SERVER_KEY=*)
+      if [ "$found" = false ]; then
+        printf 'API_SERVER_KEY=%s\n' "$api_key"
+        found=true
+      fi
+      ;;
+    *) printf '%s\n' "$line" ;;
+  esac
+done < "$env_file" > "$tmp_env"
+if [ "$found" = false ]; then
+  printf 'API_SERVER_KEY=%s\n' "$api_key" >> "$tmp_env"
+fi
+chmod 600 "$tmp_env"
+chown "$uid:$gid" "$tmp_env"
+mv -f "$tmp_env" "$env_file"
+trap - 0 1 2 15
+SH
+}
+
+validate_encoded_api_key() {
+  printf '%s' "$1" | python3 -c '
+import base64
+import binascii
+import re
+import sys
+
+try:
+    raw = base64.b64decode(sys.stdin.read(), validate=True)
+    key = raw.decode("ascii")
+except (binascii.Error, UnicodeDecodeError):
+    raise SystemExit(1)
+if len(key) < 16 or not re.fullmatch(r"[A-Za-z0-9._:/+=@%-]+", key):
+    raise SystemExit(1)
+'
+}
+
+prepare_restored_api_key_sync() {
+  local encoded script
+  encoded="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o "jsonpath={.data['api-key']}")" || fail 'Unable to read restored API server key Secret'
+  [[ -n "$encoded" ]] || fail 'Restored API server key Secret is empty'
+  validate_encoded_api_key "$encoded" || fail 'Restored API server key Secret is invalid; refusing to replace persistent data'
+  script="$(restored_api_key_sync_script)"
+  printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-restore -- sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data/.env validate-only \
+    || fail 'Restored API server key Secret is invalid; refusing to replace persistent data'
+  RESTORED_API_KEY_ENCODED="$encoded"
+}
+
+sync_restored_api_key() {
+  local encoded script
+  encoded="${RESTORED_API_KEY_ENCODED:-}"
+  [[ -n "$encoded" ]] || fail 'Restored API server key was not validated before persistent data replacement'
+  script="$(restored_api_key_sync_script)"
+  printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-restore -- sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" \
+    || fail 'Unable to synchronize restored API server key into persistent runtime environment'
+  unset RESTORED_API_KEY_ENCODED
+}
+
 restore() {
   local in='' plain='' tmpdir='' arg full=false dry_run=false force=false
   local -a password_args=()
@@ -516,6 +634,7 @@ restore() {
   [[ -f "$in" ]] || fail "backup file required"
   require_cmd age
   require_cmd python3
+  require_cmd base64
   if [[ "$full" == true || "$dry_run" == true ]]; then
     require_cmd kubectl
   fi
@@ -565,11 +684,20 @@ restore() {
     replicas="$(kubectl -n "$HERMES_NAMESPACE" get deploy "$d" -o jsonpath='{.spec.replicas}')"
     original_replicas["$d"]="${replicas:-1}"
   done
+  RESTORE_DEPLOYMENTS=("${deployments[@]}")
+  unset RESTORE_ORIGINAL_REPLICAS
+  declare -gA RESTORE_ORIGINAL_REPLICAS=()
+  for d in "${deployments[@]}"; do
+    RESTORE_ORIGINAL_REPLICAS["$d"]="${original_replicas[$d]}"
+  done
+  RESTORE_SCALE_UP_ON_CLEANUP=false
   restore_cleanup() {
     kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
-    for d in "${deployments[@]}"; do
-      kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}" >/dev/null 2>&1 || true
-    done
+    if [[ "${RESTORE_SCALE_UP_ON_CLEANUP:-false}" == true ]]; then
+      for d in "${RESTORE_DEPLOYMENTS[@]:-}"; do
+        kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${RESTORE_ORIGINAL_REPLICAS[$d]}" >/dev/null 2>&1 || true
+      done
+    fi
     restore_local_cleanup
   }
   restore_on_exit() {
@@ -579,6 +707,7 @@ restore() {
     exit "$status"
   }
   trap restore_on_exit EXIT
+  RESTORE_SCALE_UP_ON_CLEANUP=true
   log "Scaling down write-heavy deployments"
   kubectl -n "$HERMES_NAMESPACE" scale "${deployments[@]/#/deploy/}" --replicas=0
   kubectl -n "$HERMES_NAMESPACE" rollout status deploy/hermes-agent --timeout=120s >/dev/null 2>&1 || true
@@ -588,8 +717,12 @@ restore() {
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   create_storage_helper_pod hermes-restore restore
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
+  prepare_restored_api_key_sync
   kubectl -n "$HERMES_NAMESPACE" cp "$plain" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
+  RESTORE_SCALE_UP_ON_CLEANUP=false
   kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
+  sync_restored_api_key
+  RESTORE_SCALE_UP_ON_CLEANUP=true
   log "Scaling deployments up"
   for d in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" scale "deploy/$d" --replicas="${original_replicas[$d]}"
@@ -599,8 +732,10 @@ restore() {
       kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
     fi
   done
+  RESTORE_SCALE_UP_ON_CLEANUP=false
   trap - EXIT
   restore_cleanup
+  unset RESTORE_SCALE_UP_ON_CLEANUP RESTORE_DEPLOYMENTS RESTORE_ORIGINAL_REPLICAS
 }
 
 prompt_secret() {

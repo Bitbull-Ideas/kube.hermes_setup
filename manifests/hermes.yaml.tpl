@@ -87,10 +87,16 @@ spec:
             secretKeyRef:
               name: hermes-browser-cdp
               key: BROWSER_CDP_URL
+        - name: API_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hermes-api-server
+              key: api-key
         command: ["sh", "-c"]
         args:
         - |
           set -eu
+          umask 077
           mkdir -p /opt/data /workspace /opt/data/.config /opt/data/.cache
           if [ "${HERMES_SSH_SETUP}" != "false" ] && [ "${HERMES_SSH_SETUP}" != "FALSE" ] && [ "${HERMES_SSH_SETUP}" != "0" ] && [ "${HERMES_SSH_SETUP}" != "no" ] && [ "${HERMES_SSH_SETUP}" != "NO" ] && [ "${HERMES_SSH_SETUP}" != "off" ] && [ "${HERMES_SSH_SETUP}" != "OFF" ]; then
             mkdir -p /opt/data/.ssh
@@ -297,19 +303,33 @@ spec:
             write_default_config
           fi
           touch /opt/data/.env
-          if grep -q '^BROWSER_CDP_URL=' /opt/data/.env 2>/dev/null; then
-            tmp_env="/opt/data/.env.$$.tmp"
+          upsert_runtime_env() {
+            env_name="$1"
+            env_value="$2"
+            tmp_env="$(mktemp /opt/data/.env.XXXXXX)"
+            trap 'rm -f "$tmp_env"' 0 1 2 15
+            found=false
             while IFS= read -r line || [ -n "$line" ]; do
               case "$line" in
-                BROWSER_CDP_URL=*) printf '%s\n' "BROWSER_CDP_URL=$BROWSER_CDP_URL" ;;
+                "$env_name"=*)
+                  if [ "$found" = false ]; then
+                    printf '%s=%s\n' "$env_name" "$env_value"
+                    found=true
+                  fi
+                  ;;
                 *) printf '%s\n' "$line" ;;
               esac
             done < /opt/data/.env > "$tmp_env"
-            cat "$tmp_env" > /opt/data/.env
-            rm -f "$tmp_env"
-          else
-            printf '%s\n' "BROWSER_CDP_URL=$BROWSER_CDP_URL" >> /opt/data/.env
-          fi
+            if [ "$found" = false ]; then
+              printf '%s=%s\n' "$env_name" "$env_value" >> "$tmp_env"
+            fi
+            chmod 600 "$tmp_env"
+            chown ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} "$tmp_env"
+            mv -f "$tmp_env" /opt/data/.env
+            trap - 0 1 2 15
+          }
+          upsert_runtime_env API_SERVER_KEY "$API_SERVER_KEY"
+          upsert_runtime_env BROWSER_CDP_URL "$BROWSER_CDP_URL"
           chmod 600 /opt/data/.env
           if [ ! -f /opt/data/SOUL.md ]; then
             write_installer_default_soul /opt/data/SOUL.md

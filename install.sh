@@ -98,7 +98,7 @@ is_truthy() {
 }
 
 read_existing_secret_value() {
-  local secret="$1" key="$2" name encoded decoded
+  local secret="$1" key="$2" name encoded decoded status
   if ! name="$(kubectl -n "$HERMES_NAMESPACE" get secret "$secret" --ignore-not-found -o jsonpath='{.metadata.name}')"; then
     warn "Unable to inspect Kubernetes Secret $secret"
     return 2
@@ -116,11 +116,34 @@ read_existing_secret_value() {
     warn "Kubernetes Secret $secret key $key is malformed or empty"
     return 2
   fi
-  if ! decoded="$(printf '%s' "$encoded" | openssl base64 -d -A 2>/dev/null)" || [[ -z "$decoded" ]]; then
+  status=0
+  decoded="$(ENCODED_SECRET_VALUE="$encoded" python3 - <<'PY'
+import base64
+import binascii
+import os
+
+encoded = os.environ["ENCODED_SECRET_VALUE"]
+try:
+    raw = base64.b64decode(encoded, validate=True)
+    value = raw.decode("utf-8")
+except (binascii.Error, UnicodeDecodeError):
+    raise SystemExit(1)
+if not value or "\n" in value or "\r" in value or "\0" in value:
+    raise SystemExit(1)
+print(value, end="")
+PY
+)" || status=$?
+  if [[ "$status" -ne 0 || -z "$decoded" ]]; then
     warn "Kubernetes Secret $secret key $key is malformed or empty"
     return 2
   fi
   printf '%s' "$decoded"
+}
+
+validate_api_server_key() {
+  [[ "$API_SERVER_KEY" != *$'\n'* && "$API_SERVER_KEY" != *$'\r'* ]] || fail "API_SERVER_KEY must be a single-line value"
+  [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+  [[ "$API_SERVER_KEY" =~ ^[A-Za-z0-9._:/+=@%-]+$ ]] || fail "API_SERVER_KEY contains characters that cannot be safely persisted in the runtime environment file"
 }
 
 resolve_runtime_credentials() {
@@ -145,7 +168,7 @@ resolve_runtime_credentials() {
   fi
 
   if [[ "$need_lookup" == false ]]; then
-    [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+    validate_api_server_key
     if is_truthy "$browser_enabled"; then
       BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
     else
@@ -157,6 +180,7 @@ resolve_runtime_credentials() {
 
   require_cmd kubectl
   require_cmd openssl
+  require_cmd python3
   if ! namespace_exists="$(kubectl get namespace "$HERMES_NAMESPACE" --ignore-not-found -o jsonpath='{.metadata.name}')"; then
     fail "Unable to inspect namespace $HERMES_NAMESPACE; refusing to generate replacement credentials"
   fi
@@ -214,7 +238,7 @@ resolve_runtime_credentials() {
     fi
   fi
 
-  [[ ${#API_SERVER_KEY} -ge 16 ]] || fail "API_SERVER_KEY must be at least 16 characters"
+  validate_api_server_key
   if is_truthy "$browser_enabled"; then
     BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
   else

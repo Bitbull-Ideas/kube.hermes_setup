@@ -95,6 +95,7 @@ custom_soul='# Operator identity
 
 Preserve this customized identity exactly.'
 export BROWSER_CDP_URL='ws://browser.example.invalid/chromium?token=test-only'
+export API_SERVER_KEY='test-api-server-key-long-enough'
 
 # A fresh install on an empty PVC must finish with the selected profile SOUL.
 root="$TMP_DIR/fresh"
