@@ -204,8 +204,10 @@ grep -qx 'dashboard=explicit api=explicit browser=explicit' "$TMP_DIR/explicit.s
 # rendered init script must defer expansion to the Pod shell instead of
 # embedding the credential in the PodSpec.
 ! grep -Fq 'explicit-browser-token' "$TMP_DIR/render-explicit/hermes.yaml"
-grep -Fq 'BROWSER_CDP_URL=$BROWSER_CDP_URL' "$TMP_DIR/render-explicit/hermes.yaml"
+grep -Fq 'upsert_runtime_env BROWSER_CDP_URL "$BROWSER_CDP_URL"' "$TMP_DIR/render-explicit/hermes.yaml"
+grep -Fq 'upsert_runtime_env API_SERVER_KEY "$API_SERVER_KEY"' "$TMP_DIR/render-explicit/hermes.yaml"
 grep -Fq 'key: BROWSER_CDP_URL' "$TMP_DIR/render-explicit/hermes.yaml"
+grep -Fq 'key: api-key' "$TMP_DIR/render-explicit/hermes.yaml"
 
 # Disabled optional components remain empty and are not looked up.
 reset_state

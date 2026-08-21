@@ -71,6 +71,49 @@ assert set(new.values()) == {expected}
 assert set(old.values()) == {'rv-before-interruption'}
 assert old != new, 'a Secret resource version change must update every consuming Pod template on installer rerun'
 PY
+
+python3 - "$rendered" <<'PY'
+import sys, yaml
+documents = [doc for doc in yaml.safe_load_all(open(sys.argv[1])) if doc]
+job = next(doc for doc in documents if doc.get('kind') == 'Job' and doc.get('metadata', {}).get('name') == 'hermes-init-config')
+container = job['spec']['template']['spec']['containers'][0]
+env = {item['name']: item for item in container['env']}
+assert env['API_SERVER_KEY']['valueFrom']['secretKeyRef'] == {'name': 'hermes-api-server', 'key': 'api-key'}
+script = container['args'][0]
+assert 'upsert_runtime_env API_SERVER_KEY "$API_SERVER_KEY"' in script
+assert 'upsert_runtime_env BROWSER_CDP_URL "$BROWSER_CDP_URL"' in script
+assert 'umask 077' in script
+assert 'mv -f "$tmp_env" /opt/data/.env' in script
+assert 'cat "$tmp_env" > /opt/data/.env' not in script
+assert 'chmod 600 /opt/data/.env' in script
+PY
+
+runtime_env="$TMP_DIR/runtime.env"
+printf '%s\n' \
+  'UNRELATED_SETTING=keep-me' \
+  'API_SERVER_KEY=stale-one' \
+  'BROWSER_CDP_URL=stale-browser' \
+  'API_SERVER_KEY=stale-duplicate' > "$runtime_env"
+python3 - "$rendered" "$TMP_DIR/upsert-runtime-env.sh" "$runtime_env" <<'PY'
+import shlex, sys, yaml
+rendered, output, runtime_env = sys.argv[1:]
+documents = [doc for doc in yaml.safe_load_all(open(rendered)) if doc]
+job = next(doc for doc in documents if doc.get('kind') == 'Job' and doc.get('metadata', {}).get('name') == 'hermes-init-config')
+script = job['spec']['template']['spec']['containers'][0]['args'][0]
+start = script.index('upsert_runtime_env() {')
+end = script.index('chmod 600 /opt/data/.env', start) + len('chmod 600 /opt/data/.env')
+snippet = script[start:end].replace('/opt/data/.env', shlex.quote(runtime_env))
+open(output, 'w').write('set -eu\n' + snippet + '\n')
+PY
+API_SERVER_KEY="$api_key" BROWSER_CDP_URL='ws://hermes-browser:3000/chromium?token=test-browser-token' \
+  sh "$TMP_DIR/upsert-runtime-env.sh" > "$TMP_DIR/upsert.stdout" 2> "$TMP_DIR/upsert.stderr"
+grep -qx 'UNRELATED_SETTING=keep-me' "$runtime_env"
+grep -qx "API_SERVER_KEY=$api_key" "$runtime_env"
+grep -qx 'BROWSER_CDP_URL=ws://hermes-browser:3000/chromium?token=test-browser-token' "$runtime_env"
+[[ "$(grep -c '^API_SERVER_KEY=' "$runtime_env")" == 1 ]]
+[[ "$(grep -c '^BROWSER_CDP_URL=' "$runtime_env")" == 1 ]]
+[[ "$(stat -c %a "$runtime_env")" == 600 ]]
+[[ ! -s "$TMP_DIR/upsert.stdout" && ! -s "$TMP_DIR/upsert.stderr" ]]
 ! grep -Fq "$api_key" "$rendered"
 ! grep -Fq "$old_api_key" "$old_rendered"
 
