@@ -90,8 +90,12 @@ import sys
 text = Path(sys.argv[1]).read_text()
 body = text.split('apply_and_wait() {', 1)[1].split('\n}', 1)[0]
 assert body.index('kubectl apply -f "$pre_init_manifest"') < body.index('wait --for=condition=complete job/hermes-init-config')
+assert body.index('delete deploy,svc,ingress hermes-dashboard') < body.index('wait --for=condition=complete job/hermes-init-config')
+assert body.index('delete deploy,svc,ingress hermes-webui') < body.index('wait --for=condition=complete job/hermes-init-config')
+assert body.index('delete deploy,svc hermes-browser') < body.index('wait --for=condition=complete job/hermes-init-config')
 assert body.index('wait --for=condition=complete job/hermes-init-config') < body.index('kubectl apply -f "$MANIFEST_OUT"')
-assert 'generation_before' in body and 'restart_deployments' in body
+assert 'deployment_template_digest' in body and 'template_before' in body and 'restart_deployments' in body
+assert 'generation_before' not in body
 PY
 
 server_info="$TMP_DIR/health-server"
