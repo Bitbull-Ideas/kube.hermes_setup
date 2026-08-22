@@ -62,8 +62,47 @@ grep -Fq 'umask 077' "$ROOT_DIR/maintain.sh"
 grep -Fq 'trap '\''rm -rf -- "$tmpdir"'\'' ERR' "$ROOT_DIR/maintain.sh"
 grep -Fq 'trap '\''rm -rf -- "$dash_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap '\''rm -rf -- "$secret_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
-grep -Fq 'uv pip sync --python "$HERMES_ADDON_VENV/bin/python" /tmp/hermes-bootstrap/addons/requirements.txt' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+grep -Fq 'resolved_requirements="$(mktemp /tmp/hermes-resolved-requirements.XXXXXX)"' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+grep -Fq 'trap '\''rm -f "$resolved_requirements"'\'' 0 1 2 15' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+grep -Fq 'uv pip compile --python "$HERMES_ADDON_VENV/bin/python" /tmp/hermes-bootstrap/addons/requirements.txt --output-file "$resolved_requirements"' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+grep -Fq 'uv pip sync --python "$HERMES_ADDON_VENV/bin/python" "$resolved_requirements"' "$ROOT_DIR/manifests/hermes.yaml.tpl"
 ! grep -Fq 'uv pip install --python "$HERMES_ADDON_VENV/bin/python" -r /tmp/hermes-bootstrap/addons/requirements.txt' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+python3 - "$ROOT_DIR/manifests/hermes.yaml.tpl" <<'PY'
+from pathlib import Path
+import sys
+text=Path(sys.argv[1]).read_text()
+assert text.index('mktemp /tmp/hermes-resolved-requirements.XXXXXX') < text.index('uv pip compile --python') < text.index('uv pip sync --python')
+PY
+mkdir -p "$TMP_DIR/uv-failure-bin" "$TMP_DIR/uv-failure-venv/bin"
+python3 - "$ROOT_DIR/manifests/hermes.yaml.tpl" "$TMP_DIR/uv-failure-snippet.sh" "$TMP_DIR" <<'PY'
+from pathlib import Path
+import sys, textwrap
+source, output, temp = map(Path, sys.argv[1:])
+text = source.read_text()
+start = text.index('              (\n                resolved_requirements=')
+end = text.index('              )\n', start) + len('              )\n')
+snippet = textwrap.dedent(text[start:end]).replace(
+    '/tmp/hermes-resolved-requirements.XXXXXX',
+    str(temp / 'hermes-resolved-requirements.XXXXXX'),
+)
+output.write_text('set -eu\n' + snippet)
+PY
+cat > "$TMP_DIR/uv-failure-bin/uv" <<'UV'
+#!/usr/bin/env sh
+printf '%s\n' "$2" >> "${UV_TEST_CALLS:?}"
+[ "$2" != compile ] || exit 42
+UV
+chmod 700 "$TMP_DIR/uv-failure-bin/uv"
+: > "$TMP_DIR/uv-failure-venv/bin/python"
+chmod 700 "$TMP_DIR/uv-failure-venv/bin/python"
+if PATH="$TMP_DIR/uv-failure-bin:$PATH" UV_TEST_CALLS="$TMP_DIR/uv-failure.calls" \
+  HERMES_ADDON_VENV="$TMP_DIR/uv-failure-venv" sh "$TMP_DIR/uv-failure-snippet.sh" >/dev/null 2>&1; then
+  printf 'compile failure unexpectedly continued\n' >&2
+  exit 1
+fi
+grep -qx compile "$TMP_DIR/uv-failure.calls"
+! grep -qx sync "$TMP_DIR/uv-failure.calls"
+! compgen -G "$TMP_DIR/hermes-resolved-requirements.*" >/dev/null
 grep -Fq 'trap backup_on_exit EXIT' "$ROOT_DIR/maintain.sh"
 grep -Fq 'show-passwords) show_passwords' "$ROOT_DIR/maintain.sh"
 ! grep -Fq 'get secret hermes-dashboard-auth -o jsonpath' "$ROOT_DIR/install.sh"

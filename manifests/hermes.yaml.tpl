@@ -239,7 +239,12 @@ spec:
                 touch "$HERMES_ADDON_VENV/.hermes-uv-managed"
               fi
               "$HERMES_ADDON_VENV/bin/python" -m pip install --upgrade pip
-              uv pip sync --python "$HERMES_ADDON_VENV/bin/python" /tmp/hermes-bootstrap/addons/requirements.txt
+              (
+                resolved_requirements="$(mktemp /tmp/hermes-resolved-requirements.XXXXXX)"
+                trap 'rm -f "$resolved_requirements"' 0 1 2 15
+                uv pip compile --python "$HERMES_ADDON_VENV/bin/python" /tmp/hermes-bootstrap/addons/requirements.txt --output-file "$resolved_requirements"
+                uv pip sync --python "$HERMES_ADDON_VENV/bin/python" "$resolved_requirements"
+              )
             fi
             rm -rf /tmp/hermes-bootstrap
           fi
