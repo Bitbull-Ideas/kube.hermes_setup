@@ -398,7 +398,7 @@ def run_replay(
             "--answers-file",
             str(answers),
         ],
-        cwd=ROOT,
+        cwd=work,
         env=clean_env(),
         text=True,
         capture_output=True,
@@ -432,6 +432,9 @@ def main() -> None:
         defaults = profile_defaults(profile)
         custom_requirements = work / f"custom-requirements-{profile.name}.txt"
         custom_requirements.write_text("custom-package==1.0\nansible==99.0.0\n")
+        custom_requirements_alias = work / f"-custom-requirements-{profile.name}.txt"
+        custom_requirements_alias.symlink_to(custom_requirements)
+        relative_custom_requirements = Path(os.path.relpath(custom_requirements_alias, ROOT))
         _, baseline_answers = run_interactive(profile, work, "blank")
         cases += 1
         run_interactive(
@@ -446,10 +449,10 @@ def main() -> None:
             work,
             "process-addon-requirements",
             preset={"ansible": False},
-            addon_requirements=custom_requirements,
+            addon_requirements=relative_custom_requirements,
         )
         cases += 1
-        assert read_assignment(custom_answers, "HERMES_ADDON_REQUIREMENTS") == str(custom_requirements)
+        assert read_assignment(custom_answers, "HERMES_ADDON_REQUIREMENTS") == str(custom_requirements.resolve())
         custom_requirements.write_text("custom-package==2.0\n")
         run_replay(
             profile,

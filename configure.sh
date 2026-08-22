@@ -462,7 +462,14 @@ fi
 addon_requirements_content=''
 if [[ -n "$HERMES_ADDON_REQUIREMENTS" ]]; then
   if [[ "$PROFILE_REQUIREMENTS_FROM_PROFILE" != true ]]; then
-    OPERATOR_ADDON_REQUIREMENTS_SOURCE="$HERMES_ADDON_REQUIREMENTS"
+    OPERATOR_ADDON_REQUIREMENTS_SOURCE="$(
+      python3 - "$HERMES_ADDON_REQUIREMENTS" <<'PY'
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).resolve(strict=True))
+PY
+    )"
+    HERMES_ADDON_REQUIREMENTS="$OPERATOR_ADDON_REQUIREMENTS_SOURCE"
   fi
   addon_requirements_content="$(<"$HERMES_ADDON_REQUIREMENTS")"
 fi
