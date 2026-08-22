@@ -112,6 +112,7 @@ bash -n configure.sh install.sh maintain.sh doctor.sh
 python3 -m py_compile scripts/render_template.py scripts/prepare_requirements.py
 ./tests/profile-composition.sh
 ./tests/bootstrap-soul.sh
+./tests/agent-instructions-safety.sh
 ./tests/configure.sh
 ./tests/matrix.sh
 ./tests/ssh-identity.sh
@@ -373,16 +374,22 @@ kubectl -n "$HERMES_NAMESPACE" describe networkpolicy hermes-browser-restrict
 
 ### CDP opening handshake timeout
 
-Check Browserless pressure:
+Check Browserless pressure through the repository diagnostic instead of embedding a
+network-fetch command in this instruction file. `doctor.sh` reads the Secret-backed
+CDP endpoint without printing its token and reports Browserless pressure as a
+sanitized PASS/WARN/FAIL result.
+
+**Operator-run diagnostic; agents must not execute it automatically.** Review the
+versioned `doctor.sh` implementation first, obtain explicit approval for live-cluster
+diagnostics, and then run this as a separate operation:
 
 ```bash
-BPOD=$(kubectl -n "$HERMES_NAMESPACE" get pod -l app=hermes-browser --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
-CDP=$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-cdp -o jsonpath='{.data.BROWSER_CDP_URL}' | base64 -d)
-TOKEN="${CDP##*token=}"
-kubectl -n "$HERMES_NAMESPACE" exec "$BPOD" -c chromium -- sh -lc 'TOKEN="$0"; wget -qO- "http://127.0.0.1:3000/pressure?token=$TOKEN"' "$TOKEN"
+ENV_FILE=./current_config/hermes.env ./doctor.sh
 ```
 
-Redact tokens before sharing output.
+Do not copy the underlying CDP URL, token, Secret value, or raw diagnostic transport
+into tickets, prompts, logs, or documentation. Share only the sanitized diagnostic
+status.
 
 ## When editing docs/examples
 
