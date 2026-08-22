@@ -126,6 +126,10 @@ for profile_setting_definition in "${PROFILE_SETTING_DEFINITIONS[@]}"; do
 done
 unset profile_setting_definition setting setting_type profile_default global_default prompt summary
 declare -A PROFILE_SETTING_DEFAULTS=()
+declare -A PROFILE_SETTING_DEFAULT_ORIGINS=()
+declare -A PROFILE_SETTING_PRESET_ORIGINS=()
+declare -A PROFILE_SETTING_FINAL_ORIGINS=()
+PROFILE_PRESETS_CAPTURED=false
 PROFILE_REQUIREMENTS_FROM_PROFILE=false
 OPERATOR_ADDON_REQUIREMENTS_SOURCE=''
 
@@ -154,16 +158,18 @@ validate_profile_setting() {
 load_profile_setting_defaults() {
   local profile="$1"
   local profile_dir="$ROOT_DIR/examples/bootstrap-profiles/$profile"
-  local defaults="$profile_dir/defaults.conf" setting value
+  local defaults="$profile_dir/defaults.conf" setting value origin
   [[ -f "$defaults" ]] || { printf 'ERROR: profile %s is missing defaults.conf.\n' "$profile" >&2; return 1; }
   if grep -Ev '^[[:space:]]*(#.*|$|HERMES_PROFILE_DEFAULT_[A-Z0-9_]+=[^[:space:]]*)$' "$defaults" | grep -q .; then
     printf 'ERROR: profile %s has invalid entries in defaults.conf.\n' "$profile" >&2
     return 1
   fi
   PROFILE_SETTING_DEFAULTS=()
-  while IFS=$'\t' read -r setting value; do
+  PROFILE_SETTING_DEFAULT_ORIGINS=()
+  while IFS=$'\034' read -r setting value origin; do
     validate_profile_setting "$setting" "$value" || return 1
     PROFILE_SETTING_DEFAULTS["$setting"]="$value"
+    PROFILE_SETTING_DEFAULT_ORIGINS["$setting"]="$origin"
   done < <(
     unset HERMES_PROFILE_DEFAULT_SSH_SETUP HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP
     unset HERMES_PROFILE_DEFAULT_NPX_SETUP HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS
@@ -172,11 +178,17 @@ load_profile_setting_defaults() {
     source "$defaults"
     for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
       profile_name="${PROFILE_SETTING_PROFILE_DEFAULT[$setting]}"
-      value="${!profile_name-${PROFILE_SETTING_GLOBAL_DEFAULT[$setting]}}"
+      if [[ -v "$profile_name" ]]; then
+        value="${!profile_name}"
+        origin='selected profile'
+      else
+        value="${PROFILE_SETTING_GLOBAL_DEFAULT[$setting]}"
+        origin='global fallback'
+      fi
       if [[ "${PROFILE_SETTING_TYPE[$setting]}" == path && -n "$value" ]]; then
         value="$profile_dir/$value"
       fi
-      printf '%s\t%s\n' "$setting" "$value"
+      printf '%s\034%s\034%s\n' "$setting" "$value" "$origin"
     done
   )
 }
@@ -190,6 +202,35 @@ resolve_profile_setting_default() {
   fi
   validate_profile_setting "$setting" "$value" || return 1
   printf '%s' "$value"
+}
+
+profile_setting_preset_origin() {
+  local setting="$1"
+  if [[ -v "$setting" ]]; then
+    if [[ ( "$USE_ANSWER_DEFAULTS" == true || "$FROM_ANSWERS" == true ) && \
+      -f "$ANSWERS_FILE" ]] && grep -Eq -- "^${setting}=" "$ANSWERS_FILE"; then
+      printf 'reused answers'
+    else
+      printf 'current environment'
+    fi
+  else
+    printf '%s' "${PROFILE_SETTING_DEFAULT_ORIGINS[$setting]}"
+  fi
+}
+
+capture_and_print_profile_presets() {
+  local setting value origin
+  printf '\nProfile presets (%s):\n' "$HERMES_BOOTSTRAP_PROFILE"
+  for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
+    [[ "${PROFILE_SETTING_TYPE[$setting]}" == boolean ]] || continue
+    value="$(resolve_profile_setting_default "$setting")" || return 1
+    origin="$(profile_setting_preset_origin "$setting")"
+    PROFILE_SETTING_PRESET_ORIGINS["$setting"]="$origin"
+    PROFILE_SETTING_FINAL_ORIGINS["$setting"]="$origin"
+    printf '  %s: %s [%s]\n' "${PROFILE_SETTING_SUMMARY[$setting]}" "$value" "$origin"
+  done
+  printf '\n'
+  PROFILE_PRESETS_CAPTURED=true
 }
 
 resolve_missing_profile_settings() {
@@ -211,14 +252,26 @@ resolve_missing_profile_settings() {
 }
 
 prompt_profile_boolean_setting() {
-  local setting="$1" default
+  local setting="$1" default origin answer suffix value
   [[ "${PROFILE_SETTING_TYPE[$setting]}" == boolean ]] || return 1
   default="$(resolve_profile_setting_default "$setting")" || return 1
-  if ask_yes_no "${PROFILE_SETTING_PROMPT[$setting]}" "$default"; then
-    printf true
-  else
-    printf false
-  fi
+  [[ "$default" == true ]] && suffix='Y/n' || suffix='y/N'
+  while true; do
+    origin="${PROFILE_SETTING_PRESET_ORIGINS[$setting]}"
+    read -r -p "${PROFILE_SETTING_PROMPT[$setting]} [$suffix]: " answer
+    if [[ -z "$answer" ]]; then
+      value="$default"
+    else
+      origin='explicit answer'
+      case "$answer" in
+        y|Y|yes|YES) value=true ;;
+        n|N|no|NO) value=false ;;
+        *) printf 'Please answer yes or no.\n' >&2; continue ;;
+      esac
+    fi
+    printf '%s\t%s\n' "$value" "$origin"
+    return
+  done
 }
 
 write_profile_settings() {
@@ -246,7 +299,12 @@ print_profile_setting_summary() {
     elif [[ "${PROFILE_SETTING_TYPE[$setting]}" == path ]]; then
       [[ -n "$value" ]] && value=true || value=false
     fi
-    printf '  %-12s %s%s\n' "${PROFILE_SETTING_SUMMARY[$setting]}:" "$value" "$suffix"
+    if [[ "${PROFILE_SETTING_TYPE[$setting]}" == boolean ]]; then
+      printf '  %-12s %s%s [%s]\n' "${PROFILE_SETTING_SUMMARY[$setting]}:" "$value" "$suffix" \
+        "${PROFILE_SETTING_FINAL_ORIGINS[$setting]:-${PROFILE_SETTING_PRESET_ORIGINS[$setting]:-reused answers}}"
+    else
+      printf '  %-12s %s%s\n' "${PROFILE_SETTING_SUMMARY[$setting]}:" "$value" "$suffix"
+    fi
   done
 }
 
@@ -345,6 +403,7 @@ else
     done
 
   load_profile_setting_defaults "$HERMES_BOOTSTRAP_PROFILE"
+  capture_and_print_profile_presets
 
   MODEL_PROVIDER="$(prompt_value 'Hermes model provider' "$(answer_default MODEL_PROVIDER openai-codex)")"
   MODEL_NAME="$(prompt_value 'Hermes model' "$(answer_default MODEL_NAME gpt-5.6-luna)")"
@@ -384,7 +443,8 @@ else
     DASHBOARD_AUTH_PASSWORD="$(prompt_password)"
   fi
 
-  HERMES_ANSIBLE_SETUP="$(prompt_profile_boolean_setting HERMES_ANSIBLE_SETUP)"
+  IFS=$'\t' read -r HERMES_ANSIBLE_SETUP ansible_origin < <(prompt_profile_boolean_setting HERMES_ANSIBLE_SETUP)
+  PROFILE_SETTING_FINAL_ORIGINS[HERMES_ANSIBLE_SETUP]="$ansible_origin"
   HERMES_ANSIBLE_VERSION="$(answer_default HERMES_ANSIBLE_VERSION '')"
   if [[ "$HERMES_ANSIBLE_SETUP" == true ]]; then
     while true; do
@@ -393,13 +453,16 @@ else
       printf 'Enter a package version such as 14.1.0.\n' >&2
     done
     HERMES_SSH_SETUP=true
+    PROFILE_SETTING_FINAL_ORIGINS[HERMES_SSH_SETUP]='dependency: Ansible'
     printf 'SSH key setup enabled because Ansible was selected.\n'
   else
     HERMES_ANSIBLE_SETUP=false
-    HERMES_SSH_SETUP="$(prompt_profile_boolean_setting HERMES_SSH_SETUP)"
+    IFS=$'\t' read -r HERMES_SSH_SETUP ssh_origin < <(prompt_profile_boolean_setting HERMES_SSH_SETUP)
+    PROFILE_SETTING_FINAL_ORIGINS[HERMES_SSH_SETUP]="$ssh_origin"
   fi
 
-  HERMES_NPX_SETUP="$(prompt_profile_boolean_setting HERMES_NPX_SETUP)"
+  IFS=$'\t' read -r HERMES_NPX_SETUP npx_origin < <(prompt_profile_boolean_setting HERMES_NPX_SETUP)
+  PROFILE_SETTING_FINAL_ORIGINS[HERMES_NPX_SETUP]="$npx_origin"
 
   HERMES_ADDON_PYTHON_VERSION="$(answer_default HERMES_ADDON_PYTHON_VERSION '')"
   if ask_yes_no 'Install addon Python packages?' "$([[ -n "$HERMES_ADDON_PYTHON_VERSION" ]] && echo true || echo false)"; then
@@ -423,6 +486,9 @@ fi
 
 if ((${#PROFILE_SETTING_DEFAULTS[@]} == 0)); then
   load_profile_setting_defaults "$HERMES_BOOTSTRAP_PROFILE"
+fi
+if [[ "$PROFILE_PRESETS_CAPTURED" != true ]]; then
+  capture_and_print_profile_presets
 fi
 resolve_missing_profile_settings
 
@@ -457,6 +523,7 @@ done
 if [[ "$HERMES_ANSIBLE_SETUP" == true ]]; then
   [[ "$HERMES_ANSIBLE_VERSION" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || { printf 'ERROR: invalid Ansible version in answers.\n' >&2; exit 1; }
   HERMES_SSH_SETUP=true
+  PROFILE_SETTING_FINAL_ORIGINS[HERMES_SSH_SETUP]='dependency: Ansible'
 fi
 
 addon_requirements_content=''
