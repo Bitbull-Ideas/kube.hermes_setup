@@ -62,9 +62,54 @@ grep -Fq 'umask 077' "$ROOT_DIR/maintain.sh"
 grep -Fq 'trap '\''rm -rf -- "$tmpdir"'\'' ERR' "$ROOT_DIR/maintain.sh"
 grep -Fq 'trap '\''rm -rf -- "$dash_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
 grep -Fq 'trap '\''rm -rf -- "$secret_tmpdir"'\'' ERR' "$ROOT_DIR/install.sh"
-grep -Fq 'uv pip install --exact --python "$HERMES_ADDON_VENV/bin/python" -r /tmp/hermes-bootstrap/addons/requirements.txt' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+grep -Fq 'uv pip install --python "$HERMES_ADDON_VENV/bin/python" -r /tmp/hermes-bootstrap/addons/requirements.txt' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+grep -Fq 'uv pip uninstall --python "$HERMES_ADDON_VENV/bin/python" ansible ansible-core' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+! grep -Fq 'uv pip install --exact' "$ROOT_DIR/manifests/hermes.yaml.tpl"
 ! grep -Fq 'uv pip compile --python' "$ROOT_DIR/manifests/hermes.yaml.tpl"
 ! grep -Fq 'uv pip sync --python' "$ROOT_DIR/manifests/hermes.yaml.tpl"
+mkdir -p "$TMP_DIR/uv-policy-bin" "$TMP_DIR/uv-policy-venv/bin"
+python3 - "$ROOT_DIR/manifests/hermes.yaml.tpl" "$TMP_DIR/uv-policy-snippet.sh" <<'PY'
+from pathlib import Path
+import sys, textwrap
+source, output = map(Path, sys.argv[1:])
+text = source.read_text()
+start = text.index('              uv pip install --python')
+end = text.index('              fi\n', start) + len('              fi\n')
+output.write_text('set -eu\n' + textwrap.dedent(text[start:end]))
+PY
+cat > "$TMP_DIR/uv-policy-bin/uv" <<'UV'
+#!/usr/bin/env sh
+printf '%s\n' "$*" >> "${UV_POLICY_CALLS:?}"
+if [ "${UV_POLICY_FAIL_UNINSTALL:-false}" = true ]; then
+  case " $* " in *' pip uninstall '*) exit 42 ;; esac
+fi
+UV
+chmod 700 "$TMP_DIR/uv-policy-bin/uv"
+: > "$TMP_DIR/uv-policy-venv/bin/python"
+chmod 700 "$TMP_DIR/uv-policy-venv/bin/python"
+for provenance in false true; do
+  for ansible_setup in false true; do
+    calls="$TMP_DIR/uv-policy-$provenance-$ansible_setup.calls"
+    PATH="$TMP_DIR/uv-policy-bin:$PATH" UV_POLICY_CALLS="$calls" \
+      HERMES_ADDON_VENV="$TMP_DIR/uv-policy-venv" \
+      HERMES_PROFILE_REQUIREMENTS_SELECTED="$provenance" HERMES_ANSIBLE_SETUP="$ansible_setup" \
+      sh "$TMP_DIR/uv-policy-snippet.sh"
+    grep -Fq 'pip install --python' "$calls"
+    if [[ "$provenance" == true && "$ansible_setup" == false ]]; then
+      grep -Fq 'pip uninstall --python' "$calls"
+    else
+      ! grep -Fq 'pip uninstall --python' "$calls"
+    fi
+  done
+done
+if PATH="$TMP_DIR/uv-policy-bin:$PATH" UV_POLICY_CALLS="$TMP_DIR/uv-policy-failure.calls" \
+  UV_POLICY_FAIL_UNINSTALL=true HERMES_ADDON_VENV="$TMP_DIR/uv-policy-venv" \
+  HERMES_PROFILE_REQUIREMENTS_SELECTED=true HERMES_ANSIBLE_SETUP=false \
+  sh "$TMP_DIR/uv-policy-snippet.sh" >/dev/null 2>&1; then
+  printf 'Ansible cleanup failure unexpectedly ignored\n' >&2
+  exit 1
+fi
+grep -Fq 'pip uninstall --python' "$TMP_DIR/uv-policy-failure.calls"
 grep -Fq 'trap backup_on_exit EXIT' "$ROOT_DIR/maintain.sh"
 grep -Fq 'show-passwords) show_passwords' "$ROOT_DIR/maintain.sh"
 ! grep -Fq 'get secret hermes-dashboard-auth -o jsonpath' "$ROOT_DIR/install.sh"
@@ -152,6 +197,7 @@ source "$config_one/hermes.env"
 )
 (
   export HERMES_INSTALL_LIB_ONLY=true
+  unset HERMES_PROFILE_REQUIREMENTS_SELECTED
   # shellcheck disable=SC1090
   source "$ROOT_DIR/install.sh"
   first_env="$TMP_DIR/provenance-first.env"
@@ -159,8 +205,9 @@ source "$config_one/hermes.env"
   printf '%s\n' 'HERMES_BOOTSTRAP_PROFILE=personal-assistant' \
     'HERMES_PROFILE_REQUIREMENTS_SELECTED=true' > "$first_env"
   printf '%s\n' 'HERMES_BOOTSTRAP_PROFILE=personal-assistant' \
-    'HERMES_PROFILE_REQUIREMENTS_SELECTED=false' \
-    'HERMES_ADDON_REQUIREMENTS=' > "$second_env"
+    'HERMES_ANSIBLE_SETUP=false' \
+    "HERMES_ADDON_REQUIREMENTS=$TMP_DIR/operator-requirements.txt" > "$second_env"
+  printf '%s\n' 'custom-package==1.0' 'ansible==99.0.0' > "$TMP_DIR/operator-requirements.txt"
   ENV_FILE="$first_env"
   load_env
   prepare_defaults
@@ -169,7 +216,9 @@ source "$config_one/hermes.env"
   load_env
   prepare_defaults
   [[ "$HERMES_PROFILE_REQUIREMENTS_SELECTED" == false ]]
-  [[ -z "$HERMES_ADDON_REQUIREMENTS" ]]
+  [[ "$HERMES_ADDON_REQUIREMENTS" == "$TMP_DIR/operator-requirements.txt" ]]
+  create_bootstrap_archive
+  tar -xOf "$BOOTSTRAP_ARCHIVE" ./addons/requirements.txt | grep -qx 'ansible==99.0.0'
 )
 if HERMES_INSTALL_LIB_ONLY=true HERMES_PROFILE_REQUIREMENTS_SELECTED=invalid \
   bash -c 'source "$1"; prepare_defaults' _ "$ROOT_DIR/install.sh" >/dev/null 2>&1; then

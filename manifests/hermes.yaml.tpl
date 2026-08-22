@@ -239,7 +239,10 @@ spec:
                 touch "$HERMES_ADDON_VENV/.hermes-uv-managed"
               fi
               "$HERMES_ADDON_VENV/bin/python" -m pip install --upgrade pip
-              uv pip install --exact --python "$HERMES_ADDON_VENV/bin/python" -r /tmp/hermes-bootstrap/addons/requirements.txt
+              uv pip install --python "$HERMES_ADDON_VENV/bin/python" -r /tmp/hermes-bootstrap/addons/requirements.txt
+              if [ "${HERMES_PROFILE_REQUIREMENTS_SELECTED}" = "true" ] && [ "${HERMES_ANSIBLE_SETUP}" = "false" ]; then
+                uv pip uninstall --python "$HERMES_ADDON_VENV/bin/python" ansible ansible-core
+              fi
             fi
             rm -rf /tmp/hermes-bootstrap
           fi
