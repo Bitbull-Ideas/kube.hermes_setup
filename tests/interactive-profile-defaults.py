@@ -183,6 +183,7 @@ def assert_outputs(
     output: str,
     requirements_from_profile: bool = True,
     requirements_marker: str | None = None,
+    require_clean_requirement_answer: bool = True,
 ) -> None:
     for flag, (setting, _) in FLAGS.items():
         value = bool_text(expected[flag])
@@ -205,8 +206,15 @@ def assert_outputs(
     requirements = config / "addon-requirements.txt"
     assert requirements.is_file(), f"{profile.name}/{case}: addon requirements missing"
     assert read_assignment(config / "hermes.env", "HERMES_ADDON_REQUIREMENTS") == str(requirements)
-    answer_requirements = Path(read_assignment(answers, "HERMES_ADDON_REQUIREMENTS"))
-    assert answer_requirements.is_file(), f"{profile.name}/{case}: saved requirements path missing"
+    answer_requirements_value = read_assignment(answers, "HERMES_ADDON_REQUIREMENTS")
+    if requirements_from_profile:
+        if require_clean_requirement_answer:
+            assert answer_requirements_value in {"", "''"}, (
+                f"{profile.name}/{case}: generated requirements path leaked into saved answers"
+            )
+    else:
+        answer_requirements = Path(answer_requirements_value)
+        assert answer_requirements.is_file(), f"{profile.name}/{case}: saved requirements path missing"
     requirement_lines = requirements.read_text().splitlines()
     profile_requirements_value = bool_text(requirements_from_profile)
     assert read_assignment(config / "hermes.env", "HERMES_PROFILE_REQUIREMENTS_SELECTED") == profile_requirements_value
@@ -399,7 +407,15 @@ def run_replay(
     if result.returncode != 0:
         raise AssertionError(f"{profile.name}/{case}: replay failed\n{output[-4000:]}")
     assert "Rebuilding current_config from" in output
-    assert_outputs(profile, case, config, answers, expected, output)
+    assert_outputs(
+        profile,
+        case,
+        config,
+        answers,
+        expected,
+        output,
+        require_clean_requirement_answer=False,
+    )
 
 
 def main() -> None:
@@ -447,6 +463,10 @@ def main() -> None:
                         "HERMES_ANSIBLE_VERSION": (
                             "14.1.0" if replay_expected["ansible"] else ""
                         ),
+                        "HERMES_ADDON_REQUIREMENTS": str(
+                            work / f"deleted-generated-requirements-{profile.name}-{target}-{bool_text(value)}.txt"
+                        ),
+                        "HERMES_PROFILE_REQUIREMENTS_SELECTED": "true",
                     },
                 )
                 run_interactive(

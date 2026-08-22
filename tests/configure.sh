@@ -132,6 +132,47 @@ source "$config_one/hermes.env"
 [[ "$MODEL_PROVIDER" == openai-codex ]]
 [[ "$MODEL_NAME" == gpt-5.6-luna ]]
 [[ "$HERMES_IMAGE_PULL_POLICY" == IfNotPresent ]]
+(
+  export HERMES_INSTALL_LIB_ONLY=true
+  export ENV_FILE="$config_one/hermes.env"
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/install.sh"
+  load_env
+  HERMES_ANSIBLE_SETUP=false
+  prepare_paths
+  prepare_defaults
+  create_bootstrap_archive
+  if tar -xOf "$BOOTSTRAP_ARCHIVE" ./addons/requirements.txt 2>/dev/null | grep -Eq '^ansible(==|$)'; then
+    printf 'disabled Ansible remained in profile-owned generated requirements\n' >&2
+    exit 1
+  fi
+)
+(
+  export HERMES_INSTALL_LIB_ONLY=true
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/install.sh"
+  first_env="$TMP_DIR/provenance-first.env"
+  second_env="$TMP_DIR/provenance-second.env"
+  printf '%s\n' 'HERMES_BOOTSTRAP_PROFILE=personal-assistant' \
+    'HERMES_PROFILE_REQUIREMENTS_SELECTED=true' > "$first_env"
+  printf '%s\n' 'HERMES_BOOTSTRAP_PROFILE=personal-assistant' \
+    'HERMES_PROFILE_REQUIREMENTS_SELECTED=false' \
+    'HERMES_ADDON_REQUIREMENTS=' > "$second_env"
+  ENV_FILE="$first_env"
+  load_env
+  prepare_defaults
+  [[ "$HERMES_PROFILE_REQUIREMENTS_SELECTED" == true ]]
+  ENV_FILE="$second_env"
+  load_env
+  prepare_defaults
+  [[ "$HERMES_PROFILE_REQUIREMENTS_SELECTED" == false ]]
+  [[ -z "$HERMES_ADDON_REQUIREMENTS" ]]
+)
+if HERMES_INSTALL_LIB_ONLY=true HERMES_PROFILE_REQUIREMENTS_SELECTED=invalid \
+  bash -c 'source "$1"; prepare_defaults' _ "$ROOT_DIR/install.sh" >/dev/null 2>&1; then
+  printf 'invalid requirements provenance unexpectedly accepted\n' >&2
+  exit 1
+fi
 python3 - "$config_one/bootstrap/config.yaml" <<'PY'
 import sys, yaml
 config = yaml.safe_load(open(sys.argv[1]))

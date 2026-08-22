@@ -287,9 +287,11 @@ validate() {
 }
 
 prepare_defaults() {
-  # Internal state from a previous sourced/library run must never influence the
-  # current requirements selection.
-  unset HERMES_PROFILE_REQUIREMENTS_SELECTED
+  export HERMES_PROFILE_REQUIREMENTS_SELECTED="${HERMES_PROFILE_REQUIREMENTS_SELECTED:-false}"
+  case "$HERMES_PROFILE_REQUIREMENTS_SELECTED" in
+    true|false) ;;
+    *) fail "HERMES_PROFILE_REQUIREMENTS_SELECTED must be boolean" ;;
+  esac
   export HERMES_BOOTSTRAP_PROFILE="${HERMES_BOOTSTRAP_PROFILE-personal-assistant}"
   apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
   export HERMES_AGENT_ENABLED="${HERMES_AGENT_ENABLED:-true}"

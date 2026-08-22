@@ -195,6 +195,7 @@ resolve_missing_profile_settings() {
   local setting value was_set
   if [[ "${HERMES_PROFILE_REQUIREMENTS_SELECTED:-false}" == true ]]; then
     PROFILE_REQUIREMENTS_FROM_PROFILE=true
+    unset HERMES_ADDON_REQUIREMENTS
   fi
   for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
     was_set=false
@@ -220,9 +221,13 @@ prompt_profile_boolean_setting() {
 }
 
 write_profile_settings() {
-  local target="$1" setting
+  local target="$1" mode="${2:-environment}" setting value
   for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
-    write_setting "$target" "$setting" "${!setting}"
+    value="${!setting}"
+    if [[ "$mode" == answers && "$setting" == HERMES_ADDON_REQUIREMENTS && "$PROFILE_REQUIREMENTS_FROM_PROFILE" == true ]]; then
+      value=''
+    fi
+    write_setting "$target" "$setting" "$value"
   done
 }
 
@@ -530,7 +535,7 @@ write_setting "$ENV_OUT" HERMES_BOOTSTRAP_PROFILE "$HERMES_BOOTSTRAP_PROFILE"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_DIR "$HERMES_BOOTSTRAP_DIR"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_MODE "$HERMES_BOOTSTRAP_MODE"
 write_setting "$ENV_OUT" HERMES_RENDER_DIR "$HERMES_RENDER_DIR"
-write_profile_settings "$ENV_OUT"
+write_profile_settings "$ENV_OUT" environment
 write_setting "$ENV_OUT" HERMES_PROFILE_REQUIREMENTS_SELECTED "$PROFILE_REQUIREMENTS_FROM_PROFILE"
 write_setting "$ENV_OUT" HERMES_ADDON_PYTHON_VERSION "$HERMES_ADDON_PYTHON_VERSION"
 write_setting "$ENV_OUT" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"
@@ -553,7 +558,7 @@ if [[ "$FROM_ANSWERS" != true ]]; then
   write_setting "$ANSWERS_FILE" HERMES_WEBUI_IMAGE "$HERMES_WEBUI_IMAGE"
   write_setting "$ANSWERS_FILE" HERMES_BROWSER_IMAGE "$HERMES_BROWSER_IMAGE"
   write_setting "$ANSWERS_FILE" HERMES_IMAGE_PULL_POLICY "$HERMES_IMAGE_PULL_POLICY"
-  write_profile_settings "$ANSWERS_FILE"
+  write_profile_settings "$ANSWERS_FILE" answers
   write_setting "$ANSWERS_FILE" HERMES_PROFILE_REQUIREMENTS_SELECTED "$PROFILE_REQUIREMENTS_FROM_PROFILE"
   write_setting "$ANSWERS_FILE" HERMES_ADDON_PYTHON_VERSION "$HERMES_ADDON_PYTHON_VERSION"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"

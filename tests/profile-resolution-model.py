@@ -20,8 +20,8 @@ assert "load_profile_setting_defaults" in text
 assert "resolve_profile_setting_default" in text
 assert "resolve_missing_profile_settings" in text
 assert "prompt_profile_boolean_setting" in text
-assert text.count('write_profile_settings "$ENV_OUT"') == 1
-assert text.count('write_profile_settings "$ANSWERS_FILE"') == 1
+assert text.count('write_profile_settings "$ENV_OUT" environment') == 1
+assert text.count('write_profile_settings "$ANSWERS_FILE" answers') == 1
 assert "print_profile_setting_summary" in text
 
 for old_name in (
