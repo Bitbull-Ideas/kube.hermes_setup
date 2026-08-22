@@ -12,6 +12,7 @@ TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 TEST_TMP_DIR="$TMP_DIR/interactive-profile-defaults" python3 "$ROOT_DIR/tests/interactive-profile-defaults.py"
+python3 "$ROOT_DIR/tests/profile-resolution-model.py"
 
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.

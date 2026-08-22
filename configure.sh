@@ -102,6 +102,144 @@ answer_bool_default() {
   [[ "$value" == true || "$value" == false ]] && printf '%s' "$value" || printf '%s' "$fallback"
 }
 
+PROFILE_SETTING_DEFINITIONS=(
+  'HERMES_ANSIBLE_SETUP|boolean|HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP|false|Install and configure Ansible?|Ansible'
+  'HERMES_SSH_SETUP|boolean|HERMES_PROFILE_DEFAULT_SSH_SETUP|true|Prepare a persistent SSH keypair?|SSH keys'
+  'HERMES_NPX_SETUP|boolean|HERMES_PROFILE_DEFAULT_NPX_SETUP|false|Prepare Node.js/npx for MCP and skill support?|NPX'
+  'HERMES_ADDON_REQUIREMENTS|path|HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS|||Addon packages'
+)
+PROFILE_CONTROLLED_SETTINGS=()
+declare -A PROFILE_SETTING_TYPE=()
+declare -A PROFILE_SETTING_PROFILE_DEFAULT=()
+declare -A PROFILE_SETTING_GLOBAL_DEFAULT=()
+declare -A PROFILE_SETTING_PROMPT=()
+declare -A PROFILE_SETTING_SUMMARY=()
+for profile_setting_definition in "${PROFILE_SETTING_DEFINITIONS[@]}"; do
+  IFS='|' read -r setting setting_type profile_default global_default prompt summary \
+    <<< "$profile_setting_definition"
+  PROFILE_CONTROLLED_SETTINGS+=("$setting")
+  PROFILE_SETTING_TYPE["$setting"]="$setting_type"
+  PROFILE_SETTING_PROFILE_DEFAULT["$setting"]="$profile_default"
+  PROFILE_SETTING_GLOBAL_DEFAULT["$setting"]="$global_default"
+  PROFILE_SETTING_PROMPT["$setting"]="$prompt"
+  PROFILE_SETTING_SUMMARY["$setting"]="$summary"
+done
+unset profile_setting_definition setting setting_type profile_default global_default prompt summary
+declare -A PROFILE_SETTING_DEFAULTS=()
+PROFILE_REQUIREMENTS_FROM_PROFILE=false
+
+validate_profile_setting() {
+  local setting="$1" value="$2"
+  case "${PROFILE_SETTING_TYPE[$setting]}" in
+    boolean)
+      [[ "$value" == true || "$value" == false ]] || {
+        printf 'ERROR: invalid %s value for profile %s.\n' "$setting" "$HERMES_BOOTSTRAP_PROFILE" >&2
+        return 1
+      }
+      ;;
+    path)
+      [[ -z "$value" || -f "$value" ]] || {
+        printf 'ERROR: %s does not exist or is not a file: %s\n' "$setting" "$value" >&2
+        return 1
+      }
+      ;;
+    *)
+      printf 'ERROR: unsupported profile setting type for %s.\n' "$setting" >&2
+      return 1
+      ;;
+  esac
+}
+
+load_profile_setting_defaults() {
+  local profile="$1"
+  local profile_dir="$ROOT_DIR/examples/bootstrap-profiles/$profile"
+  local defaults="$profile_dir/defaults.conf" setting value
+  [[ -f "$defaults" ]] || { printf 'ERROR: profile %s is missing defaults.conf.\n' "$profile" >&2; return 1; }
+  if grep -Ev '^[[:space:]]*(#.*|$|HERMES_PROFILE_DEFAULT_[A-Z0-9_]+=[^[:space:]]*)$' "$defaults" | grep -q .; then
+    printf 'ERROR: profile %s has invalid entries in defaults.conf.\n' "$profile" >&2
+    return 1
+  fi
+  PROFILE_SETTING_DEFAULTS=()
+  while IFS=$'\t' read -r setting value; do
+    validate_profile_setting "$setting" "$value" || return 1
+    PROFILE_SETTING_DEFAULTS["$setting"]="$value"
+  done < <(
+    unset HERMES_PROFILE_DEFAULT_SSH_SETUP HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP
+    unset HERMES_PROFILE_DEFAULT_NPX_SETUP HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS
+    # defaults.conf is repository-controlled and validated above.
+    # shellcheck disable=SC1090
+    source "$defaults"
+    for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
+      profile_name="${PROFILE_SETTING_PROFILE_DEFAULT[$setting]}"
+      value="${!profile_name-${PROFILE_SETTING_GLOBAL_DEFAULT[$setting]}}"
+      if [[ "${PROFILE_SETTING_TYPE[$setting]}" == path && -n "$value" ]]; then
+        value="$profile_dir/$value"
+      fi
+      printf '%s\t%s\n' "$setting" "$value"
+    done
+  )
+}
+
+resolve_profile_setting_default() {
+  local setting="$1" value
+  if [[ -v "$setting" ]]; then
+    value="${!setting}"
+  else
+    value="${PROFILE_SETTING_DEFAULTS[$setting]}"
+  fi
+  validate_profile_setting "$setting" "$value" || return 1
+  printf '%s' "$value"
+}
+
+resolve_missing_profile_settings() {
+  local setting value was_set
+  if [[ "${HERMES_PROFILE_REQUIREMENTS_SELECTED:-false}" == true ]]; then
+    PROFILE_REQUIREMENTS_FROM_PROFILE=true
+  fi
+  for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
+    was_set=false
+    [[ -v "$setting" ]] && was_set=true
+    value="$(resolve_profile_setting_default "$setting")" || return 1
+    printf -v "$setting" '%s' "$value"
+    export "$setting"
+    if [[ "$setting" == HERMES_ADDON_REQUIREMENTS && "$was_set" == false && -n "$value" ]]; then
+      PROFILE_REQUIREMENTS_FROM_PROFILE=true
+    fi
+  done
+}
+
+prompt_profile_boolean_setting() {
+  local setting="$1" default
+  [[ "${PROFILE_SETTING_TYPE[$setting]}" == boolean ]] || return 1
+  default="$(resolve_profile_setting_default "$setting")" || return 1
+  if ask_yes_no "${PROFILE_SETTING_PROMPT[$setting]}" "$default"; then
+    printf true
+  else
+    printf false
+  fi
+}
+
+write_profile_settings() {
+  local target="$1" setting
+  for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
+    write_setting "$target" "$setting" "${!setting}"
+  done
+}
+
+print_profile_setting_summary() {
+  local setting value suffix
+  for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
+    value="${!setting}"
+    suffix=''
+    if [[ "$setting" == HERMES_ANSIBLE_SETUP && "$value" == true ]]; then
+      suffix=" ($HERMES_ANSIBLE_VERSION)"
+    elif [[ "${PROFILE_SETTING_TYPE[$setting]}" == path ]]; then
+      [[ -n "$value" ]] && value=true || value=false
+    fi
+    printf '  %-12s %s%s\n' "${PROFILE_SETTING_SUMMARY[$setting]}:" "$value" "$suffix"
+  done
+}
+
 validate_hostname() {
   [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && "$1" == *.* ]]
 }
@@ -196,23 +334,7 @@ else
       printf 'Choose a number or profile name from the list above.\n' >&2
     done
 
-  read -r profile_ssh_default profile_npx_default profile_ansible_default < <(
-    unset HERMES_SSH_SETUP HERMES_NPX_SETUP HERMES_ANSIBLE_SETUP HERMES_ADDON_REQUIREMENTS
-    apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
-    printf '%s %s %s\n' "$HERMES_SSH_SETUP" "$HERMES_NPX_SETUP" "$HERMES_ANSIBLE_SETUP"
-  )
-  [[ "$profile_ssh_default" == true || "$profile_ssh_default" == false ]] || {
-    printf 'ERROR: invalid profile SSH default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
-    exit 1
-  }
-  [[ "$profile_ansible_default" == true || "$profile_ansible_default" == false ]] || {
-    printf 'ERROR: invalid profile Ansible default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
-    exit 1
-  }
-  [[ "$profile_npx_default" == true || "$profile_npx_default" == false ]] || {
-    printf 'ERROR: invalid profile NPX default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
-    exit 1
-  }
+  load_profile_setting_defaults "$HERMES_BOOTSTRAP_PROFILE"
 
   MODEL_PROVIDER="$(prompt_value 'Hermes model provider' "$(answer_default MODEL_PROVIDER openai-codex)")"
   MODEL_NAME="$(prompt_value 'Hermes model' "$(answer_default MODEL_NAME gpt-5.6-luna)")"
@@ -252,11 +374,9 @@ else
     DASHBOARD_AUTH_PASSWORD="$(prompt_password)"
   fi
 
-  HERMES_ANSIBLE_SETUP="$(answer_bool_default HERMES_ANSIBLE_SETUP "$profile_ansible_default")"
+  HERMES_ANSIBLE_SETUP="$(prompt_profile_boolean_setting HERMES_ANSIBLE_SETUP)"
   HERMES_ANSIBLE_VERSION="$(answer_default HERMES_ANSIBLE_VERSION '')"
-  HERMES_SSH_SETUP="$(answer_bool_default HERMES_SSH_SETUP "$profile_ssh_default")"
-  if ask_yes_no 'Install and configure Ansible?' "$HERMES_ANSIBLE_SETUP"; then
-    HERMES_ANSIBLE_SETUP=true
+  if [[ "$HERMES_ANSIBLE_SETUP" == true ]]; then
     while true; do
       HERMES_ANSIBLE_VERSION="$(prompt_value 'Ansible package version' "$(answer_default HERMES_ANSIBLE_VERSION 14.1.0)")"
       [[ "$HERMES_ANSIBLE_VERSION" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] && break
@@ -266,11 +386,10 @@ else
     printf 'SSH key setup enabled because Ansible was selected.\n'
   else
     HERMES_ANSIBLE_SETUP=false
-    if ask_yes_no 'Prepare a persistent SSH keypair?' "$HERMES_SSH_SETUP"; then HERMES_SSH_SETUP=true; else HERMES_SSH_SETUP=false; fi
+    HERMES_SSH_SETUP="$(prompt_profile_boolean_setting HERMES_SSH_SETUP)"
   fi
 
-  HERMES_NPX_SETUP="$(answer_bool_default HERMES_NPX_SETUP "$profile_npx_default")"
-  if ask_yes_no 'Prepare Node.js/npx for MCP and skill support?' "$HERMES_NPX_SETUP"; then HERMES_NPX_SETUP=true; else HERMES_NPX_SETUP=false; fi
+  HERMES_NPX_SETUP="$(prompt_profile_boolean_setting HERMES_NPX_SETUP)"
 
   HERMES_ADDON_PYTHON_VERSION="$(answer_default HERMES_ADDON_PYTHON_VERSION '')"
   if ask_yes_no 'Install addon Python packages?' "$([[ -n "$HERMES_ADDON_PYTHON_VERSION" ]] && echo true || echo false)"; then
@@ -291,6 +410,11 @@ else
     HERMES_BOOTSTRAP_MODE=missing
   fi
 fi
+
+if ((${#PROFILE_SETTING_DEFAULTS[@]} == 0)); then
+  load_profile_setting_defaults "$HERMES_BOOTSTRAP_PROFILE"
+fi
+resolve_missing_profile_settings
 
 : "${HERMES_NAMESPACE:?missing HERMES_NAMESPACE in answers}"
 : "${HERMES_BOOTSTRAP_PROFILE:?missing HERMES_BOOTSTRAP_PROFILE in answers}"
@@ -325,12 +449,10 @@ if [[ "$HERMES_ANSIBLE_SETUP" == true ]]; then
   HERMES_SSH_SETUP=true
 fi
 
-# Resolve remaining profile defaults not set by wizard questions.
-# This fills HERMES_NPX_SETUP and any other future profile-owned
-# variables while preserving the wizard's explicit choices.
-export HERMES_BOOTSTRAP_PROFILE
-apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
-
+addon_requirements_content=''
+if [[ -n "$HERMES_ADDON_REQUIREMENTS" ]]; then
+  addon_requirements_content="$(<"$HERMES_ADDON_REQUIREMENTS")"
+fi
 CONFIG_MARKER="$CONFIG_DIR/.hermes-current-config"
 if [[ -e "$CONFIG_DIR" && -n "$(find "$CONFIG_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
   if [[ "$FROM_ANSWERS" == true ]]; then
@@ -348,6 +470,18 @@ mkdir -p "$CONFIG_DIR/artifacts" "$CONFIG_DIR/bootstrap"
 chmod 700 "$CONFIG_DIR" "$CONFIG_DIR/artifacts" "$CONFIG_DIR/bootstrap"
 : > "$CONFIG_MARKER"
 chmod 600 "$CONFIG_MARKER"
+if [[ -n "$HERMES_ADDON_REQUIREMENTS" ]]; then
+  HERMES_ADDON_REQUIREMENTS="$CONFIG_DIR/addon-requirements.txt"
+  printf '%s\n' "$addon_requirements_content" > "$HERMES_ADDON_REQUIREMENTS"
+  chmod 600 "$HERMES_ADDON_REQUIREMENTS"
+  if [[ "$PROFILE_REQUIREMENTS_FROM_PROFILE" == true ]]; then
+    python3 "$ROOT_DIR/scripts/prepare_requirements.py" \
+      "$HERMES_ADDON_REQUIREMENTS" \
+      "$HERMES_ANSIBLE_SETUP" \
+      "$HERMES_ANSIBLE_VERSION" \
+      true
+  fi
+fi
 
 # Reuse canonical profile composition so setup cannot drift from install.sh.
 RENDER_DIR="$CONFIG_DIR/artifacts"
@@ -396,11 +530,10 @@ write_setting "$ENV_OUT" HERMES_BOOTSTRAP_PROFILE "$HERMES_BOOTSTRAP_PROFILE"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_DIR "$HERMES_BOOTSTRAP_DIR"
 write_setting "$ENV_OUT" HERMES_BOOTSTRAP_MODE "$HERMES_BOOTSTRAP_MODE"
 write_setting "$ENV_OUT" HERMES_RENDER_DIR "$HERMES_RENDER_DIR"
-write_setting "$ENV_OUT" HERMES_ANSIBLE_SETUP "$HERMES_ANSIBLE_SETUP"
-write_setting "$ENV_OUT" HERMES_NPX_SETUP "$HERMES_NPX_SETUP"
+write_profile_settings "$ENV_OUT"
+write_setting "$ENV_OUT" HERMES_PROFILE_REQUIREMENTS_SELECTED "$PROFILE_REQUIREMENTS_FROM_PROFILE"
 write_setting "$ENV_OUT" HERMES_ADDON_PYTHON_VERSION "$HERMES_ADDON_PYTHON_VERSION"
 write_setting "$ENV_OUT" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"
-write_setting "$ENV_OUT" HERMES_SSH_SETUP "$HERMES_SSH_SETUP"
 write_setting "$ENV_OUT" HERMES_SSH_GENERATE_KEY "$HERMES_SSH_SETUP"
 chmod 600 "$ENV_OUT"
 
@@ -420,11 +553,10 @@ if [[ "$FROM_ANSWERS" != true ]]; then
   write_setting "$ANSWERS_FILE" HERMES_WEBUI_IMAGE "$HERMES_WEBUI_IMAGE"
   write_setting "$ANSWERS_FILE" HERMES_BROWSER_IMAGE "$HERMES_BROWSER_IMAGE"
   write_setting "$ANSWERS_FILE" HERMES_IMAGE_PULL_POLICY "$HERMES_IMAGE_PULL_POLICY"
-  write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_SETUP "$HERMES_ANSIBLE_SETUP"
-  write_setting "$ANSWERS_FILE" HERMES_NPX_SETUP "$HERMES_NPX_SETUP"
+  write_profile_settings "$ANSWERS_FILE"
+  write_setting "$ANSWERS_FILE" HERMES_PROFILE_REQUIREMENTS_SELECTED "$PROFILE_REQUIREMENTS_FROM_PROFILE"
   write_setting "$ANSWERS_FILE" HERMES_ADDON_PYTHON_VERSION "$HERMES_ADDON_PYTHON_VERSION"
   write_setting "$ANSWERS_FILE" HERMES_ANSIBLE_VERSION "$HERMES_ANSIBLE_VERSION"
-  write_setting "$ANSWERS_FILE" HERMES_SSH_SETUP "$HERMES_SSH_SETUP"
   write_setting "$ANSWERS_FILE" HERMES_BOOTSTRAP_MODE "$HERMES_BOOTSTRAP_MODE"
   chmod 600 "$ANSWERS_FILE"
 fi
@@ -441,9 +573,8 @@ printf '  Components:  agent%s%s%s\n' \
   "$([[ "$HERMES_DASHBOARD_ENABLED" == true ]] && printf ', dashboard')" \
   "$([[ "$HERMES_WEBUI_ENABLED" == true ]] && printf ', webui')" \
   "$([[ "$HERMES_BROWSER_ENABLED" == true ]] && printf ', browser')"
-printf '  Ansible:     %s%s\n' "$HERMES_ANSIBLE_SETUP" "$([[ "$HERMES_ANSIBLE_SETUP" == true ]] && printf ' (%s)' "$HERMES_ANSIBLE_VERSION")"
-printf '  NPX:         %s\n' "$HERMES_NPX_SETUP"
-printf '  SSH keys:    %s\n\n' "$HERMES_SSH_SETUP"
+print_profile_setting_summary
+printf '\n'
 
 installer_cmd="HERMES_INSTALL_LIB_ONLY=false ENV_FILE=$(printf '%q' "$ENV_OUT") $(printf '%q' "$ROOT_DIR/install.sh")"
 if [[ "$RUN_INSTALLER" == true ]] && ask_yes_no 'Run install.sh now?' false; then

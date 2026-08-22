@@ -35,7 +35,7 @@ def profile_defaults(profile: Path) -> dict[str, bool]:
     return result
 
 
-def clean_env() -> dict[str, str]:
+def clean_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
     env = os.environ.copy()
     for name in list(env):
         if name.startswith("HERMES_") or name in {
@@ -47,6 +47,7 @@ def clean_env() -> dict[str, str]:
             "DASHBOARD_HOST",
         }:
             env.pop(name, None)
+    env.update(overrides or {})
     return env
 
 
@@ -156,9 +157,13 @@ def terminate_and_reap(pid: int) -> None:
 
 
 def expected_values(
-    defaults: dict[str, bool], target: str | None, value: bool | None
+    defaults: dict[str, bool],
+    target: str | None,
+    value: bool | None,
+    preset: dict[str, bool] | None = None,
 ) -> dict[str, bool]:
     expected = dict(defaults)
+    expected.update(preset or {})
     if target is not None:
         assert value is not None
         expected[target] = value
@@ -176,6 +181,8 @@ def assert_outputs(
     answers: Path,
     expected: dict[str, bool],
     output: str,
+    requirements_from_profile: bool = True,
+    requirements_marker: str | None = None,
 ) -> None:
     for flag, (setting, _) in FLAGS.items():
         value = bool_text(expected[flag])
@@ -195,6 +202,20 @@ def assert_outputs(
     assert f"SSH keys:    {bool_text(expected['ssh'])}" in output, (
         f"{profile.name}/{case}: SSH summary mismatch"
     )
+    requirements = config / "addon-requirements.txt"
+    assert requirements.is_file(), f"{profile.name}/{case}: addon requirements missing"
+    assert read_assignment(config / "hermes.env", "HERMES_ADDON_REQUIREMENTS") == str(requirements)
+    answer_requirements = Path(read_assignment(answers, "HERMES_ADDON_REQUIREMENTS"))
+    assert answer_requirements.is_file(), f"{profile.name}/{case}: saved requirements path missing"
+    requirement_lines = requirements.read_text().splitlines()
+    profile_requirements_value = bool_text(requirements_from_profile)
+    assert read_assignment(config / "hermes.env", "HERMES_PROFILE_REQUIREMENTS_SELECTED") == profile_requirements_value
+    assert read_assignment(answers, "HERMES_PROFILE_REQUIREMENTS_SELECTED") == profile_requirements_value
+    if requirements_marker is not None:
+        assert requirements_marker in requirement_lines
+    ansible_lines = [line for line in requirement_lines if line.startswith("ansible==")]
+    if requirements_from_profile and not expected["ansible"]:
+        assert not ansible_lines, f"{profile.name}/{case}: disabled Ansible remains in profile requirements"
 
 
 def run_interactive(
@@ -204,12 +225,14 @@ def run_interactive(
     target: str | None = None,
     value: bool | None = None,
     reused_answers: Path | None = None,
+    preset: dict[str, bool] | None = None,
+    addon_requirements: Path | None = None,
 ) -> tuple[Path, Path]:
     defaults = profile_defaults(profile)
-    expected = expected_values(defaults, target, value)
+    expected = expected_values(defaults, target, value, preset)
     config = work / f"config-{profile.name}-{case}"
     answers = work / f"answers-{profile.name}-{case}"
-    prompt_defaults = defaults
+    prompt_defaults = {**defaults, **(preset or {})}
     if reused_answers is not None:
         answers.write_bytes(reused_answers.read_bytes())
         answers.chmod(0o600)
@@ -231,7 +254,17 @@ def run_interactive(
                 "--answers-file",
                 str(answers),
             ],
-            clean_env(),
+            clean_env(
+                {
+                    FLAGS[flag][0]: bool_text(setting_value)
+                    for flag, setting_value in (preset or {}).items()
+                }
+                | (
+                    {"HERMES_ADDON_REQUIREMENTS": str(addon_requirements)}
+                    if addon_requirements is not None
+                    else {}
+                )
+            ),
         )
 
     transcript = bytearray()
@@ -321,7 +354,16 @@ def run_interactive(
         if not child_reaped:
             terminate_and_reap(pid)
 
-    assert_outputs(profile, case, config, answers, expected, transcript.decode(errors="replace"))
+    assert_outputs(
+        profile,
+        case,
+        config,
+        answers,
+        expected,
+        transcript.decode(errors="replace"),
+        requirements_from_profile=addon_requirements is None,
+        requirements_marker="custom-package==1.0" if addon_requirements is not None else None,
+    )
     return config, answers
 
 
@@ -368,7 +410,24 @@ def main() -> None:
     cases = 0
     for profile in profiles:
         defaults = profile_defaults(profile)
+        custom_requirements = work / f"custom-requirements-{profile.name}.txt"
+        custom_requirements.write_text("custom-package==1.0\nansible==99.0.0\n")
         _, baseline_answers = run_interactive(profile, work, "blank")
+        cases += 1
+        run_interactive(
+            profile,
+            work,
+            "process-environment",
+            preset={"ansible": False, "ssh": False, "npx": not defaults["npx"]},
+        )
+        cases += 1
+        run_interactive(
+            profile,
+            work,
+            "process-addon-requirements",
+            preset={"ansible": False},
+            addon_requirements=custom_requirements,
+        )
         cases += 1
         for target in FLAGS:
             for value in (False, True):

@@ -43,7 +43,7 @@ For production use, read the security, operations, and QA guides before continui
 - `universal-system-architect`
 - `universal-system-administrator`
 
-Profiles seed the persistent Hermes home and workspace with a curated identity, configuration, skills, and optional tooling. Explicit installer settings override profile defaults.
+Profiles seed the persistent Hermes home and workspace with a curated identity, configuration, skills, and optional tooling. The configuration wizard resolves profile-controlled settings through one typed model with this precedence: the operator's interactive choice, a reused or replayed saved answer, an explicit process/environment value, the selected profile's `defaults.conf`, then the setting's global fallback. Enabling Ansible still implies SSH. The generated environment, saved answers, and final summary use the same resolved values.
 
 ## Documentation
 
