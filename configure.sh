@@ -196,10 +196,10 @@ else
       printf 'Choose a number or profile name from the list above.\n' >&2
     done
 
-  read -r profile_ssh_default profile_ansible_default < <(
+  read -r profile_ssh_default profile_npx_default profile_ansible_default < <(
     unset HERMES_SSH_SETUP HERMES_NPX_SETUP HERMES_ANSIBLE_SETUP HERMES_ADDON_REQUIREMENTS
     apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
-    printf '%s %s\n' "$HERMES_SSH_SETUP" "$HERMES_ANSIBLE_SETUP"
+    printf '%s %s %s\n' "$HERMES_SSH_SETUP" "$HERMES_NPX_SETUP" "$HERMES_ANSIBLE_SETUP"
   )
   [[ "$profile_ssh_default" == true || "$profile_ssh_default" == false ]] || {
     printf 'ERROR: invalid profile SSH default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
@@ -207,6 +207,10 @@ else
   }
   [[ "$profile_ansible_default" == true || "$profile_ansible_default" == false ]] || {
     printf 'ERROR: invalid profile Ansible default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
+    exit 1
+  }
+  [[ "$profile_npx_default" == true || "$profile_npx_default" == false ]] || {
+    printf 'ERROR: invalid profile NPX default for %s.\n' "$HERMES_BOOTSTRAP_PROFILE" >&2
     exit 1
   }
 
@@ -264,7 +268,7 @@ else
     if ask_yes_no 'Prepare a persistent SSH keypair?' "$HERMES_SSH_SETUP"; then HERMES_SSH_SETUP=true; else HERMES_SSH_SETUP=false; fi
   fi
 
-  HERMES_NPX_SETUP="$(answer_bool_default HERMES_NPX_SETUP false)"
+  HERMES_NPX_SETUP="$(answer_bool_default HERMES_NPX_SETUP "$profile_npx_default")"
   if ask_yes_no 'Prepare Node.js/npx for MCP and skill support?' "$HERMES_NPX_SETUP"; then HERMES_NPX_SETUP=true; else HERMES_NPX_SETUP=false; fi
 
   HERMES_ADDON_PYTHON_VERSION="$(answer_default HERMES_ADDON_PYTHON_VERSION '')"
@@ -437,6 +441,7 @@ printf '  Components:  agent%s%s%s\n' \
   "$([[ "$HERMES_WEBUI_ENABLED" == true ]] && printf ', webui')" \
   "$([[ "$HERMES_BROWSER_ENABLED" == true ]] && printf ', browser')"
 printf '  Ansible:     %s%s\n' "$HERMES_ANSIBLE_SETUP" "$([[ "$HERMES_ANSIBLE_SETUP" == true ]] && printf ' (%s)' "$HERMES_ANSIBLE_VERSION")"
+printf '  NPX:         %s\n' "$HERMES_NPX_SETUP"
 printf '  SSH keys:    %s\n\n' "$HERMES_SSH_SETUP"
 
 installer_cmd="HERMES_INSTALL_LIB_ONLY=false ENV_FILE=$(printf '%q' "$ENV_OUT") $(printf '%q' "$ROOT_DIR/install.sh")"
