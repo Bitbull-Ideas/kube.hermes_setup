@@ -381,6 +381,8 @@ def run_replay(
     case: str,
     source_answers: Path,
     expected: dict[str, bool],
+    requirements_from_profile: bool = True,
+    requirements_marker: str | None = None,
 ) -> None:
     answers = work / f"answers-{profile.name}-{case}"
     answers.write_bytes(source_answers.read_bytes())
@@ -414,6 +416,8 @@ def run_replay(
         answers,
         expected,
         output,
+        requirements_from_profile=requirements_from_profile,
+        requirements_marker=requirements_marker,
         require_clean_requirement_answer=False,
     )
 
@@ -437,12 +441,24 @@ def main() -> None:
             preset={"ansible": False, "ssh": False, "npx": not defaults["npx"]},
         )
         cases += 1
-        run_interactive(
+        _, custom_answers = run_interactive(
             profile,
             work,
             "process-addon-requirements",
             preset={"ansible": False},
             addon_requirements=custom_requirements,
+        )
+        cases += 1
+        assert read_assignment(custom_answers, "HERMES_ADDON_REQUIREMENTS") == str(custom_requirements)
+        custom_requirements.write_text("custom-package==2.0\n")
+        run_replay(
+            profile,
+            work,
+            "replay-process-addon-requirements",
+            custom_answers,
+            expected_values(defaults, None, None, {"ansible": False}),
+            requirements_from_profile=False,
+            requirements_marker="custom-package==2.0",
         )
         cases += 1
         for target in FLAGS:

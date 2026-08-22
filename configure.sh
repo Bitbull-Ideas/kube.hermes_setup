@@ -127,6 +127,7 @@ done
 unset profile_setting_definition setting setting_type profile_default global_default prompt summary
 declare -A PROFILE_SETTING_DEFAULTS=()
 PROFILE_REQUIREMENTS_FROM_PROFILE=false
+OPERATOR_ADDON_REQUIREMENTS_SOURCE=''
 
 validate_profile_setting() {
   local setting="$1" value="$2"
@@ -224,8 +225,12 @@ write_profile_settings() {
   local target="$1" mode="${2:-environment}" setting value
   for setting in "${PROFILE_CONTROLLED_SETTINGS[@]}"; do
     value="${!setting}"
-    if [[ "$mode" == answers && "$setting" == HERMES_ADDON_REQUIREMENTS && "$PROFILE_REQUIREMENTS_FROM_PROFILE" == true ]]; then
-      value=''
+    if [[ "$mode" == answers && "$setting" == HERMES_ADDON_REQUIREMENTS ]]; then
+      if [[ "$PROFILE_REQUIREMENTS_FROM_PROFILE" == true ]]; then
+        value=''
+      elif [[ -n "$OPERATOR_ADDON_REQUIREMENTS_SOURCE" ]]; then
+        value="$OPERATOR_ADDON_REQUIREMENTS_SOURCE"
+      fi
     fi
     write_setting "$target" "$setting" "$value"
   done
@@ -456,6 +461,9 @@ fi
 
 addon_requirements_content=''
 if [[ -n "$HERMES_ADDON_REQUIREMENTS" ]]; then
+  if [[ "$PROFILE_REQUIREMENTS_FROM_PROFILE" != true ]]; then
+    OPERATOR_ADDON_REQUIREMENTS_SOURCE="$HERMES_ADDON_REQUIREMENTS"
+  fi
   addon_requirements_content="$(<"$HERMES_ADDON_REQUIREMENTS")"
 fi
 CONFIG_MARKER="$CONFIG_DIR/.hermes-current-config"
