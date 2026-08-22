@@ -166,7 +166,7 @@ load_profile_setting_defaults() {
   fi
   PROFILE_SETTING_DEFAULTS=()
   PROFILE_SETTING_DEFAULT_ORIGINS=()
-  while IFS=$'\t' read -r setting value origin; do
+  while IFS=$'\034' read -r setting value origin; do
     validate_profile_setting "$setting" "$value" || return 1
     PROFILE_SETTING_DEFAULTS["$setting"]="$value"
     PROFILE_SETTING_DEFAULT_ORIGINS["$setting"]="$origin"
@@ -188,7 +188,7 @@ load_profile_setting_defaults() {
       if [[ "${PROFILE_SETTING_TYPE[$setting]}" == path && -n "$value" ]]; then
         value="$profile_dir/$value"
       fi
-      printf '%s\t%s\t%s\n' "$setting" "$value" "$origin"
+      printf '%s\034%s\034%s\n' "$setting" "$value" "$origin"
     done
   )
 }
@@ -207,7 +207,8 @@ resolve_profile_setting_default() {
 profile_setting_preset_origin() {
   local setting="$1"
   if [[ -v "$setting" ]]; then
-    if [[ "$USE_ANSWER_DEFAULTS" == true || "$FROM_ANSWERS" == true ]]; then
+    if [[ ( "$USE_ANSWER_DEFAULTS" == true || "$FROM_ANSWERS" == true ) && \
+      -f "$ANSWERS_FILE" ]] && grep -Eq -- "^${setting}=" "$ANSWERS_FILE"; then
       printf 'reused answers'
     else
       printf 'current environment'

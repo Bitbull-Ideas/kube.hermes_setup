@@ -112,6 +112,20 @@ def read_assignment(path: Path, name: str) -> str:
     raise AssertionError(f"{name} missing from {path}")
 
 
+def has_assignment(path: Path, name: str) -> bool:
+    return any(line.startswith(name + "=") for line in path.read_text().splitlines())
+
+
+def remove_assignment(path: Path, name: str) -> None:
+    path.write_text(
+        "\n".join(
+            line for line in path.read_text().splitlines() if not line.startswith(name + "=")
+        )
+        + "\n"
+    )
+    path.chmod(0o600)
+
+
 def replace_assignments(path: Path, values: dict[str, str]) -> None:
     lines: list[str] = []
     seen: set[str] = set()
@@ -197,10 +211,20 @@ def expected_origins(
     preset: dict[str, bool] | None = None,
     reused: bool = False,
     base_origins: dict[str, str] | None = None,
+    reused_flags: set[str] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     preset_origins = dict(base_origins or {flag: "selected profile" for flag in FLAGS})
     if reused:
-        preset_origins = {flag: "reused answers" for flag in FLAGS}
+        preset_origins = {
+            flag: (
+                "reused answers"
+                if reused_flags is None or flag in reused_flags
+                else "current environment"
+                if flag in (preset or {})
+                else preset_origins[flag]
+            )
+            for flag in FLAGS
+        }
     else:
         for flag in preset or {}:
             preset_origins[flag] = "current environment"
@@ -228,6 +252,7 @@ def assert_outputs(
     preset_origins: dict[str, str] | None = None,
     final_origins: dict[str, str] | None = None,
     preset_values: dict[str, bool] | None = None,
+    requirements_expected: bool = True,
 ) -> None:
     for flag, (setting, _) in FLAGS.items():
         value = bool_text(expected[flag])
@@ -265,6 +290,13 @@ def assert_outputs(
                 f"{profile.name}/{case}: {flag} final origin mismatch"
             )
     requirements = config / "addon-requirements.txt"
+    if not requirements_expected:
+        assert not requirements.exists(), f"{profile.name}/{case}: unexpected addon requirements"
+        assert read_assignment(config / "hermes.env", "HERMES_ADDON_REQUIREMENTS") in {"", "''"}
+        assert read_assignment(answers, "HERMES_ADDON_REQUIREMENTS") in {"", "''"}
+        assert read_assignment(config / "hermes.env", "HERMES_PROFILE_REQUIREMENTS_SELECTED") == "false"
+        assert read_assignment(answers, "HERMES_PROFILE_REQUIREMENTS_SELECTED") == "false"
+        return
     assert requirements.is_file(), f"{profile.name}/{case}: addon requirements missing"
     assert read_assignment(config / "hermes.env", "HERMES_ADDON_REQUIREMENTS") == str(requirements)
     answer_requirements_value = read_assignment(answers, "HERMES_ADDON_REQUIREMENTS")
@@ -296,6 +328,7 @@ def run_interactive(
     reused_answers: Path | None = None,
     preset: dict[str, bool] | None = None,
     addon_requirements: Path | None = None,
+    requirements_expected: bool = True,
 ) -> tuple[Path, Path]:
     defaults = profile_defaults(profile)
     base_origins = profile_origins(profile)
@@ -306,18 +339,28 @@ def run_interactive(
     if reused_answers is not None:
         answers.write_bytes(reused_answers.read_bytes())
         answers.chmod(0o600)
+        reused_flags = {
+            flag for flag, (setting, _) in FLAGS.items() if has_assignment(answers, setting)
+        }
         prompt_defaults = {
-            flag: read_assignment(answers, setting) == "true"
+            flag: (
+                read_assignment(answers, setting) == "true"
+                if flag in reused_flags
+                else (preset or {}).get(flag, defaults[flag])
+            )
             for flag, (setting, _) in FLAGS.items()
         }
         expected = expected_values(prompt_defaults, target, value)
+    else:
+        reused_flags = None
     preset_origins, final_origins = expected_origins(
         prompt_defaults if reused_answers is not None else defaults,
         target,
         value,
-        None if reused_answers is not None else preset,
+        preset,
         reused=reused_answers is not None,
         base_origins=base_origins,
+        reused_flags=reused_flags,
     )
 
     pid, fd = pty.fork()
@@ -451,6 +494,7 @@ def run_interactive(
         preset_origins=preset_origins,
         final_origins=final_origins,
         preset_values=prompt_defaults,
+        requirements_expected=requirements_expected,
     )
     return config, answers
 
@@ -528,6 +572,17 @@ def main() -> None:
         relative_custom_requirements = Path(os.path.relpath(custom_requirements_alias, ROOT))
         _, baseline_answers = run_interactive(profile, work, "blank")
         cases += 1
+        partial_answers = work / f"partial-answers-{profile.name}"
+        partial_answers.write_bytes(baseline_answers.read_bytes())
+        remove_assignment(partial_answers, "HERMES_NPX_SETUP")
+        run_interactive(
+            profile,
+            work,
+            "reuse-missing-npx-environment",
+            reused_answers=partial_answers,
+            preset={"npx": not defaults["npx"]},
+        )
+        cases += 1
         run_interactive(
             profile,
             work,
@@ -604,10 +659,16 @@ def main() -> None:
                 line
                 for line in defaults_path.read_text().splitlines()
                 if not line.startswith("HERMES_PROFILE_DEFAULT_NPX_SETUP=")
+                and not line.startswith("HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS=")
             )
             + "\n"
         )
-        run_interactive(fallback_profile, work, "global-fallback")
+        run_interactive(
+            fallback_profile,
+            work,
+            "global-fallback",
+            requirements_expected=False,
+        )
         cases += 1
     finally:
         if fallback_profile is not None and fallback_profile.exists():
