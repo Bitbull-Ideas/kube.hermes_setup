@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 import pty
 import select
+import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -18,6 +20,7 @@ FLAGS = {
     "ssh": ("HERMES_SSH_SETUP", "HERMES_PROFILE_DEFAULT_SSH_SETUP"),
     "npx": ("HERMES_NPX_SETUP", "HERMES_PROFILE_DEFAULT_NPX_SETUP"),
 }
+LABELS = {"ansible": "Ansible", "ssh": "SSH keys", "npx": "NPX"}
 
 
 def profile_defaults(profile: Path) -> dict[str, bool]:
@@ -28,11 +31,24 @@ def profile_defaults(profile: Path) -> dict[str, bool]:
             raw[name] = value
     result: dict[str, bool] = {}
     for flag, (_, profile_name) in FLAGS.items():
-        value = raw.get(profile_name)
+        global_default = {"ansible": "false", "ssh": "true", "npx": "false"}[flag]
+        value = raw.get(profile_name, global_default)
         if value not in {"true", "false"}:
             raise AssertionError(f"{profile.name}: missing valid {profile_name}")
         result[flag] = value == "true"
     return result
+
+
+def profile_origins(profile: Path) -> dict[str, str]:
+    names = {
+        line.split("=", 1)[0]
+        for line in (profile / "defaults.conf").read_text().splitlines()
+        if "=" in line
+    }
+    return {
+        flag: "selected profile" if profile_name in names else "global fallback"
+        for flag, (_, profile_name) in FLAGS.items()
+    }
 
 
 def clean_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
@@ -174,6 +190,31 @@ def expected_values(
     return expected
 
 
+def expected_origins(
+    defaults: dict[str, bool],
+    target: str | None,
+    value: bool | None,
+    preset: dict[str, bool] | None = None,
+    reused: bool = False,
+    base_origins: dict[str, str] | None = None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    preset_origins = dict(base_origins or {flag: "selected profile" for flag in FLAGS})
+    if reused:
+        preset_origins = {flag: "reused answers" for flag in FLAGS}
+    else:
+        for flag in preset or {}:
+            preset_origins[flag] = "current environment"
+    final_origins = dict(preset_origins)
+    if target is not None:
+        final_origins[target] = "explicit answer"
+        if target == "ssh":
+            final_origins["ansible"] = "explicit answer"
+    effective = expected_values(defaults, target, value, preset)
+    if effective["ansible"]:
+        final_origins["ssh"] = "dependency: Ansible"
+    return preset_origins, final_origins
+
+
 def assert_outputs(
     profile: Path,
     case: str,
@@ -184,6 +225,9 @@ def assert_outputs(
     requirements_from_profile: bool = True,
     requirements_marker: str | None = None,
     require_clean_requirement_answer: bool = True,
+    preset_origins: dict[str, str] | None = None,
+    final_origins: dict[str, str] | None = None,
+    preset_values: dict[str, bool] | None = None,
 ) -> None:
     for flag, (setting, _) in FLAGS.items():
         value = bool_text(expected[flag])
@@ -203,6 +247,23 @@ def assert_outputs(
     assert f"SSH keys:    {bool_text(expected['ssh'])}" in output, (
         f"{profile.name}/{case}: SSH summary mismatch"
     )
+    if preset_origins is not None:
+        assert f"Profile presets ({profile.name}):" in output
+        for flag in FLAGS:
+            label = LABELS[flag]
+            preset_value = (preset_values or expected)[flag]
+            assert f"{label}: {bool_text(preset_value)} [{preset_origins[flag]}]" in output, (
+                f"{profile.name}/{case}: {flag} preset origin mismatch"
+            )
+    if final_origins is not None:
+        lines = [line.strip() for line in output.splitlines()]
+        for flag in FLAGS:
+            label = LABELS[flag]
+            final_line = [line for line in lines if line.startswith(f"{label}:")][-1]
+            assert bool_text(expected[flag]) in final_line
+            assert f"[{final_origins[flag]}]" in final_line, (
+                f"{profile.name}/{case}: {flag} final origin mismatch"
+            )
     requirements = config / "addon-requirements.txt"
     assert requirements.is_file(), f"{profile.name}/{case}: addon requirements missing"
     assert read_assignment(config / "hermes.env", "HERMES_ADDON_REQUIREMENTS") == str(requirements)
@@ -237,6 +298,7 @@ def run_interactive(
     addon_requirements: Path | None = None,
 ) -> tuple[Path, Path]:
     defaults = profile_defaults(profile)
+    base_origins = profile_origins(profile)
     expected = expected_values(defaults, target, value, preset)
     config = work / f"config-{profile.name}-{case}"
     answers = work / f"answers-{profile.name}-{case}"
@@ -249,6 +311,14 @@ def run_interactive(
             for flag, (setting, _) in FLAGS.items()
         }
         expected = expected_values(prompt_defaults, target, value)
+    preset_origins, final_origins = expected_origins(
+        prompt_defaults if reused_answers is not None else defaults,
+        target,
+        value,
+        None if reused_answers is not None else preset,
+        reused=reused_answers is not None,
+        base_origins=base_origins,
+    )
 
     pid, fd = pty.fork()
     if pid == 0:
@@ -298,6 +368,13 @@ def run_interactive(
             ansible_answer = "y" if value else "n"
         elif target == "ssh":
             ansible_answer = "n"
+        if case == "blank":
+            answer(
+                fd,
+                transcript,
+                f"Install and configure Ansible? [{bool_suffix(ansible_default)}]:",
+                "invalid",
+            )
         answer(
             fd,
             transcript,
@@ -371,6 +448,9 @@ def run_interactive(
         transcript.decode(errors="replace"),
         requirements_from_profile=addon_requirements is None,
         requirements_marker="custom-package==1.0" if addon_requirements is not None else None,
+        preset_origins=preset_origins,
+        final_origins=final_origins,
+        preset_values=prompt_defaults,
     )
     return config, answers
 
@@ -409,6 +489,9 @@ def run_replay(
     if result.returncode != 0:
         raise AssertionError(f"{profile.name}/{case}: replay failed\n{output[-4000:]}")
     assert "Rebuilding current_config from" in output
+    preset_origins, final_origins = expected_origins(
+        expected, None, None, reused=True, base_origins=profile_origins(profile)
+    )
     assert_outputs(
         profile,
         case,
@@ -419,13 +502,21 @@ def run_replay(
         requirements_from_profile=requirements_from_profile,
         requirements_marker=requirements_marker,
         require_clean_requirement_answer=False,
+        preset_origins=preset_origins,
+        final_origins=final_origins,
+        preset_values=expected,
     )
 
 
 def main() -> None:
     work = Path(os.environ["TEST_TMP_DIR"])
     work.mkdir(parents=True, exist_ok=True)
-    profiles = sorted(path for path in PROFILES.iterdir() if (path / "defaults.conf").is_file())
+    profiles = sorted(
+        path
+        for path in PROFILES.iterdir()
+        if (path / "defaults.conf").is_file()
+        and not path.name.startswith("global-fallback-test-")
+    )
     assert profiles, "no bootstrap profiles discovered"
     cases = 0
     for profile in profiles:
@@ -503,6 +594,24 @@ def main() -> None:
                     replay_expected,
                 )
                 cases += 1
+    fallback_profile: Path | None = None
+    try:
+        fallback_profile = Path(tempfile.mkdtemp(prefix="global-fallback-test-", dir=PROFILES))
+        shutil.copytree(PROFILES / "personal-assistant", fallback_profile, dirs_exist_ok=True)
+        defaults_path = fallback_profile / "defaults.conf"
+        defaults_path.write_text(
+            "\n".join(
+                line
+                for line in defaults_path.read_text().splitlines()
+                if not line.startswith("HERMES_PROFILE_DEFAULT_NPX_SETUP=")
+            )
+            + "\n"
+        )
+        run_interactive(fallback_profile, work, "global-fallback")
+        cases += 1
+    finally:
+        if fallback_profile is not None and fallback_profile.exists():
+            shutil.rmtree(fallback_profile)
     print(f"interactive profile-default matrix passed: {len(profiles)} profiles, {cases} cases")
 
 
