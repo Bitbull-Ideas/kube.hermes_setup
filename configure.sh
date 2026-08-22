@@ -265,6 +265,7 @@ else
     HERMES_SSH_SETUP=true
     printf 'SSH key setup enabled because Ansible was selected.\n'
   else
+    HERMES_ANSIBLE_SETUP=false
     if ask_yes_no 'Prepare a persistent SSH keypair?' "$HERMES_SSH_SETUP"; then HERMES_SSH_SETUP=true; else HERMES_SSH_SETUP=false; fi
   fi
 

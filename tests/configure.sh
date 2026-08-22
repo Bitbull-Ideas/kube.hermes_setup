@@ -11,8 +11,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d -t hermes-configure-test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-TEST_TMP_DIR="$TMP_DIR/interactive-ansible" python3 "$ROOT_DIR/tests/interactive-ansible-defaults.py"
-TEST_TMP_DIR="$TMP_DIR/interactive-npx" python3 "$ROOT_DIR/tests/interactive-npx-defaults.py"
+TEST_TMP_DIR="$TMP_DIR/interactive-profile-defaults" python3 "$ROOT_DIR/tests/interactive-profile-defaults.py"
 
 profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
