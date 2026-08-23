@@ -2,6 +2,7 @@
 # examples/bootstrap-shared/skills; install.sh copies only these entries.
 ansible-fleet-change
 github-setup-access
+graylog-api-search
 hermes-workspace-ansible
 hermes-workspace-git
 hermes-workspace-manager
