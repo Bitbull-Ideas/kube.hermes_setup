@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.4.0] - 2026-08-23
+
+### Added
+
+- Adds `graylog-api-search` to the canonical shared bootstrap skill catalog: a REST-API-based Graylog log search/aggregation/triage skill that works without a native Graylog MCP connector. Implements `search`, `aggregate`, `fields`, and `trend` (mirroring Graylog 7.1's `search_messages`/`aggregate_messages`/`list_fields` MCP tools), plus `events` (triggered Alerts/Events lookup) and `patterns` (client-side log-pattern clustering) and a `search --count-only` cheap existence check, cherry-picked from comparable Elastic, Grafana/Loki, AWS CloudWatch Logs, and Datadog MCP servers.
+- Enables `graylog-api-search` by default for the `universal-system-administrator` profile.
+
 ## [v2.3.1] - 2026-08-19
 
 ### Fixed

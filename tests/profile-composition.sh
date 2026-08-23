@@ -115,7 +115,7 @@ HERMES_BOOTSTRAP_PROFILE=universal-system-administrator
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 admin_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$admin_stage" ansible-fleet-change github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab linux-change-safety linux-triage markdown-pdf
+assert_skill_set "$admin_stage" ansible-fleet-change github-setup-access graylog-api-search hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab linux-change-safety linux-triage markdown-pdf
 assert_file "$admin_stage/workspace/POST_SETUP.md"
 assert_absent "$admin_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$admin_stage/workspace/POST_SETUP.md"
