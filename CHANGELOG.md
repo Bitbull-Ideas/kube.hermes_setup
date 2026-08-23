@@ -6,8 +6,32 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Adds `graylog-api-search` to the canonical shared bootstrap skill catalog: a REST-API-based Graylog log search/aggregation/triage skill that works without a native Graylog MCP connector. Implements `search`, `aggregate`, `fields`, and `trend` (mirroring Graylog 7.1's `search_messages`/`aggregate_messages`/`list_fields` MCP tools), plus `events` (triggered Alerts/Events lookup) and `patterns` (client-side log-pattern clustering) and a `search --count-only` cheap existence check, cherry-picked from comparable Elastic, Grafana/Loki, AWS CloudWatch Logs, and Datadog MCP servers.
-- Enables `graylog-api-search` by default for the `universal-system-administrator` profile.
+- Adds `graylog-api-search` to the canonical shared bootstrap skill catalog: a REST-API-based Graylog log search/aggregation/triage skill that works without a native Graylog MCP connector. Implements `search`, `aggregate`, `fields`, and `trend` (mirroring Graylog 7.1's `search_messages`/`aggregate_messages`/`list_fields` MCP tools), plus `events` (triggered Alerts/Events lookup) and `patterns` (client-side log-pattern clustering) and a `search --count-only` cheap existence check, cherry-picked from comparable Elastic, Grafana/Loki, AWS CloudWatch Logs, and Datadog MCP servers. [PR #90]
+- Enables `graylog-api-search` by default for the `universal-system-administrator` profile. [PR #90]
+- Adds `tests/api-key-convergence.sh` to verify `hermes-api-server` Secret rotations converge to the same opaque `resourceVersion` across Agent, Dashboard, and WebUI Deployments, and that each runtime can authenticate to `/health/detailed` with the new key. [PR #81, #84]
+- Adds `tests/interactive-profile-defaults.py`, a dynamically-discovered real-PTY regression matrix covering Ansible, SSH, and NPX defaults across every bootstrap profile, blank input, explicit true/false answers, saved-answer reuse, and `--from-answers` replay (67 cases across 3 profiles at introduction). Replaces the narrower, now-removed `tests/interactive-ansible-defaults.py` and `tests/interactive-npx-defaults.py`. [PR #82, #85, #86, #87, #88]
+- Adds `tests/profile-resolution-model.py`, an architecture contract test that fails if a profile-controlled setting (Ansible/SSH/NPX/addon requirements) is wired through feature-specific plumbing instead of the shared typed resolution model. [PR #87]
+- Adds effective-preset display to the interactive wizard: immediately after profile selection, shows the resolved Ansible, SSH, and NPX presets and their origin (selected profile, global fallback, current environment, reused/replayed answer, explicit answer, or Ansible-implies-SSH dependency). The final summary reports the same provenance; secret values are never included. [PR #88]
+- Adds `tests/agent-instructions-safety.sh`, a regression that fails if root `AGENTS.md` reintroduces a `wget`/`http://` remote-fetch snippet or any curl/wget piped-to-shell / download-then-execute pattern, and asserts the file's operator-only safety markers are present. [PR #89]
+
+### Changed
+
+- Converges API-key rollout: `install.sh` preflight-renders before writing to Kubernetes, applies `hermes-api-server`, reads its opaque `resourceVersion`, and renders that same non-secret revision annotation into the Agent, Dashboard, and WebUI Deployment templates so an interrupted refresh can no longer leave runtimes authenticating with different keys. `doctor.sh` gained revision-drift diagnostics that never print credential values. [PR #81]
+- Restricts explicit/restored `API_SERVER_KEY` values to `[A-Za-z0-9._:/+=@%-]` (rejected rather than normalized) because the resolved key is persisted as an unquoted dotenv/shell assignment on the shared PVC; Dashboard passwords, Browserless tokens, and usernames are unaffected by this API-key-specific restriction. [PR #84]
+- Centralizes every profile-controlled wizard setting (Ansible, SSH, NPX, addon requirements) behind one typed declarative resolution model with a single precedence order — interactive choice, reused/replayed saved answer, explicit process/environment value, the selected profile's `defaults.conf`, then the global fallback — replacing duplicated feature-specific prompt/persistence/summary logic and a late `apply_profile_defaults` mutation pass. [PR #87]
+- Updates `hermes-workspace-ansible` to `2.0.2`: before deleting, replacing, or archiving Ansible inventory during workspace cleanup, preserves verified non-secret connection metadata (hostname/alias, non-default `ansible_host`, SSH port, verified account, privilege model, confirmed interpreter) for hosts confirmed to persist, while explicitly excluding disposable/temporary/decommissioned targets and never copying credentials, keys, or raw SSH config into inventory. Requires `ansible-inventory --graph` (without `--vars`) validation after consolidation. [PR #80]
+- Updates root `AGENTS.md`'s Browserless-pressure diagnostic to reference the existing sanitized `doctor.sh` check instead of an inline `wget`/`http://` snippet that common agent/security scanners flag as a remote-fetch pattern, and marks it explicitly as operator-run rather than for automatic agent execution. [PR #89]
+
+### Fixed
+
+- Fixes the configuration wizard always falling back to a disabled Ansible default on blank input, ignoring the selected bootstrap profile; blank input now resolves through the profile's `defaults.conf`, with Ansible-implies-SSH preserved and saved/explicit answers still taking precedence. [PR #82]
+- Fixes the same hard-coded-disabled fallback for the NPX default on blank input. [PR #85]
+- Fixes authenticated health checks failing on a clean PVC despite matching Secret/Pod revisions: the init Job now receives `hermes-api-server/api-key` via `secretKeyRef` and atomically upserts `API_SERVER_KEY` (and `BROWSER_CDP_URL`) into the persistent `/opt/data/.env` — preserving unrelated entries, collapsing duplicate managed entries, `umask 077`, mode `0600`, and a same-directory atomic rename. [PR #84]
+
+### Documentation
+
+- Documents the API-key persistence alphabet restriction in `docs/security.md`. [PR #84]
+- Updates the README profile-settings paragraph to describe the typed precedence model, Ansible-implies-SSH, and (after PR #88) the effective-preset provenance display shown by the wizard. [PR #87, #88]
 
 ## [v2.3.1] - 2026-08-19
 
