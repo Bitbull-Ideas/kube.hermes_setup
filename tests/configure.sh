@@ -157,7 +157,7 @@ grep -q 'HERMES_INSTALL_LIB_ONLY=false ENV_FILE=' "$ROOT_DIR/configure.sh"
 config_one="$TMP_DIR/current-one"
 answers_one="$TMP_DIR/answers-one"
 printf '\n\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\nn\nn\ny\n' | \
-  "$ROOT_DIR/setup.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
+  "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 
 [[ -f "$config_one/hermes.env" ]]
 [[ -f "$config_one/bootstrap/SOUL.md" ]]
@@ -244,7 +244,7 @@ PY
 )
 
 touch "$config_one/stale-marker"
-"$ROOT_DIR/setup.sh" --from-answers --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
+"$ROOT_DIR/configure.sh" --from-answers --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 [[ ! -e "$config_one/stale-marker" ]]
 [[ -f "$config_one/bootstrap/SOUL.md" ]]
 grep -qx 'provider: openai-codex' "$config_one/bootstrap/config.yaml"
@@ -321,7 +321,7 @@ source "$reuse_config/hermes.env"
 unowned="$TMP_DIR/unowned"
 mkdir -p "$unowned"
 touch "$unowned/must-survive"
-if "$ROOT_DIR/setup.sh" --from-answers --no-install --config-dir "$unowned" --answers-file "$answers_one" >/dev/null 2>&1; then
+if "$ROOT_DIR/configure.sh" --from-answers --no-install --config-dir "$unowned" --answers-file "$answers_one" >/dev/null 2>&1; then
   printf 'unsafe replay unexpectedly succeeded\n' >&2
   exit 1
 fi

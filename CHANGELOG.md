@@ -149,7 +149,7 @@ One minor bump consolidating:
 **Documentation**
 - Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
 - Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
-- Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
+- Uses `configure.sh` as the canonical configuration entrypoint.
 - Corrects credential, render, and bootstrap artifact paths for both wizard and manual installations.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 
