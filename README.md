@@ -1,7 +1,5 @@
 # kube.hermes_setup
 
-Current release: **v2.3.1** (see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md)).
-
 Production-oriented Kubernetes/K3s installer for a [Hermes Agent](https://github.com/nousresearch/hermes-agent) stack:
 
 - **Hermes Agent** — mandatory API/gateway runtime
