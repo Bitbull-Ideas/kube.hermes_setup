@@ -43,7 +43,6 @@ README.md                         User-facing overview and quick start
 VERSION                           Current release version
 LICENCE                           MIT license
 configure.sh                      Interactive current_config generator and installer handoff
-setup.sh                          Stable entry point for configure.sh and --from-answers replay
 install.sh                        Render/apply installer, secret creation, rollout waits
 maintain.sh                       Status, backup/restore, restart, password/token rotation
 doctor.sh                         Health/diagnostic checks

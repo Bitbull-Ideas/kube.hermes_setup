@@ -10,8 +10,6 @@ The wizard enables the Ansible package, workspace seed, SSH key setup, and `ANSI
 ./configure.sh
 ```
 
-`setup.sh` remains a compatibility wrapper around `configure.sh`.
-
 For manual configuration, select any profile and enable Ansible explicitly:
 
 ```bash

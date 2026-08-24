@@ -72,8 +72,6 @@ Additional references:
 | `./maintain.sh` | Inspect and maintain an installation |
 | `./doctor.sh` | Run deployment diagnostics |
 
-`setup.sh` remains a compatibility wrapper around `configure.sh`.
-
 ## Acknowledgements
 
 - **[Chris Rüttimann (`joe-speedboat`)](https://github.com/joe-speedboat)** — project maintainer
