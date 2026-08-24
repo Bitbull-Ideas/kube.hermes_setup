@@ -57,7 +57,6 @@ Profiles seed the persistent Hermes home and workspace with a curated identity, 
 
 Additional references:
 
-- [`examples/hermes.env.example`](examples/hermes.env.example) — complete installer variable reference
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 - [`AGENTS.md`](AGENTS.md) — maintainer and validation guidance
 
