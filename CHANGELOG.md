@@ -2,11 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [v2.5.0] - 2026-08-24
 
 ### Removed
 
-- Removes the deprecated `setup.sh` compatibility wrapper; use `configure.sh` directly.
+- Removes the deprecated `setup.sh` compatibility wrapper; existing users and automation must invoke `configure.sh` directly. [PR #92]
 
 ## [v2.4.0] - 2026-08-23
 
