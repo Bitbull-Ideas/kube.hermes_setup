@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Removed
+
+- Removes the deprecated `setup.sh` compatibility wrapper; use `configure.sh` directly.
+
 ## [v2.4.0] - 2026-08-23
 
 ### Added
@@ -149,7 +155,7 @@ One minor bump consolidating:
 **Documentation**
 - Condenses and reorganizes README around a documented `universal-system-architect` lifecycle: configure, customize `current_config`, install, debug, reconfigure, backup, delete/rebuild, and restore.
 - Adds section headers and inline comments to `examples/hermes.env.example` for production readability.
-- Uses `configure.sh` as the canonical configuration entrypoint.
+- Uses `configure.sh` as the canonical documented entrypoint while retaining `setup.sh` as a compatibility wrapper.
 - Corrects credential, render, and bootstrap artifact paths for both wizard and manual installations.
 - Corrects optional-component authentication and deployment claims, conditional SSH preparation, and duplicated operational guidance.
 
