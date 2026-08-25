@@ -68,6 +68,28 @@ for path_name in ("HERMES_UV_DIR", "HERMES_ADDON_VENV", "HERMES_SSH_KEY_PATH"):
     require_pattern(path_name, r"/[A-Za-z0-9._/@+-]+", allow_empty=True)
 
 
+def strip_auth_blocks(template: str) -> str:
+    mode = os.environ.get("HERMES_AUTH_MODE", "local-password")
+    if mode not in {"local-password", "external-oidc"}:
+        raise SystemExit(f"unsupported HERMES_AUTH_MODE: {mode}")
+    keep_local = mode == "local-password"
+    keep_external = mode == "external-oidc"
+    for name, keep in (
+        ("HERMES_AUTH_LOCAL_ONLY", keep_local),
+        ("HERMES_AUTH_EXTERNAL_OIDC", keep_external),
+    ):
+        start = f"# {name}_START"
+        end = f"# {name}_END"
+        while start in template:
+            before, remainder = template.split(start, 1)
+            block, after = remainder.split(end, 1)
+            template = before + (block if keep else "") + after
+    return template
+
+
+tpl = strip_auth_blocks(tpl)
+
+
 def enabled(name: str, default: bool = True) -> bool:
     value = os.environ.get(name)
     if value is None:
@@ -95,6 +117,11 @@ if not enabled("HERMES_BROWSER_ENABLED"):
         ("Deployment", "hermes-browser"),
         ("Service", "hermes-browser"),
         ("NetworkPolicy", "hermes-browser-restrict"),
+    })
+if os.environ.get("HERMES_AUTH_MODE", "local-password") in {"external-oidc", "disabled"}:
+    disabled_resources.update({
+        ("Middleware", "hermes-dashboard-login-rewrite"),
+        ("Ingress", "hermes-dashboard-login"),
     })
 
 documents = []

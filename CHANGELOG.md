@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.6.0] - 2026-08-25
+
+### Added
+
+- Adds `HERMES_AUTH_MODE` with backward-compatible `local-password` and native `external-oidc` application wiring. `disabled` and `external-proxy` remain documentation-only and fail closed when selected. [Issue #95]
+- Adds separate Dashboard and WebUI OIDC issuer, client, scope, public/callback URL, and WebUI allow-claim settings. External OIDC rendering removes the shared local password environment references and Dashboard password-login rewrite resources. [Issue #95]
+- Adds architecture/maintenance and step-by-step Authelia + FreeIPA documentation, including exact OIDC clients/callbacks, Secret handling, claims policies, migration from an existing local-password installation, rollback, upgrade, backup boundaries, and QA cleanup. [Issue #95]
+- Adds `doctor.sh` authentication-mode reporting and external-OIDC drift/conflict checks for live workload environments, local password Secrets, and password-login routing resources.
+
+### Changed
+
+- Makes local Dashboard/WebUI credential generation and `hermes-dashboard-auth` Secret creation conditional on `local-password`, while preserving API-server and Browserless credential behavior in every mode.
+- Extends manifest rendering with mutually exclusive local-password and external-OIDC authentication blocks.
+- Documents FreeIPA OTP-over-LDAP as an explicit compatibility gate: existing OTP reuse must prove the required FreeIPA bind control/credential path and replay rejection rather than assuming password-plus-OTP concatenation.
+
+### Security
+
+- Prevents `external-oidc` from retaining a weaker local Hermes password path or password-login Ingress.
+- Rejects incomplete OIDC settings, non-HTTPS/mismatched callback and public URLs, and unsupported `disabled`/`external-proxy` modes before apply.
+- Retains the previous local-password Secret until external-OIDC workloads are Ready, then removes it; failed cutovers leave the previous ReplicaSets restartable.
+
+### Verification
+
+- Passes Bash syntax, Python compilation, component matrix, credential preservation, interactive configuration, authentication-mode doctor, and QA contract tests.
+- Passes one isolated full-stack live K3s external-OIDC installation and unchanged reinstall with Agent, Dashboard, and WebUI Ready; verifies OIDC-only workload environment names, absence of `hermes-dashboard-auth`, and absence of the Dashboard password-login Ingress.
+- Passes a separate fresh Authelia chart deployment with FreeIPA CA verification, service/user LDAPS binds, Authelia readiness, HTTP health, and OIDC discovery; temporary Namespaces were backed up and removed after validation.
+- **Blocked release gate:** the mandatory clean Agent-only, Dashboard, WebUI, Browserless, and full-stack live matrix from `AGENTS.md` has not yet been completed for this branch. Do not release v2.6.0 until that matrix and required Chromium/runtime acceptance checks pass and are recorded.
+
 ## [v2.5.0] - 2026-08-24
 
 ### Removed

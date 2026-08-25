@@ -644,6 +644,7 @@ spec:
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
           value: /opt/data/hermes-managed/bin:/opt/hermes/bin:/opt/hermes/.venv/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        # HERMES_AUTH_LOCAL_ONLY_START
         - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
           valueFrom:
             secretKeyRef:
@@ -654,6 +655,17 @@ spec:
             secretKeyRef:
               name: hermes-dashboard-auth
               key: password
+        # HERMES_AUTH_LOCAL_ONLY_END
+        # HERMES_AUTH_EXTERNAL_OIDC_START
+        - name: HERMES_DASHBOARD_OIDC_ISSUER
+          value: "${HERMES_DASHBOARD_OIDC_ISSUER}"
+        - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
+          value: "${HERMES_DASHBOARD_OIDC_CLIENT_ID}"
+        - name: HERMES_DASHBOARD_OIDC_SCOPES
+          value: "${HERMES_DASHBOARD_OIDC_SCOPES}"
+        - name: HERMES_DASHBOARD_PUBLIC_URL
+          value: "${HERMES_DASHBOARD_PUBLIC_URL}"
+        # HERMES_AUTH_EXTERNAL_OIDC_END
         - name: GATEWAY_HEALTH_URL
           value: http://hermes-agent:8642
         - name: API_SERVER_KEY
@@ -816,11 +828,27 @@ spec:
         # WebUI's editable-install fix is available in a released image.
         - name: HERMES_NIX_BUILD
           value: "1"
+        # HERMES_AUTH_LOCAL_ONLY_START
         - name: HERMES_WEBUI_PASSWORD
           valueFrom:
             secretKeyRef:
               name: hermes-dashboard-auth
               key: password
+        # HERMES_AUTH_LOCAL_ONLY_END
+        # HERMES_AUTH_EXTERNAL_OIDC_START
+        - name: HERMES_WEBUI_OIDC_ISSUER
+          value: "${HERMES_WEBUI_OIDC_ISSUER}"
+        - name: HERMES_WEBUI_OIDC_CLIENT_ID
+          value: "${HERMES_WEBUI_OIDC_CLIENT_ID}"
+        - name: HERMES_WEBUI_OIDC_REDIRECT_URI
+          value: "${HERMES_WEBUI_OIDC_REDIRECT_URI}"
+        - name: HERMES_WEBUI_OIDC_SCOPES
+          value: "${HERMES_WEBUI_OIDC_SCOPES}"
+        - name: HERMES_WEBUI_OIDC_ALLOW_CLAIM
+          value: "${HERMES_WEBUI_OIDC_ALLOW_CLAIM}"
+        - name: HERMES_WEBUI_OIDC_ALLOW_VALUES
+          value: "${HERMES_WEBUI_OIDC_ALLOW_VALUES}"
+        # HERMES_AUTH_EXTERNAL_OIDC_END
         - name: HERMES_WEBUI_MAX_UPLOAD_MB
           value: "${HERMES_WEBUI_MAX_UPLOAD_MB}"
         - name: HERMES_ADDON_PYTHON_MODE
