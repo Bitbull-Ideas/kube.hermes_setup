@@ -96,6 +96,9 @@ export HERMES_INSTALL_LIB_ONLY=true
 export HERMES_NAMESPACE=hermes HERMES_BOOTSTRAP_PROFILE= HERMES_BOOTSTRAP_MODE=disabled
 export HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true HERMES_BROWSER_ENABLED=true
 unset DASHBOARD_AUTH_USER DASHBOARD_AUTH_PASSWORD API_SERVER_KEY BROWSER_TOKEN BROWSER_CDP_URL
+unset HERMES_AUTH_MODE HERMES_OIDC_ISSUER HERMES_DASHBOARD_OIDC_ISSUER HERMES_WEBUI_OIDC_ISSUER
+unset HERMES_DASHBOARD_OIDC_CLIENT_ID HERMES_WEBUI_OIDC_CLIENT_ID HERMES_DASHBOARD_PUBLIC_URL
+unset HERMES_WEBUI_OIDC_REDIRECT_URI HERMES_WEBUI_OIDC_ALLOW_CLAIM HERMES_WEBUI_OIDC_ALLOW_VALUES
 case "$TEST_SCENARIO" in
   explicit)
     export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
@@ -157,6 +160,21 @@ grep -Fq 'Browserless token: browser-secret' "$show_output"
 grep -Fq 'get secret hermes-dashboard-auth' "$TMP_DIR/state/calls"
 grep -Fq 'get secret hermes-api-server' "$TMP_DIR/state/calls"
 grep -Fq 'get secret hermes-browser-token' "$TMP_DIR/state/calls"
+
+# External OIDC reports that no local app password exists and does not query the
+# removed hermes-dashboard-auth Secret.
+printf '%s\n' 'HERMES_AUTH_MODE=external-oidc' > "$TMP_DIR/external-oidc.env"
+: > "$TMP_DIR/state/calls"
+PATH="$TMP_DIR/bin:$PATH" FAKE_KUBECTL_STATE="$TMP_DIR/state" ENV_FILE="$TMP_DIR/external-oidc.env" HERMES_NAMESPACE=hermes \
+  bash "$ROOT_DIR/maintain.sh" show-passwords >"$TMP_DIR/show-oidc.stdout"
+grep -Fq 'Dashboard/WebUI password: not configured (auth mode external-oidc)' "$TMP_DIR/show-oidc.stdout"
+! grep -Fq 'get secret hermes-dashboard-auth' "$TMP_DIR/state/calls"
+if PATH="$TMP_DIR/bin:$PATH" FAKE_KUBECTL_STATE="$TMP_DIR/state" ENV_FILE="$TMP_DIR/external-oidc.env" HERMES_NAMESPACE=hermes \
+  bash "$ROOT_DIR/maintain.sh" rotate-passwords --generate >"$TMP_DIR/rotate-oidc.stdout" 2>"$TMP_DIR/rotate-oidc.stderr"; then
+  printf 'rotate-passwords unexpectedly succeeded in external-oidc mode\n' >&2
+  exit 1
+fi
+grep -Fq 'rotate-passwords is available only in local-password mode' "$TMP_DIR/rotate-oidc.stderr"
 
 # Explicit process-environment credentials survive loading a blank env file.
 printf '%s\n' 'DASHBOARD_AUTH_PASSWORD=' 'API_SERVER_KEY=' 'BROWSER_TOKEN=' > "$TMP_DIR/blank.env"

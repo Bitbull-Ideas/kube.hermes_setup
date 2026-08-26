@@ -164,7 +164,7 @@ resolve_runtime_credentials() {
   [[ -n "${API_SERVER_KEY:-}" ]] || CREDENTIAL_SOURCE_API=""
   [[ -n "${BROWSER_TOKEN:-}" ]] || CREDENTIAL_SOURCE_BROWSER=""
 
-  if { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; } && [[ -z "${DASHBOARD_AUTH_PASSWORD:-}" ]]; then
+  if [[ "$HERMES_AUTH_MODE" == local-password ]] && { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; } && [[ -z "${DASHBOARD_AUTH_PASSWORD:-}" ]]; then
     need_lookup=true
   fi
   [[ -n "${API_SERVER_KEY:-}" ]] || need_lookup=true
@@ -191,7 +191,7 @@ resolve_runtime_credentials() {
   fi
 
   if [[ -n "$namespace_exists" ]]; then
-    if [[ -z "${DASHBOARD_AUTH_PASSWORD:-}" ]] && { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; }; then
+    if [[ "$HERMES_AUTH_MODE" == local-password && -z "${DASHBOARD_AUTH_PASSWORD:-}" ]] && { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; }; then
       status=0
       existing="$(read_existing_secret_value hermes-dashboard-auth password)" || status=$?
       case "$status" in
@@ -225,7 +225,7 @@ resolve_runtime_credentials() {
       esac
     fi
   else
-    if [[ -z "${DASHBOARD_AUTH_PASSWORD:-}" ]] && { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; }; then
+    if [[ "$HERMES_AUTH_MODE" == local-password && -z "${DASHBOARD_AUTH_PASSWORD:-}" ]] && { is_truthy "$dashboard_enabled" || is_truthy "$webui_enabled"; }; then
       DASHBOARD_AUTH_PASSWORD="$(generate_password 36)"
       CREDENTIAL_SOURCE_DASHBOARD=generated
     fi
@@ -257,6 +257,63 @@ enabled_deployments() {
   is_truthy "$HERMES_DASHBOARD_ENABLED" && printf '%s\n' hermes-dashboard
   is_truthy "$HERMES_WEBUI_ENABLED" && printf '%s\n' hermes-webui
   is_truthy "$HERMES_BROWSER_ENABLED" && printf '%s\n' hermes-browser
+}
+
+validate_external_oidc_urls() {
+  python3 - <<'PY'
+import os
+import re
+from urllib.parse import urlsplit
+
+
+def parse_https(name):
+    value = os.environ.get(name, "")
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise SystemExit(f"ERROR: {name} must be an HTTPS URL without embedded credentials")
+    if parsed.hostname.lower().endswith(".invalid"):
+        raise SystemExit(f"ERROR: {name} must not use a reserved .invalid placeholder hostname")
+    if parsed.fragment:
+        raise SystemExit(f"ERROR: {name} must not contain a URL fragment")
+    return parsed
+
+
+def expect_host(name, host):
+    parsed = parse_https(name)
+    if parsed.hostname.lower() != host.lower():
+        raise SystemExit(f"ERROR: {name} hostname must match {host}")
+    return parsed
+
+for name in ("HERMES_DASHBOARD_OIDC_ISSUER", "HERMES_WEBUI_OIDC_ISSUER"):
+    if os.environ.get(name):
+        parsed = parse_https(name)
+        if parsed.query:
+            raise SystemExit(f"ERROR: {name} must not contain a query string")
+
+if os.environ.get("HERMES_DASHBOARD_PUBLIC_URL"):
+    parsed = expect_host("HERMES_DASHBOARD_PUBLIC_URL", os.environ["DASHBOARD_HOST"])
+    if parsed.port not in {None, 443} or parsed.path not in {"", "/"} or parsed.query:
+        raise SystemExit("ERROR: HERMES_DASHBOARD_PUBLIC_URL must be the exact HTTPS Dashboard origin without a path, query string, or non-default port")
+
+if os.environ.get("HERMES_WEBUI_OIDC_REDIRECT_URI"):
+    parsed = expect_host("HERMES_WEBUI_OIDC_REDIRECT_URI", os.environ["WEBUI_HOST"])
+    if parsed.port not in {None, 443} or parsed.path != "/api/auth/oidc/callback" or parsed.query:
+        raise SystemExit("ERROR: HERMES_WEBUI_OIDC_REDIRECT_URI must use the exact HTTPS WebUI origin and /api/auth/oidc/callback path without a query string or non-default port")
+
+for name in ("HERMES_DASHBOARD_OIDC_CLIENT_ID", "HERMES_WEBUI_OIDC_CLIENT_ID"):
+    value = os.environ.get(name, "")
+    if value and not re.fullmatch(r"[A-Za-z0-9._:@/-]+", value):
+        raise SystemExit(f"ERROR: {name} contains unsupported characters")
+
+for name in ("HERMES_DASHBOARD_OIDC_SCOPES", "HERMES_WEBUI_OIDC_SCOPES"):
+    value = os.environ.get(name, "")
+    if value and ("openid" not in value.split() or not re.fullmatch(r"[A-Za-z0-9._:-]+(?: [A-Za-z0-9._:-]+)*", value)):
+        raise SystemExit(f"ERROR: {name} must be a space-separated scope list containing openid")
+
+claim = os.environ.get("HERMES_WEBUI_OIDC_ALLOW_CLAIM", "")
+if claim and not re.fullmatch(r"[A-Za-z0-9_.-]+", claim):
+    raise SystemExit("ERROR: HERMES_WEBUI_OIDC_ALLOW_CLAIM contains unsupported characters")
+PY
 }
 
 validate() {
@@ -303,6 +360,18 @@ prepare_defaults() {
   export HERMES_DASHBOARD_ENABLED="${HERMES_DASHBOARD_ENABLED:-true}"
   export HERMES_WEBUI_ENABLED="${HERMES_WEBUI_ENABLED:-true}"
   export HERMES_BROWSER_ENABLED="${HERMES_BROWSER_ENABLED:-true}"
+  export HERMES_AUTH_MODE="${HERMES_AUTH_MODE:-local-password}"
+  export HERMES_OIDC_ISSUER="${HERMES_OIDC_ISSUER:-}"
+  export HERMES_DASHBOARD_OIDC_ISSUER="${HERMES_DASHBOARD_OIDC_ISSUER:-${HERMES_OIDC_ISSUER}}"
+  export HERMES_WEBUI_OIDC_ISSUER="${HERMES_WEBUI_OIDC_ISSUER:-${HERMES_OIDC_ISSUER}}"
+  export HERMES_DASHBOARD_OIDC_CLIENT_ID="${HERMES_DASHBOARD_OIDC_CLIENT_ID:-}"
+  export HERMES_WEBUI_OIDC_CLIENT_ID="${HERMES_WEBUI_OIDC_CLIENT_ID:-}"
+  export HERMES_DASHBOARD_OIDC_SCOPES="${HERMES_DASHBOARD_OIDC_SCOPES:-openid profile email groups}"
+  export HERMES_WEBUI_OIDC_SCOPES="${HERMES_WEBUI_OIDC_SCOPES:-openid profile email groups}"
+  export HERMES_DASHBOARD_PUBLIC_URL="${HERMES_DASHBOARD_PUBLIC_URL:-}"
+  export HERMES_WEBUI_OIDC_REDIRECT_URI="${HERMES_WEBUI_OIDC_REDIRECT_URI:-}"
+  export HERMES_WEBUI_OIDC_ALLOW_CLAIM="${HERMES_WEBUI_OIDC_ALLOW_CLAIM:-}"
+  export HERMES_WEBUI_OIDC_ALLOW_VALUES="${HERMES_WEBUI_OIDC_ALLOW_VALUES:-}"
   export HERMES_NAMESPACE="${HERMES_NAMESPACE:-hermes}"
   export INGRESS_CLASS_NAME="${INGRESS_CLASS_NAME:-traefik}"
   export TRAEFIK_ENTRYPOINT="${TRAEFIK_ENTRYPOINT:-websecure}"
@@ -362,7 +431,7 @@ prepare_defaults() {
   export STORAGE_CLASS_NAME="${STORAGE_CLASS_NAME:-}"
   export MODEL_PROVIDER="${MODEL_PROVIDER:-openai-codex}"
   export MODEL_NAME="${MODEL_NAME:-gpt-5.6-luna}"
-  if is_truthy "$HERMES_DASHBOARD_ENABLED" || is_truthy "$HERMES_WEBUI_ENABLED"; then
+  if [[ "$HERMES_AUTH_MODE" == local-password ]] && (is_truthy "$HERMES_DASHBOARD_ENABLED" || is_truthy "$HERMES_WEBUI_ENABLED"); then
     if [[ -n "${DASHBOARD_AUTH_USER:-}" ]]; then
       export DASHBOARD_AUTH_USER_EXPLICIT=true
     else
@@ -414,6 +483,26 @@ prepare_defaults() {
   [[ "$HERMES_UV_DIR" = /opt/data/* ]] || fail "HERMES_UV_DIR must be under /opt/data for PVC persistence"
   [[ "$HERMES_ADDON_VENV" = /opt/data/* ]] || fail "HERMES_ADDON_VENV must be under /opt/data for PVC persistence"
   [[ "$HERMES_ADDON_PYTHON_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || fail "HERMES_ADDON_PYTHON_VERSION must look like 3.13 or 3.13.5"
+  case "$HERMES_AUTH_MODE" in
+    local-password|external-oidc) ;;
+    disabled|external-proxy) fail "HERMES_AUTH_MODE=$HERMES_AUTH_MODE is documentation-only and is not implemented" ;;
+    *) fail "HERMES_AUTH_MODE must be one of: local-password, external-oidc" ;;
+  esac
+  if [[ "$HERMES_AUTH_MODE" == external-oidc ]]; then
+    if is_truthy "$HERMES_DASHBOARD_ENABLED"; then
+      [[ -n "$HERMES_DASHBOARD_OIDC_ISSUER" ]] || fail "HERMES_DASHBOARD_OIDC_ISSUER is required when Dashboard is enabled in external-oidc mode"
+      [[ -n "$HERMES_DASHBOARD_OIDC_CLIENT_ID" ]] || fail "HERMES_DASHBOARD_OIDC_CLIENT_ID is required when Dashboard is enabled in external-oidc mode"
+      [[ -n "$HERMES_DASHBOARD_PUBLIC_URL" ]] || fail "HERMES_DASHBOARD_PUBLIC_URL is required when Dashboard is enabled in external-oidc mode"
+    fi
+    if is_truthy "$HERMES_WEBUI_ENABLED"; then
+      [[ -n "$HERMES_WEBUI_OIDC_ISSUER" ]] || fail "HERMES_WEBUI_OIDC_ISSUER is required when WebUI is enabled in external-oidc mode"
+      [[ -n "$HERMES_WEBUI_OIDC_CLIENT_ID" ]] || fail "HERMES_WEBUI_OIDC_CLIENT_ID is required when WebUI is enabled in external-oidc mode"
+      [[ -n "$HERMES_WEBUI_OIDC_REDIRECT_URI" ]] || fail "HERMES_WEBUI_OIDC_REDIRECT_URI is required when WebUI is enabled in external-oidc mode"
+      [[ -n "$HERMES_WEBUI_OIDC_ALLOW_CLAIM" ]] || fail "HERMES_WEBUI_OIDC_ALLOW_CLAIM is required when WebUI is enabled in external-oidc mode"
+      [[ -n "$HERMES_WEBUI_OIDC_ALLOW_VALUES" ]] || fail "HERMES_WEBUI_OIDC_ALLOW_VALUES is required when WebUI is enabled in external-oidc mode"
+    fi
+    validate_external_oidc_urls
+  fi
   case "$HERMES_SSH_SETUP" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "HERMES_SSH_SETUP must be boolean" ;; esac
   case "$HERMES_NPX_SETUP" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "HERMES_NPX_SETUP must be boolean" ;; esac
   case "$HERMES_ANSIBLE_SETUP" in true|false|TRUE|FALSE|1|0|yes|no|YES|NO|on|off|ON|OFF) ;; *) fail "HERMES_ANSIBLE_SETUP must be boolean" ;; esac
@@ -620,7 +709,7 @@ create_namespace_and_secrets() {
     kubectl -n "$HERMES_NAMESPACE" delete secret hermes-bootstrap-archive --ignore-not-found=true >/dev/null
   fi
 
-  if is_truthy "$HERMES_DASHBOARD_ENABLED" || is_truthy "$HERMES_WEBUI_ENABLED"; then
+  if [[ "$HERMES_AUTH_MODE" == local-password ]] && (is_truthy "$HERMES_DASHBOARD_ENABLED" || is_truthy "$HERMES_WEBUI_ENABLED"); then
     local dash_tmpdir
     dash_tmpdir="$(mktemp -d)"
     chmod 700 "$dash_tmpdir"
@@ -634,7 +723,13 @@ create_namespace_and_secrets() {
     trap - ERR
     rm -rf -- "$dash_tmpdir"
   else
-    kubectl -n "$HERMES_NAMESPACE" delete secret hermes-dashboard-auth --ignore-not-found=true >/dev/null
+    # During a local-password -> external-oidc migration, retain the old Secret
+    # until both OIDC workloads have rolled out successfully. apply_and_wait
+    # deletes it after the rollout; this keeps the previous Pods restartable if
+    # rendering/apply/readiness fails before cutover completes.
+    if ! is_truthy "$HERMES_DASHBOARD_ENABLED" && ! is_truthy "$HERMES_WEBUI_ENABLED"; then
+      kubectl -n "$HERMES_NAMESPACE" delete secret hermes-dashboard-auth --ignore-not-found=true >/dev/null
+    fi
   fi
 
   local secret_tmpdir
@@ -697,6 +792,10 @@ apply_and_wait() {
   is_truthy "$HERMES_DASHBOARD_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete deploy,svc,ingress hermes-dashboard --ignore-not-found=true >/dev/null
   is_truthy "$HERMES_DASHBOARD_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete ingress hermes-dashboard-login --ignore-not-found=true >/dev/null
   is_truthy "$HERMES_DASHBOARD_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete middleware hermes-dashboard-login-rewrite --ignore-not-found=true >/dev/null 2>&1 || true
+  if [[ "$HERMES_AUTH_MODE" != local-password ]]; then
+    kubectl -n "$HERMES_NAMESPACE" delete ingress hermes-dashboard-login --ignore-not-found=true >/dev/null
+    kubectl -n "$HERMES_NAMESPACE" delete middleware hermes-dashboard-login-rewrite --ignore-not-found=true >/dev/null 2>&1 || true
+  fi
   is_truthy "$HERMES_WEBUI_ENABLED" || kubectl -n "$HERMES_NAMESPACE" delete deploy,svc,ingress hermes-webui --ignore-not-found=true >/dev/null
   if ! is_truthy "$HERMES_BROWSER_ENABLED"; then
     kubectl -n "$HERMES_NAMESPACE" delete deploy,svc hermes-browser --ignore-not-found=true >/dev/null
@@ -729,6 +828,13 @@ apply_and_wait() {
   for d in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
   done
+
+  # Delete the old shared app-password Secret only after all external-OIDC
+  # workloads are Ready. Before this point it remains available to the previous
+  # ReplicaSets for fail-safe restart/rollback if cutover fails.
+  if [[ "$HERMES_AUTH_MODE" == external-oidc ]]; then
+    kubectl -n "$HERMES_NAMESPACE" delete secret hermes-dashboard-auth --ignore-not-found=true >/dev/null
+  fi
 }
 
 print_summary() {
@@ -740,6 +846,7 @@ Namespace:        $HERMES_NAMESPACE
 WebUI host:       ${WEBUI_HOST:-disabled}
 Dashboard host:   ${DASHBOARD_HOST:-disabled}
 Browser enabled:  $HERMES_BROWSER_ENABLED
+Authentication:    $HERMES_AUTH_MODE
 Rendered file:    $MANIFEST_OUT
 
 Runtime credentials were applied through Kubernetes Secrets.
@@ -747,10 +854,16 @@ No credential values were stored locally or printed during installation.
 Show the credentials later, when needed, with the administrator-only maintenance command:
 
   ./maintain.sh show-passwords
+EOF
+  if [[ "$HERMES_AUTH_MODE" == local-password ]]; then
+    cat <<'EOF'
 
-Rotate later with:
+Rotate the local Dashboard/WebUI password later with:
 
   ./maintain.sh rotate-passwords
+EOF
+  fi
+  cat <<EOF
 
 Next step for OpenAI Codex OAuth:
 

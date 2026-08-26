@@ -155,5 +155,141 @@ if HERMES_NAMESPACE='hermes;touch' MODEL_NAME=valid python3 "$ROOT_DIR/scripts/r
   exit 1
 fi
 
+# External OIDC must remove every local-password environment reference and
+# the Dashboard password-login rewrite path.
+(
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/examples/hermes.env.example"
+  set +a
+  export HERMES_INSTALL_LIB_ONLY=true
+  export HERMES_AUTH_MODE=external-oidc
+  export HERMES_OIDC_ISSUER=https://sso.example.com
+  export HERMES_DASHBOARD_OIDC_CLIENT_ID=hermes-dashboard
+  export HERMES_WEBUI_OIDC_CLIENT_ID=hermes-webui
+  export HERMES_WEBUI_OIDC_ALLOW_CLAIM=groups
+  export HERMES_WEBUI_OIDC_ALLOW_VALUES=hermes-users
+  export HERMES_DASHBOARD_PUBLIC_URL=https://dashboard.example.com
+  export HERMES_WEBUI_OIDC_REDIRECT_URI=https://webui.example.com/api/auth/oidc/callback
+  export HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true HERMES_BROWSER_ENABLED=false
+  export HERMES_BOOTSTRAP_MODE=disabled HERMES_ADDON_REQUIREMENTS=
+  export DASHBOARD_HOST=dashboard.example.com WEBUI_HOST=webui.example.com
+  export HERMES_RENDER_DIR="$TMP_DIR/render-external-oidc"
+  source "$ROOT_DIR/install.sh"
+  prepare_paths
+  prepare_defaults
+  mkdir -p "$RENDER_DIR"
+  API_SERVER_KEY_REVISION=test-resource-version
+  export API_SERVER_KEY_REVISION
+  python3 "$ROOT_DIR/scripts/render_template.py" "$ROOT_DIR/manifests/hermes.yaml.tpl" "$MANIFEST_OUT"
+  python3 - "$MANIFEST_OUT" <<'PY'
+import sys
+import yaml
+
+docs = [doc for doc in yaml.safe_load_all(open(sys.argv[1])) if doc]
+resources = {(doc["kind"], doc["metadata"]["name"]): doc for doc in docs}
+assert ("Ingress", "hermes-dashboard-login") not in resources
+for name in ("hermes-dashboard", "hermes-webui"):
+    deployment = resources[("Deployment", name)]
+    env_names = {item["name"] for item in deployment["spec"]["template"]["spec"]["containers"][0].get("env", [])}
+    assert "HERMES_DASHBOARD_BASIC_AUTH_USERNAME" not in env_names
+    assert "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD" not in env_names
+    assert "HERMES_WEBUI_PASSWORD" not in env_names
+assert resources[("Deployment", "hermes-dashboard")]["spec"]["template"]["spec"]["containers"][0]["env"]
+PY
+)
+
+# Switching only HERMES_AUTH_MODE in the public example must fail before any
+# local authentication is removed; all installation-specific OIDC values are blank.
+if env -i PATH="$PATH" HOME="$HOME" ROOT_DIR="$ROOT_DIR" \
+  bash -c 'set -a; source "$ROOT_DIR/examples/hermes.env.example"; set +a; export HERMES_INSTALL_LIB_ONLY=true HERMES_AUTH_MODE=external-oidc HERMES_BOOTSTRAP_PROFILE= HERMES_BOOTSTRAP_MODE=disabled HERMES_ADDON_REQUIREMENTS=; source "$ROOT_DIR/install.sh"; prepare_defaults; validate' \
+  >/dev/null 2>&1; then
+  printf 'public example activated external OIDC without installation-specific values\n' >&2
+  exit 1
+fi
+
+# OIDC URLs fail closed when placeholders or callback hosts/paths do not match
+# the configured application hosts.
+if env -i PATH="$PATH" HOME="$HOME" \
+  HERMES_INSTALL_LIB_ONLY=true HERMES_BOOTSTRAP_PROFILE= HERMES_BOOTSTRAP_MODE=disabled \
+  HERMES_AUTH_MODE=external-oidc HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true \
+  HERMES_BROWSER_ENABLED=false DASHBOARD_HOST=dashboard.example.com WEBUI_HOST=webui.example.com \
+  HERMES_DASHBOARD_OIDC_ISSUER=http://sso.example.com \
+  HERMES_WEBUI_OIDC_ISSUER=https://sso.example.com \
+  HERMES_DASHBOARD_OIDC_CLIENT_ID=hermes-dashboard HERMES_WEBUI_OIDC_CLIENT_ID=hermes-webui \
+  HERMES_DASHBOARD_PUBLIC_URL=https://dashboard.example.com \
+  HERMES_WEBUI_OIDC_REDIRECT_URI=https://webui.example.com/api/auth/oidc/callback \
+  HERMES_WEBUI_OIDC_ALLOW_CLAIM=groups HERMES_WEBUI_OIDC_ALLOW_VALUES=hermes-users \
+  bash -c 'source "$1"; prepare_defaults; validate' _ "$ROOT_DIR/install.sh" >/dev/null 2>&1; then
+  printf 'external OIDC accepted a non-HTTPS issuer\n' >&2
+  exit 1
+fi
+
+if env -i PATH="$PATH" HOME="$HOME" \
+  HERMES_INSTALL_LIB_ONLY=true HERMES_BOOTSTRAP_PROFILE= HERMES_BOOTSTRAP_MODE=disabled \
+  HERMES_AUTH_MODE=external-oidc HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true \
+  HERMES_BROWSER_ENABLED=false DASHBOARD_HOST=dashboard.example.com WEBUI_HOST=webui.example.com \
+  HERMES_DASHBOARD_OIDC_ISSUER=https://sso.example.com \
+  HERMES_WEBUI_OIDC_ISSUER=https://sso.example.com \
+  HERMES_DASHBOARD_OIDC_CLIENT_ID=hermes-dashboard HERMES_WEBUI_OIDC_CLIENT_ID=hermes-webui \
+  HERMES_DASHBOARD_PUBLIC_URL=https://dashboard.example.com/admin \
+  HERMES_WEBUI_OIDC_REDIRECT_URI=https://webui.example.com:8443/api/auth/oidc/callback \
+  HERMES_WEBUI_OIDC_ALLOW_CLAIM=groups HERMES_WEBUI_OIDC_ALLOW_VALUES=hermes-users \
+  bash -c 'source "$1"; prepare_defaults; validate' _ "$ROOT_DIR/install.sh" >/dev/null 2>&1; then
+  printf 'external OIDC accepted a mismatched public path/non-default callback port\n' >&2
+  exit 1
+fi
+
+if HERMES_AUTH_MODE=disabled python3 "$ROOT_DIR/scripts/render_template.py" \
+  "$ROOT_DIR/manifests/hermes.yaml.tpl" "$TMP_DIR/disabled-auth.yaml" >/dev/null 2>&1; then
+  printf 'renderer accepted documentation-only disabled auth mode\n' >&2
+  exit 1
+fi
+
+# Execute the migration reconciliation path against a fake kubectl. Prove that
+# omitted password-login resources are actively pruned, and that the old local
+# password Secret is deleted only after every external-OIDC rollout succeeds.
+(
+  export HERMES_INSTALL_LIB_ONLY=true HERMES_AUTH_MODE=external-oidc
+  export HERMES_NAMESPACE=hermes HERMES_DASHBOARD_ENABLED=true
+  export HERMES_WEBUI_ENABLED=true HERMES_BROWSER_ENABLED=false
+  export MANIFEST_OUT="$TMP_DIR/migration-manifest.yaml"
+  printf '%s\n' 'apiVersion: v1' 'kind: List' 'items: []' > "$MANIFEST_OUT"
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/install.sh"
+  calls="$TMP_DIR/migration-kubectl.calls"
+  kubectl() {
+    printf '%s\n' "$*" >> "$calls"
+    if [[ "${FAKE_FAIL_ROLLOUT:-false}" == true && "$*" == *'rollout status deploy/hermes-webui'* ]]; then
+      return 1
+    fi
+  }
+  render_pre_init_manifest() { printf '%s' "$MANIFEST_OUT"; }
+  deployment_template_digest() { printf 'stable-template-digest'; }
+  enabled_deployments() {
+    printf '%s\n' hermes-agent hermes-dashboard hermes-webui
+  }
+
+  apply_and_wait
+  grep -Fq -- '-n hermes delete ingress hermes-dashboard-login --ignore-not-found=true' "$calls"
+  grep -Fq -- '-n hermes delete middleware hermes-dashboard-login-rewrite --ignore-not-found=true' "$calls"
+  grep -Fq -- '-n hermes delete secret hermes-dashboard-auth --ignore-not-found=true' "$calls"
+
+  last_rollout_line="$(grep -n -- '-n hermes rollout status deploy/hermes-webui --timeout=600s' "$calls" | tail -1 | cut -d: -f1)"
+  secret_delete_line="$(grep -n -- '-n hermes delete secret hermes-dashboard-auth --ignore-not-found=true' "$calls" | tail -1 | cut -d: -f1)"
+  [[ -n "$last_rollout_line" && -n "$secret_delete_line" ]]
+  (( secret_delete_line > last_rollout_line ))
+
+  : > "$calls"
+  export FAKE_FAIL_ROLLOUT=true
+  set +e
+  ( set -e; apply_and_wait )
+  failed_status=$?
+  set -e
+  (( failed_status != 0 ))
+  grep -Fq -- '-n hermes rollout status deploy/hermes-webui --timeout=600s' "$calls"
+  ! grep -Fq -- '-n hermes delete secret hermes-dashboard-auth --ignore-not-found=true' "$calls"
+)
+
 printf 'matrix tests passed: %d component combinations, %d profile/Ansible/requirements combinations\n' \
   "$component_cases" "$profile_cases"

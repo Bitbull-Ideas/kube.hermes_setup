@@ -75,6 +75,18 @@ HERMES_RUNTIME_GID="${HERMES_RUNTIME_GID:-10000}"
 HERMES_DASHBOARD_ENABLED="${HERMES_DASHBOARD_ENABLED:-true}"
 HERMES_WEBUI_ENABLED="${HERMES_WEBUI_ENABLED:-true}"
 HERMES_BROWSER_ENABLED="${HERMES_BROWSER_ENABLED:-true}"
+HERMES_AUTH_MODE="${HERMES_AUTH_MODE:-local-password}"
+HERMES_OIDC_ISSUER="${HERMES_OIDC_ISSUER:-}"
+HERMES_DASHBOARD_OIDC_ISSUER="${HERMES_DASHBOARD_OIDC_ISSUER:-${HERMES_OIDC_ISSUER}}"
+HERMES_WEBUI_OIDC_ISSUER="${HERMES_WEBUI_OIDC_ISSUER:-${HERMES_OIDC_ISSUER}}"
+HERMES_DASHBOARD_OIDC_CLIENT_ID="${HERMES_DASHBOARD_OIDC_CLIENT_ID:-}"
+HERMES_DASHBOARD_OIDC_SCOPES="${HERMES_DASHBOARD_OIDC_SCOPES:-openid profile email groups}"
+HERMES_WEBUI_OIDC_CLIENT_ID="${HERMES_WEBUI_OIDC_CLIENT_ID:-}"
+HERMES_WEBUI_OIDC_SCOPES="${HERMES_WEBUI_OIDC_SCOPES:-openid profile email groups}"
+HERMES_DASHBOARD_PUBLIC_URL="${HERMES_DASHBOARD_PUBLIC_URL:-}"
+HERMES_WEBUI_OIDC_REDIRECT_URI="${HERMES_WEBUI_OIDC_REDIRECT_URI:-}"
+HERMES_WEBUI_OIDC_ALLOW_CLAIM="${HERMES_WEBUI_OIDC_ALLOW_CLAIM:-}"
+HERMES_WEBUI_OIDC_ALLOW_VALUES="${HERMES_WEBUI_OIDC_ALLOW_VALUES:-}"
 WEBUI_HOST="${WEBUI_HOST:-}"
 DASHBOARD_HOST="${DASHBOARD_HOST:-}"
 
@@ -110,6 +122,109 @@ check_rollouts() {
       fail "deployment $d not ready"
     fi
   done < <(enabled_deployments)
+}
+
+check_deployment_env() {
+  local deployment="$1" name="$2" expected="$3" actual
+  actual="$(kubectl -n "$HERMES_NAMESPACE" get deployment "$deployment" -o json 2>/dev/null | ENV_NAME="$name" python3 -c '
+import json, os, sys
+try:
+    document = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+name = os.environ["ENV_NAME"]
+for item in document["spec"]["template"]["spec"]["containers"][0].get("env", []):
+    if item.get("name") == name:
+        print(item.get("value", ""), end="")
+        break
+' || true)"
+  if [[ "$actual" == "$expected" ]]; then
+    ok "$deployment $name matches configured auth mode"
+  else
+    fail "$deployment $name missing or drifted"
+  fi
+}
+
+check_deployment_env_absent() {
+  local deployment="$1" name="$2" present
+  present="$(kubectl -n "$HERMES_NAMESPACE" get deployment "$deployment" -o json 2>/dev/null | ENV_NAME="$name" python3 -c '
+import json, os, sys
+try:
+    document = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+name = os.environ["ENV_NAME"]
+print("yes" if any(item.get("name") == name for item in document["spec"]["template"]["spec"]["containers"][0].get("env", [])) else "no")
+' || true)"
+  [[ "$present" == no ]] && ok "$deployment omits $name" || fail "$deployment unexpectedly contains $name"
+}
+
+check_resource_absent() {
+  local kind="$1" name="$2" description="$3" output
+  if ! output="$(kubectl -n "$HERMES_NAMESPACE" get "$kind" "$name" --ignore-not-found -o name 2>/dev/null)"; then
+    fail "unable to verify $description absence"
+  elif [[ -n "$output" ]]; then
+    fail "$description still exists"
+  else
+    ok "$description absent"
+  fi
+}
+
+check_expected_auth_value() {
+  local name="$1" value="$2"
+  [[ -n "$value" ]] || fail "configured $name is empty; cannot verify external-OIDC drift"
+}
+
+check_auth_mode() {
+  ok "configured authentication mode: $HERMES_AUTH_MODE"
+  case "$HERMES_AUTH_MODE" in
+    local-password)
+      if is_truthy "$HERMES_DASHBOARD_ENABLED" || is_truthy "$HERMES_WEBUI_ENABLED"; then
+        kubectl -n "$HERMES_NAMESPACE" get secret hermes-dashboard-auth >/dev/null 2>&1 \
+          && ok "local application password Secret exists" \
+          || fail "local application password Secret missing"
+      fi
+      if is_truthy "$HERMES_DASHBOARD_ENABLED"; then
+        check_deployment_env_absent hermes-dashboard HERMES_DASHBOARD_OIDC_ISSUER
+        kubectl -n "$HERMES_NAMESPACE" get ingress hermes-dashboard-login >/dev/null 2>&1 \
+          && ok "Dashboard password-login Ingress exists" \
+          || fail "Dashboard password-login Ingress missing"
+      fi
+      ;;
+    external-oidc)
+      check_resource_absent secret hermes-dashboard-auth "external-oidc local application password Secret"
+      check_resource_absent ingress hermes-dashboard-login "external-oidc Dashboard password-login Ingress"
+      check_resource_absent middleware hermes-dashboard-login-rewrite "external-oidc Dashboard password-login Middleware"
+      if is_truthy "$HERMES_DASHBOARD_ENABLED"; then
+        check_expected_auth_value HERMES_DASHBOARD_OIDC_ISSUER "$HERMES_DASHBOARD_OIDC_ISSUER"
+        check_expected_auth_value HERMES_DASHBOARD_OIDC_CLIENT_ID "$HERMES_DASHBOARD_OIDC_CLIENT_ID"
+        check_expected_auth_value HERMES_DASHBOARD_OIDC_SCOPES "$HERMES_DASHBOARD_OIDC_SCOPES"
+        check_expected_auth_value HERMES_DASHBOARD_PUBLIC_URL "$HERMES_DASHBOARD_PUBLIC_URL"
+        check_deployment_env_absent hermes-dashboard HERMES_DASHBOARD_BASIC_AUTH_USERNAME
+        check_deployment_env_absent hermes-dashboard HERMES_DASHBOARD_BASIC_AUTH_PASSWORD
+        check_deployment_env hermes-dashboard HERMES_DASHBOARD_OIDC_ISSUER "$HERMES_DASHBOARD_OIDC_ISSUER"
+        check_deployment_env hermes-dashboard HERMES_DASHBOARD_OIDC_CLIENT_ID "$HERMES_DASHBOARD_OIDC_CLIENT_ID"
+        check_deployment_env hermes-dashboard HERMES_DASHBOARD_OIDC_SCOPES "$HERMES_DASHBOARD_OIDC_SCOPES"
+        check_deployment_env hermes-dashboard HERMES_DASHBOARD_PUBLIC_URL "$HERMES_DASHBOARD_PUBLIC_URL"
+      fi
+      if is_truthy "$HERMES_WEBUI_ENABLED"; then
+        check_expected_auth_value HERMES_WEBUI_OIDC_ISSUER "$HERMES_WEBUI_OIDC_ISSUER"
+        check_expected_auth_value HERMES_WEBUI_OIDC_CLIENT_ID "$HERMES_WEBUI_OIDC_CLIENT_ID"
+        check_expected_auth_value HERMES_WEBUI_OIDC_SCOPES "$HERMES_WEBUI_OIDC_SCOPES"
+        check_expected_auth_value HERMES_WEBUI_OIDC_REDIRECT_URI "$HERMES_WEBUI_OIDC_REDIRECT_URI"
+        check_expected_auth_value HERMES_WEBUI_OIDC_ALLOW_CLAIM "$HERMES_WEBUI_OIDC_ALLOW_CLAIM"
+        check_expected_auth_value HERMES_WEBUI_OIDC_ALLOW_VALUES "$HERMES_WEBUI_OIDC_ALLOW_VALUES"
+        check_deployment_env_absent hermes-webui HERMES_WEBUI_PASSWORD
+        check_deployment_env hermes-webui HERMES_WEBUI_OIDC_ISSUER "$HERMES_WEBUI_OIDC_ISSUER"
+        check_deployment_env hermes-webui HERMES_WEBUI_OIDC_CLIENT_ID "$HERMES_WEBUI_OIDC_CLIENT_ID"
+        check_deployment_env hermes-webui HERMES_WEBUI_OIDC_SCOPES "$HERMES_WEBUI_OIDC_SCOPES"
+        check_deployment_env hermes-webui HERMES_WEBUI_OIDC_REDIRECT_URI "$HERMES_WEBUI_OIDC_REDIRECT_URI"
+        check_deployment_env hermes-webui HERMES_WEBUI_OIDC_ALLOW_CLAIM "$HERMES_WEBUI_OIDC_ALLOW_CLAIM"
+        check_deployment_env hermes-webui HERMES_WEBUI_OIDC_ALLOW_VALUES "$HERMES_WEBUI_OIDC_ALLOW_VALUES"
+      fi
+      ;;
+    *) fail "unsupported configured authentication mode: $HERMES_AUTH_MODE" ;;
+  esac
 }
 
 check_api_key_convergence() {
@@ -489,8 +604,10 @@ main() {
   check_cmd kubectl
   check_cmd curl
   check_cmd timeout
+  check_cmd python3
   check_k8s
   check_rollouts
+  check_auth_mode
   check_api_key_convergence
   check_internal_health
   check_home_ssh

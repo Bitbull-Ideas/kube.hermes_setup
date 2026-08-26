@@ -66,6 +66,7 @@ HERMES_NAMESPACE="${HERMES_NAMESPACE:-hermes}"
 HERMES_DASHBOARD_ENABLED="${HERMES_DASHBOARD_ENABLED:-true}"
 HERMES_WEBUI_ENABLED="${HERMES_WEBUI_ENABLED:-true}"
 HERMES_BROWSER_ENABLED="${HERMES_BROWSER_ENABLED:-true}"
+HERMES_AUTH_MODE="${HERMES_AUTH_MODE:-local-password}"
 HERMES_RENDER_DIR="${HERMES_RENDER_DIR:-$ROOT_DIR/.rendered}"
 HERMES_RUNTIME_UID="${HERMES_RUNTIME_UID:-10000}"
 HERMES_RUNTIME_GID="${HERMES_RUNTIME_GID:-10000}"
@@ -206,7 +207,11 @@ prepare_backup_password() {
 show_passwords() {
   command -v base64 >/dev/null 2>&1 || fail "Missing required command: base64"
   printf '%s\n' "Credentials for namespace $HERMES_NAMESPACE:"
-  show_secret_value "Dashboard/WebUI password" hermes-dashboard-auth password
+  if [[ "$HERMES_AUTH_MODE" == local-password ]]; then
+    show_secret_value "Dashboard/WebUI password" hermes-dashboard-auth password
+  else
+    printf 'Dashboard/WebUI password: not configured (auth mode %s)\n' "$HERMES_AUTH_MODE"
+  fi
   show_secret_value "API server key" hermes-api-server api-key
   show_secret_value "Browserless token" hermes-browser-token token
 }
@@ -816,6 +821,7 @@ apply_dashboard_auth_secret() {
 }
 
 rotate_passwords() {
+  [[ "$HERMES_AUTH_MODE" == local-password ]] || fail "rotate-passwords is available only in local-password mode; current mode is $HERMES_AUTH_MODE"
   local input_mode="auto"
   while [[ $# -gt 0 ]]; do
     case "$1" in
