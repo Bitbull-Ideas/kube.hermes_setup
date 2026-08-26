@@ -143,9 +143,7 @@ spec:
           else
             rm -f /opt/data/hermes-managed/bin/ssh
           fi
-          if [ "${HERMES_NPX_SETUP}" = "true" ] || [ "${HERMES_NPX_SETUP}" = "TRUE" ] || [ "${HERMES_NPX_SETUP}" = "1" ] || [ "${HERMES_NPX_SETUP}" = "yes" ] || [ "${HERMES_NPX_SETUP}" = "YES" ] || [ "${HERMES_NPX_SETUP}" = "on" ] || [ "${HERMES_NPX_SETUP}" = "ON" ]; then
-            mkdir -p /opt/data/.npm
-          fi
+          mkdir -p /opt/data/.npm
           installer_default_soul() {
             printf '%s\n' 'You are Hermes Agent, an intelligent AI assistant. Be helpful, direct, technically precise, and security-conscious.'
             printf '%s\n' ''
@@ -781,16 +779,15 @@ spec:
           mkdir -p /opt/data/node/bin
           cp /usr/local/bin/node /opt/data/node/bin/node
           chmod 755 /opt/data/node/bin/node
-          # WebUI uses its own image, which does not include npm/npx or all
-          # shared libraries required by the Agent image's Node runtime.
+          mkdir -p /opt/data/node/lib
+          node_atomic_lib="$(ldd /usr/local/bin/node | awk '$1 == "libatomic.so.1" && $3 ~ /^\// { print $3; exit }')"
+          [ -n "$node_atomic_lib" ] || { echo 'libatomic.so.1 is required by the managed Node runtime' >&2; exit 1; }
+          node_atomic_name="$(basename "$node_atomic_lib")"
+          cp -a "$node_atomic_lib" "/opt/data/node/lib/$node_atomic_name"
+          ln -sfn "$node_atomic_name" /opt/data/node/lib/libatomic.so.1
           mkdir -p /opt/data/node/lib/node_modules
           rm -rf /opt/data/node/lib/node_modules/npm
           cp -a /usr/local/lib/node_modules/npm /opt/data/node/lib/node_modules/npm
-          atomic_lib="$(find /lib /usr/lib -name 'libatomic.so.1*' -type f 2>/dev/null | head -1)"
-          [ -n "$atomic_lib" ] || { echo 'libatomic.so.1 is required by the managed Node runtime' >&2; exit 1; }
-          cp -a "$atomic_lib" /opt/data/node/lib/
-          atomic_name="$(basename "$atomic_lib")"
-          ln -sfn "$atomic_name" /opt/data/node/lib/libatomic.so.1
           ln -sfn /opt/data/node/lib/node_modules/npm/bin/npm-cli.js /opt/data/node/bin/npm
           ln -sfn /opt/data/node/lib/node_modules/npm/bin/npx-cli.js /opt/data/node/bin/npx
           ln -sfn /home/hermeswebui/.hermes/hermes-agent/node_modules /opt/data/node_modules
@@ -840,6 +837,8 @@ spec:
         # WebUI's editable-install fix is available in a released image.
         - name: HERMES_NIX_BUILD
           value: "1"
+        - name: npm_config_yes
+          value: "true"
         # HERMES_AUTH_LOCAL_ONLY_START
         - name: HERMES_WEBUI_PASSWORD
           valueFrom:

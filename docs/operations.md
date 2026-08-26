@@ -398,20 +398,13 @@ Keep host key checking enabled. Prefer maintaining `/opt/data/.ssh/known_hosts` 
 
 ## NPX / Node.js package support
 
-When `HERMES_NPX_SETUP=true` (default for `universal-system-architect`), the init job creates the npm cache directory at `/opt/data/.npm` with correct `hermes:hermes` ownership and the agent container receives `npm_config_yes=true` in its environment. This allows `npx`-based MCP servers and skill installers to run without blocking on interactive prompts or failing with `EACCES` on the cache directory.
-
-The setting is toggleable in `hermes.env`:
-
-```bash
-HERMES_NPX_SETUP=true
-```
+Node.js, npm, and npx are always available in every profile: the init job creates the npm cache directory at `/opt/data/.npm` with correct `hermes:hermes` ownership, and the agent container receives `npm_config_yes=true` in its environment. This allows `npx`-based MCP servers and skill installers to run without blocking on interactive prompts or failing with `EACCES` on the cache directory.
 
 Operational behavior:
 
 - The npm cache directory lives on the PVC at `/opt/data/.npm` and survives Pod recreation.
-- `npm_config_yes=true` is set in the agent deployment environment and in the terminal profile hook (`/opt/data/home/.hermes-terminal-env`), so both the gateway process and interactive login shells inherit it.
+- `npm_config_yes=true` is set in the agent and WebUI deployment environments and in the terminal profile hook (`/opt/data/home/.hermes-terminal-env`), so the gateway process, WebUI browser tooling, and interactive login shells all inherit it.
 - No npm packages are pre-installed. The infrastructure only prepares the ground for `npx` to work without interactive prompts.
-- If `HERMES_NPX_SETUP=false`, no npm-related paths or environment variables are configured.
 
 Manual `npx` usage works from any context:
 

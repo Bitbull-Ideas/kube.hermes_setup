@@ -29,7 +29,6 @@ done
   export HERMES_WEBUI_ENABLED=true
   export HERMES_BROWSER_ENABLED=false
   export HERMES_BOOTSTRAP_MODE=disabled
-  export HERMES_NPX_SETUP=false
   export HERMES_ADDON_REQUIREMENTS=
   export HERMES_SSH_SETUP=true
   export HERMES_SSH_GENERATE_KEY=true
@@ -83,7 +82,7 @@ for deployment in (doc for doc in disabled_documents if doc.get("kind") == "Depl
 job = by_resource[("Job", "hermes-init-config")]
 script = job["spec"]["template"]["spec"]["containers"][0]["args"][0]
 start = script.index('if [ "true" != "false"')
-end = script.index('if [ "false" = "true"', start)
+end = script.index("installer_default_soul() {", start)
 block = script[start:end]
 for required in (
     "# BEGIN kube.hermes_setup SSH identity",
@@ -108,7 +107,7 @@ disabled_job = next(
 )
 disabled_script = disabled_job["spec"]["template"]["spec"]["containers"][0]["args"][0]
 disabled_start = disabled_script.index('if [ "false" != "false"')
-disabled_end = disabled_script.index('if [ "false" = "true"', disabled_start)
+disabled_end = disabled_script.index("installer_default_soul() {", disabled_start)
 disabled_block_path.write_text(
     "set -eu\n" + disabled_script[disabled_start:disabled_end].replace("/opt/data", "__TEST_HOME__")
 )
