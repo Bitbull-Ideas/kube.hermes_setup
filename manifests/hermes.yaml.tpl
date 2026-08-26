@@ -781,6 +781,18 @@ spec:
           mkdir -p /opt/data/node/bin
           cp /usr/local/bin/node /opt/data/node/bin/node
           chmod 755 /opt/data/node/bin/node
+          # WebUI uses its own image, which does not include npm/npx or all
+          # shared libraries required by the Agent image's Node runtime.
+          mkdir -p /opt/data/node/lib/node_modules
+          rm -rf /opt/data/node/lib/node_modules/npm
+          cp -a /usr/local/lib/node_modules/npm /opt/data/node/lib/node_modules/npm
+          atomic_lib="$(find /lib /usr/lib -name 'libatomic.so.1*' -type f 2>/dev/null | head -1)"
+          [ -n "$atomic_lib" ] || { echo 'libatomic.so.1 is required by the managed Node runtime' >&2; exit 1; }
+          cp -a "$atomic_lib" /opt/data/node/lib/
+          atomic_name="$(basename "$atomic_lib")"
+          ln -sfn "$atomic_name" /opt/data/node/lib/libatomic.so.1
+          ln -sfn /opt/data/node/lib/node_modules/npm/bin/npm-cli.js /opt/data/node/bin/npm
+          ln -sfn /opt/data/node/lib/node_modules/npm/bin/npx-cli.js /opt/data/node/bin/npx
           ln -sfn /home/hermeswebui/.hermes/hermes-agent/node_modules /opt/data/node_modules
           chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data/node
         volumeMounts:
@@ -867,6 +879,8 @@ spec:
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
           value: /opt/data/hermes-managed/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        - name: LD_LIBRARY_PATH
+          value: /opt/data/node/lib
         - name: HERMES_API_URL
           value: http://hermes-agent:8642
         - name: HERMES_API_KEY
