@@ -16,8 +16,12 @@ MANIFEST="$ROOT_DIR/manifests/hermes.yaml.tpl"
 # from the Agent image, including the shared library absent from WebUI.
 grep -Fq 'cp -a /usr/local/lib/node_modules/npm /opt/data/node/lib/node_modules/npm' "$MANIFEST"
 grep -Fq 'ln -sfn /opt/data/node/lib/node_modules/npm/bin/npx-cli.js /opt/data/node/bin/npx' "$MANIFEST"
-grep -Fq 'ln -sfn "$atomic_name" /opt/data/node/lib/libatomic.so.1' "$MANIFEST"
+grep -Fq 'ldd /usr/local/bin/node' "$MANIFEST"
 grep -Fq 'name: LD_LIBRARY_PATH' "$MANIFEST"
+grep -Fq 'HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH' "$MANIFEST"
+grep -Fq 'name: npm_config_yes' "$MANIFEST"
+grep -Fq 'kube-hermes-setup.example.com/npx-setup' "$MANIFEST"
+grep -Fq 'rm -rf /opt/data/node/lib/node_modules/npm' "$MANIFEST"
 
 # Required maintainer guidance must remain present in AGENTS.md.
 for needle in \

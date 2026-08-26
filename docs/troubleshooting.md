@@ -124,6 +124,8 @@ Cause: `BROWSER_CDP_URL` only points Hermes to Browserless as the browser backen
 
 Fix in this installer: the `prepare-browser-cli` initContainer copies `node`, npm, and npx from the Agent image into `/opt/data/node`, copies the required `libatomic.so.1` runtime library, and exposes the mounted Agent source `node_modules` through `/opt/data/node_modules`. The WebUI `PATH` and `LD_LIBRARY_PATH` include the persistent runtime directories.
 
+If a custom `HERMES_WEBUI_IMAGE` ships its own runtime libraries that depend on an image-defined `LD_LIBRARY_PATH`, set `HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH` in `hermes.env` to that colon-separated path. The installer appends it after `/opt/data/node/lib` instead of overwriting it, so the managed Node runtime and the custom image's own libraries both resolve.
+
 Verification:
 
 ```bash

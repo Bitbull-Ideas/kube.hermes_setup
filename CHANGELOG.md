@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Gates the WebUI `prepare-browser-cli` initContainer's npm/npx copy on `HERMES_NPX_SETUP`, matching the documented `docs/operations.md` contract that a `false` setting configures no npm-related paths; when disabled, any previously persisted `npm`/`npx` links and npm package tree are removed.
+- Resolves the `libatomic.so.1` runtime library actually linked by `/usr/local/bin/node` via `ldd` instead of the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, avoiding a mismatched ELF on images with multiple implementations.
+- Adds `npm_config_yes` to the WebUI deployment environment (mirroring `HERMES_NPX_SETUP`) so WebUI-launched `npx` invocations are non-interactive when NPX setup is enabled.
+- Adds `HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH` (optional, `hermes.env`-configurable) so a custom `HERMES_WEBUI_IMAGE` with its own runtime-library search path can be preserved: the installer appends it after `/opt/data/node/lib` instead of replacing the WebUI container's `LD_LIBRARY_PATH`.
+
 ## [v2.6.0] - 2026-08-25
 
 ### Added
