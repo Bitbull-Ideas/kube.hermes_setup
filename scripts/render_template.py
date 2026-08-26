@@ -66,11 +66,6 @@ for numeric_name in (
     require_pattern(numeric_name, r"[0-9]+")
 for path_name in ("HERMES_UV_DIR", "HERMES_ADDON_VENV", "HERMES_SSH_KEY_PATH"):
     require_pattern(path_name, r"/[A-Za-z0-9._/@+-]+", allow_empty=True)
-require_pattern(
-    "HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH",
-    r"/[A-Za-z0-9._/@+-]+(:/[A-Za-z0-9._/@+-]+)*",
-    allow_empty=True,
-)
 
 
 def strip_auth_blocks(template: str) -> str:
@@ -147,12 +142,6 @@ tpl = "\n---\n".join(documents)
 storage_line = "${STORAGE_CLASS_NAME:+storageClassName: ${STORAGE_CLASS_NAME}}"
 storage = os.environ.get("STORAGE_CLASS_NAME", "")
 tpl = tpl.replace(storage_line, f"storageClassName: {storage}" if storage else "")
-
-# Preserve a custom HERMES_WEBUI_IMAGE's own LD_LIBRARY_PATH by appending it
-# after the managed Node runtime directory instead of dropping it.
-webui_ld_path_line = "${HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH:+:${HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH}}"
-webui_ld_path = os.environ.get("HERMES_WEBUI_EXTRA_LD_LIBRARY_PATH", "")
-tpl = tpl.replace(webui_ld_path_line, f":{webui_ld_path}" if webui_ld_path else "")
 
 for host_var in ("WEBUI_HOST", "DASHBOARD_HOST"):
     block = "${TLS_SECRET_NAME:+tls:\n  - hosts:\n    - ${" + host_var + "}\n    secretName: ${TLS_SECRET_NAME}}"
