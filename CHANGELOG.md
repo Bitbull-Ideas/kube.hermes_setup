@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `configure.sh` now asks for the authentication mode (`local-password` or `external-oidc`) directly whenever Dashboard or WebUI is enabled, instead of always asking for a local username/password regardless of the intended `HERMES_AUTH_MODE`. Selecting `local-password` asks the existing username/password questions; selecting `external-oidc` asks for the issuer, Dashboard/WebUI OIDC client IDs, public/redirect URLs, and allow claim/values instead — the two question sets are mutually exclusive, matching the mutually exclusive manifest wiring. All wizard-collected values are written to `hermes.env` and the answers file and pass through `install.sh`'s existing `validate_external_oidc_urls`/`HERMES_AUTH_MODE` validation unchanged; no validation logic is duplicated in the wizard.
+
 ### Changed
 
 - Node.js, npm, and npx are now installed unconditionally in every profile and every installation, replacing the `HERMES_NPX_SETUP` toggle. The npm cache directory (`/opt/data/.npm`), `npm_config_yes=true` (Agent, WebUI, and the terminal profile hook), and the WebUI `prepare-browser-cli` npm/npx copy no longer depend on any conditional; they are part of the baseline runtime.

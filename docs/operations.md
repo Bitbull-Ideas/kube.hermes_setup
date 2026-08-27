@@ -143,6 +143,10 @@ When `configuration_answers` already exists, starting `./configure.sh` interacti
 
 The operational scripts resolve configuration in this order: an explicit `ENV_FILE`, root `hermes.env` when it exists, then wizard-generated `current_config/hermes.env`. Therefore bare `./doctor.sh` and `./maintain.sh` commands work after the wizard while preserving compatibility with manual root configuration.
 
+## Authentication mode
+
+The wizard asks for an authentication mode (`local-password` or `external-oidc`) whenever Dashboard or WebUI is enabled, and only asks the follow-up questions for the mode selected — local-password prompts (username, password) and external-oidc prompts (issuer, client IDs, public/redirect URLs, allow claim/values) never both fire. This is the same `HERMES_AUTH_MODE` value validated and consumed by `install.sh`; see [`authelia-freeipa-sso-setup-guide.md`](authelia-freeipa-sso-setup-guide.md) for the fields required in `external-oidc` mode and how to configure an external identity provider.
+
 ## Initial generated credentials
 
 When the wizard password prompt is left empty, the password is generated only when `install.sh` runs. It is intentionally absent from `hermes.env` and `configuration_answers`. The installer applies generated and reused values directly to Kubernetes Secrets; it does not store or print plaintext credentials locally. Authorized operators can retrieve all configured credentials with:

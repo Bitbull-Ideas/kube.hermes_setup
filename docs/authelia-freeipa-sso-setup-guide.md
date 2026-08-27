@@ -486,6 +486,8 @@ If the pinned chart creates a DaemonSet instead of a Deployment, use its actual 
 
 The current repository supports the `external-oidc` application wiring but does not install or manage Authelia/FreeIPA. The setup below is an isolated QA/integration procedure until the external IdP is operated through your approved deployment process. Do not treat a manually patched production Deployment as durable.
 
+`./configure.sh` asks for the authentication mode directly: choose `external-oidc` when prompted and it collects the issuer, client IDs, public/redirect URLs, and allow claim/values interactively, writing them straight to `hermes.env` — the local-password username/password prompts are skipped entirely. The values below describe exactly what the wizard collects, for reference or for manually editing an existing `hermes.env`.
+
 The intended SSO-relevant environment is:
 
 ```dotenv

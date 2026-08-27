@@ -430,16 +430,57 @@ else
   [[ "$HERMES_WEBUI_ENABLED" == true ]] && WEBUI_HOST="$(prompt_hostname 'WebUI hostname' "$(answer_default WEBUI_HOST hermes.example.com)")"
   [[ "$HERMES_DASHBOARD_ENABLED" == true ]] && DASHBOARD_HOST="$(prompt_hostname 'Dashboard hostname' "$(answer_default DASHBOARD_HOST hermes-admin.example.com)")"
 
+  # Auth mode gates which credentials the wizard asks for below. Kept as a
+  # single upfront choice (mirrors the Image pull policy prompt style) so
+  # local-password and external-oidc never both ask questions.
+  HERMES_AUTH_MODE="$(answer_default HERMES_AUTH_MODE local-password)"
+  if [[ "$HERMES_DASHBOARD_ENABLED" == true || "$HERMES_WEBUI_ENABLED" == true ]]; then
+    while true; do
+      read -r -p "Authentication mode [$HERMES_AUTH_MODE] (local-password/external-oidc): " auth_mode_answer
+      HERMES_AUTH_MODE="${auth_mode_answer:-$HERMES_AUTH_MODE}"
+      [[ "$HERMES_AUTH_MODE" == local-password || "$HERMES_AUTH_MODE" == external-oidc ]] && break
+      printf 'Choose local-password or external-oidc.\n' >&2
+    done
+  else
+    HERMES_AUTH_MODE=local-password
+  fi
+
   DASHBOARD_AUTH_USER="$(answer_default DASHBOARD_AUTH_USER '')"
   DASHBOARD_AUTH_PASSWORD=''
-  if [[ "$HERMES_DASHBOARD_ENABLED" == true || "$HERMES_WEBUI_ENABLED" == true ]]; then
-    if [[ "$HERMES_DASHBOARD_ENABLED" == true ]]; then
-      DASHBOARD_AUTH_USER="$(prompt_value 'Dashboard username' "$(answer_default DASHBOARD_AUTH_USER admin)")"
-      [[ "$DASHBOARD_AUTH_USER" =~ ^[A-Za-z0-9._-]+$ ]] || { printf 'ERROR: invalid Dashboard username.\n' >&2; exit 1; }
-    else
-      DASHBOARD_AUTH_USER=admin
+  HERMES_OIDC_ISSUER="$(answer_default HERMES_OIDC_ISSUER '')"
+  HERMES_DASHBOARD_OIDC_CLIENT_ID="$(answer_default HERMES_DASHBOARD_OIDC_CLIENT_ID '')"
+  HERMES_DASHBOARD_PUBLIC_URL="$(answer_default HERMES_DASHBOARD_PUBLIC_URL '')"
+  HERMES_WEBUI_OIDC_CLIENT_ID="$(answer_default HERMES_WEBUI_OIDC_CLIENT_ID '')"
+  HERMES_WEBUI_OIDC_REDIRECT_URI="$(answer_default HERMES_WEBUI_OIDC_REDIRECT_URI '')"
+  HERMES_WEBUI_OIDC_ALLOW_CLAIM="$(answer_default HERMES_WEBUI_OIDC_ALLOW_CLAIM '')"
+  HERMES_WEBUI_OIDC_ALLOW_VALUES="$(answer_default HERMES_WEBUI_OIDC_ALLOW_VALUES '')"
+
+  if [[ "$HERMES_AUTH_MODE" == local-password ]]; then
+    if [[ "$HERMES_DASHBOARD_ENABLED" == true || "$HERMES_WEBUI_ENABLED" == true ]]; then
+      if [[ "$HERMES_DASHBOARD_ENABLED" == true ]]; then
+        DASHBOARD_AUTH_USER="$(prompt_value 'Dashboard username' "$(answer_default DASHBOARD_AUTH_USER admin)")"
+        [[ "$DASHBOARD_AUTH_USER" =~ ^[A-Za-z0-9._-]+$ ]] || { printf 'ERROR: invalid Dashboard username.\n' >&2; exit 1; }
+      else
+        DASHBOARD_AUTH_USER=admin
+      fi
+      DASHBOARD_AUTH_PASSWORD="$(prompt_password)"
     fi
-    DASHBOARD_AUTH_PASSWORD="$(prompt_password)"
+  else
+    # Required fields mirror install.sh's validate_external_oidc_urls /
+    # HERMES_AUTH_MODE=external-oidc checks exactly, so there is one place
+    # that decides what's required (install.sh fails closed if anything here
+    # is left as a placeholder or blank).
+    HERMES_OIDC_ISSUER="$(prompt_value 'OIDC issuer URL (shared by Dashboard/WebUI unless overridden in hermes.env)' "$(answer_default HERMES_OIDC_ISSUER https://sso.example.com)")"
+    if [[ "$HERMES_DASHBOARD_ENABLED" == true ]]; then
+      HERMES_DASHBOARD_OIDC_CLIENT_ID="$(prompt_value 'Dashboard OIDC client ID' "$(answer_default HERMES_DASHBOARD_OIDC_CLIENT_ID hermes-dashboard)")"
+      HERMES_DASHBOARD_PUBLIC_URL="$(prompt_value 'Dashboard public URL' "$(answer_default HERMES_DASHBOARD_PUBLIC_URL "https://${DASHBOARD_HOST:-hermes-admin.example.com}")")"
+    fi
+    if [[ "$HERMES_WEBUI_ENABLED" == true ]]; then
+      HERMES_WEBUI_OIDC_CLIENT_ID="$(prompt_value 'WebUI OIDC client ID' "$(answer_default HERMES_WEBUI_OIDC_CLIENT_ID hermes-webui)")"
+      HERMES_WEBUI_OIDC_REDIRECT_URI="$(prompt_value 'WebUI OIDC redirect URI' "$(answer_default HERMES_WEBUI_OIDC_REDIRECT_URI "https://${WEBUI_HOST:-hermes.example.com}/api/auth/oidc/callback")")"
+      HERMES_WEBUI_OIDC_ALLOW_CLAIM="$(prompt_value 'WebUI allow claim (e.g. groups)' "$(answer_default HERMES_WEBUI_OIDC_ALLOW_CLAIM groups)")"
+      HERMES_WEBUI_OIDC_ALLOW_VALUES="$(prompt_value 'WebUI allow values (comma-separated)' "$(answer_default HERMES_WEBUI_OIDC_ALLOW_VALUES hermes-users)")"
+    fi
   fi
 
   IFS=$'\t' read -r HERMES_ANSIBLE_SETUP ansible_origin < <(prompt_profile_boolean_setting HERMES_ANSIBLE_SETUP)
@@ -500,6 +541,14 @@ WEBUI_HOST="${WEBUI_HOST:-}"
 DASHBOARD_HOST="${DASHBOARD_HOST:-}"
 DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER:-}"
 DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
+HERMES_AUTH_MODE="${HERMES_AUTH_MODE:-local-password}"
+HERMES_OIDC_ISSUER="${HERMES_OIDC_ISSUER:-}"
+HERMES_DASHBOARD_OIDC_CLIENT_ID="${HERMES_DASHBOARD_OIDC_CLIENT_ID:-}"
+HERMES_DASHBOARD_PUBLIC_URL="${HERMES_DASHBOARD_PUBLIC_URL:-}"
+HERMES_WEBUI_OIDC_CLIENT_ID="${HERMES_WEBUI_OIDC_CLIENT_ID:-}"
+HERMES_WEBUI_OIDC_REDIRECT_URI="${HERMES_WEBUI_OIDC_REDIRECT_URI:-}"
+HERMES_WEBUI_OIDC_ALLOW_CLAIM="${HERMES_WEBUI_OIDC_ALLOW_CLAIM:-}"
+HERMES_WEBUI_OIDC_ALLOW_VALUES="${HERMES_WEBUI_OIDC_ALLOW_VALUES:-}"
 HERMES_ANSIBLE_VERSION="${HERMES_ANSIBLE_VERSION:-}"
 HERMES_ADDON_PYTHON_VERSION="${HERMES_ADDON_PYTHON_VERSION:-}"
 MODEL_PROVIDER="${MODEL_PROVIDER:-openai-codex}"
@@ -602,6 +651,14 @@ write_setting "$ENV_OUT" HERMES_BROWSER_ENABLED "$HERMES_BROWSER_ENABLED"
 write_setting "$ENV_OUT" WEBUI_HOST "$WEBUI_HOST"
 write_setting "$ENV_OUT" DASHBOARD_HOST "$DASHBOARD_HOST"
 write_setting "$ENV_OUT" DASHBOARD_AUTH_USER "$DASHBOARD_AUTH_USER"
+write_setting "$ENV_OUT" HERMES_AUTH_MODE "$HERMES_AUTH_MODE"
+write_setting "$ENV_OUT" HERMES_OIDC_ISSUER "$HERMES_OIDC_ISSUER"
+write_setting "$ENV_OUT" HERMES_DASHBOARD_OIDC_CLIENT_ID "$HERMES_DASHBOARD_OIDC_CLIENT_ID"
+write_setting "$ENV_OUT" HERMES_DASHBOARD_PUBLIC_URL "$HERMES_DASHBOARD_PUBLIC_URL"
+write_setting "$ENV_OUT" HERMES_WEBUI_OIDC_CLIENT_ID "$HERMES_WEBUI_OIDC_CLIENT_ID"
+write_setting "$ENV_OUT" HERMES_WEBUI_OIDC_REDIRECT_URI "$HERMES_WEBUI_OIDC_REDIRECT_URI"
+write_setting "$ENV_OUT" HERMES_WEBUI_OIDC_ALLOW_CLAIM "$HERMES_WEBUI_OIDC_ALLOW_CLAIM"
+write_setting "$ENV_OUT" HERMES_WEBUI_OIDC_ALLOW_VALUES "$HERMES_WEBUI_OIDC_ALLOW_VALUES"
 write_setting "$ENV_OUT" MODEL_PROVIDER "$MODEL_PROVIDER"
 write_setting "$ENV_OUT" MODEL_NAME "$MODEL_NAME"
 write_setting "$ENV_OUT" HERMES_AGENT_IMAGE "$HERMES_AGENT_IMAGE"
@@ -629,6 +686,14 @@ if [[ "$FROM_ANSWERS" != true ]]; then
   write_setting "$ANSWERS_FILE" WEBUI_HOST "$WEBUI_HOST"
   write_setting "$ANSWERS_FILE" DASHBOARD_HOST "$DASHBOARD_HOST"
   write_setting "$ANSWERS_FILE" DASHBOARD_AUTH_USER "$DASHBOARD_AUTH_USER"
+  write_setting "$ANSWERS_FILE" HERMES_AUTH_MODE "$HERMES_AUTH_MODE"
+  write_setting "$ANSWERS_FILE" HERMES_OIDC_ISSUER "$HERMES_OIDC_ISSUER"
+  write_setting "$ANSWERS_FILE" HERMES_DASHBOARD_OIDC_CLIENT_ID "$HERMES_DASHBOARD_OIDC_CLIENT_ID"
+  write_setting "$ANSWERS_FILE" HERMES_DASHBOARD_PUBLIC_URL "$HERMES_DASHBOARD_PUBLIC_URL"
+  write_setting "$ANSWERS_FILE" HERMES_WEBUI_OIDC_CLIENT_ID "$HERMES_WEBUI_OIDC_CLIENT_ID"
+  write_setting "$ANSWERS_FILE" HERMES_WEBUI_OIDC_REDIRECT_URI "$HERMES_WEBUI_OIDC_REDIRECT_URI"
+  write_setting "$ANSWERS_FILE" HERMES_WEBUI_OIDC_ALLOW_CLAIM "$HERMES_WEBUI_OIDC_ALLOW_CLAIM"
+  write_setting "$ANSWERS_FILE" HERMES_WEBUI_OIDC_ALLOW_VALUES "$HERMES_WEBUI_OIDC_ALLOW_VALUES"
   write_setting "$ANSWERS_FILE" MODEL_PROVIDER "$MODEL_PROVIDER"
   write_setting "$ANSWERS_FILE" MODEL_NAME "$MODEL_NAME"
   write_setting "$ANSWERS_FILE" HERMES_AGENT_IMAGE "$HERMES_AGENT_IMAGE"
@@ -655,6 +720,7 @@ printf '  Components:  agent%s%s%s\n' \
   "$([[ "$HERMES_DASHBOARD_ENABLED" == true ]] && printf ', dashboard')" \
   "$([[ "$HERMES_WEBUI_ENABLED" == true ]] && printf ', webui')" \
   "$([[ "$HERMES_BROWSER_ENABLED" == true ]] && printf ', browser')"
+printf '  Auth mode:   %s\n' "$HERMES_AUTH_MODE"
 print_profile_setting_summary
 printf '\n'
 
