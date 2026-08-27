@@ -326,7 +326,7 @@ fi
 
 config_two="$TMP_DIR/current-two"
 answers_two="$TMP_DIR/answers-two"
-printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\nn\n' | \
+printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\n\noperator\n\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_two" --answers-file "$answers_two" >/dev/null
 # shellcheck disable=SC1090
 source "$config_two/hermes.env"
@@ -344,6 +344,7 @@ DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 [[ "$MODEL_PROVIDER" == openrouter ]]
 [[ "$MODEL_NAME" == openai/gpt-5.6 ]]
 [[ "$HERMES_IMAGE_PULL_POLICY" == IfNotPresent ]]
+[[ "$HERMES_AUTH_MODE" == local-password ]]
 grep -qx 'provider: openrouter' "$config_two/bootstrap/config.yaml"
 grep -qx 'model: openai/gpt-5.6' "$config_two/bootstrap/config.yaml"
 (
@@ -361,6 +362,46 @@ grep -qx 'model: openai/gpt-5.6' "$config_two/bootstrap/config.yaml"
   resolve_runtime_credentials
   [[ ! -e "$config_two/artifacts/generated-credentials.txt" ]]
 )
+
+# external-oidc wizard path: prompt must appear only once, must skip the
+# Dashboard username/password prompts entirely, and the resulting env must
+# satisfy install.sh's own validate_external_oidc_urls (no duplicated
+# validation logic in the wizard).
+config_oidc="$TMP_DIR/current-oidc"
+answers_oidc="$TMP_DIR/answers-oidc"
+printf '\n\n\n\n\n\n\n\ny\ny\nn\nchat.example.com\nadmin.example.com\nexternal-oidc\nhttps://sso.example.com\nhermes-dashboard\nhttps://admin.example.com\nhermes-webui\nhttps://chat.example.com/api/auth/oidc/callback\ngroups\nhermes-users\nn\nn\nn\nn\n' | \
+  "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_oidc" --answers-file "$answers_oidc" >/dev/null
+# shellcheck disable=SC1090
+source "$config_oidc/hermes.env"
+[[ "$HERMES_AUTH_MODE" == external-oidc ]]
+[[ -z "${DASHBOARD_AUTH_USER:-}" ]]
+! grep -Eq 'DASHBOARD_AUTH_PASSWORD' "$answers_oidc"
+[[ "$HERMES_OIDC_ISSUER" == https://sso.example.com ]]
+[[ "$HERMES_DASHBOARD_OIDC_CLIENT_ID" == hermes-dashboard ]]
+[[ "$HERMES_DASHBOARD_PUBLIC_URL" == https://admin.example.com ]]
+[[ "$HERMES_WEBUI_OIDC_CLIENT_ID" == hermes-webui ]]
+[[ "$HERMES_WEBUI_OIDC_REDIRECT_URI" == https://chat.example.com/api/auth/oidc/callback ]]
+[[ "$HERMES_WEBUI_OIDC_ALLOW_CLAIM" == groups ]]
+[[ "$HERMES_WEBUI_OIDC_ALLOW_VALUES" == hermes-users ]]
+(
+  export HERMES_INSTALL_LIB_ONLY=true
+  export ENV_FILE="$config_oidc/hermes.env"
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/install.sh"
+  load_env
+  prepare_defaults
+)
+# Selecting external-oidc must skip the local-password prompts even when
+# only WebUI (not Dashboard) is enabled.
+config_oidc_webui_only="$TMP_DIR/current-oidc-webui-only"
+answers_oidc_webui_only="$TMP_DIR/answers-oidc-webui-only"
+printf '\n\n\n\n\n\n\n\nn\ny\nn\nchat.example.com\nexternal-oidc\nhttps://sso.example.com\nhermes-webui\nhttps://chat.example.com/api/auth/oidc/callback\ngroups\nhermes-users\nn\nn\nn\nn\n' | \
+  "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_oidc_webui_only" --answers-file "$answers_oidc_webui_only" >/dev/null
+# shellcheck disable=SC1090
+source "$config_oidc_webui_only/hermes.env"
+[[ "$HERMES_AUTH_MODE" == external-oidc ]]
+[[ -z "${HERMES_DASHBOARD_OIDC_CLIENT_ID:-}" ]]
+[[ "$HERMES_WEBUI_OIDC_CLIENT_ID" == hermes-webui ]]
 
 requirements="$TMP_DIR/requirements.txt"
 printf '%s\n' 'Markdown' 'ansible==14.1.0' > "$requirements"
