@@ -2,7 +2,7 @@
 
 This document explains how the rendered Kubernetes resources share persistent storage, which paths each container sees, what is expected to live on each volume, and which environment variables wire the containers together.
 
-The examples describe a full installation with Agent, Dashboard, WebUI, and Browserless enabled. The renderer omits disabled Dashboard, WebUI, and Browserless resources. NPX, Ansible, and SSH are feature gates inside retained workloads, so related variables or conditional initialization logic can remain in the manifest even when those features are disabled. Always inspect the exact output in `current_config/artifacts/hermes.yaml` for a specific installation.
+The examples describe a full installation with Agent, Dashboard, WebUI, and Browserless enabled. The renderer omits disabled Dashboard, WebUI, and Browserless resources. Ansible and SSH are feature gates inside retained workloads, so related variables or conditional initialization logic can remain in the manifest even when those features are disabled; Node.js, npm, and npx are always installed and are not gated. Always inspect the exact output in `current_config/artifacts/hermes.yaml` for a specific installation.
 
 ## Application wiring
 
@@ -114,7 +114,7 @@ The init Job and PVC-consuming application Pods use the configured `HERMES_RUNTI
 | `uv/` | Managed `uv` binary and Python installations. | Rebuildable toolchain cache/runtime. |
 | `node/` | Persistent copy of the Node binary required by WebUI browser tools. | Rebuildable toolchain/runtime. |
 | `node_modules` | PVC-resident symlink to the Agent dependency tree in WebUI's Pod-local `hermes-agent-src` `emptyDir`; refreshed on each WebUI Pod creation. | The symlink persists, but its target is recreated with the Pod. |
-| `.config/`, `.cache/`, `.local/`, `.npm/` | XDG state, browser harness data/cache, user-local binaries, and optional NPX data. | May contain caches, session artifacts, or tool state. |
+| `.config/`, `.cache/`, `.local/`, `.npm/` | XDG state, browser harness data/cache, user-local binaries, and NPX data. | May contain caches, session artifacts, or tool state. |
 | `ansible/` | Ansible local temp files, SSH control sockets, and optionally installed collections/roles. | Runtime state; control sockets are ephemeral in meaning even though the directory is persistent. |
 | `home/` and `.profile` | Installer-managed login-shell environment hooks used by terminal subprocesses. | Configuration only; do not place secrets in profile files. |
 
@@ -174,7 +174,7 @@ Agent's `PATH` also includes the Agent image runtime, and WebUI's `PATH` additio
 
 | Variable | Value/source |
 |---|---|
-| `npm_config_yes` | `true`; permits non-interactive NPX execution when enabled. |
+| `npm_config_yes` | `true`; permits non-interactive npx execution. |
 | `API_SERVER_ENABLED` | `true` |
 | `API_SERVER_HOST` | `0.0.0.0` |
 | `API_SERVER_PORT` | `8642` |

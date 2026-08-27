@@ -120,9 +120,9 @@ Symptom from a WebUI chat run:
 agent-browser CLI not found: agent-browser CLI not found. Install it with: npm install -g agent-browser && agent-browser install --with-deps
 ```
 
-Cause: `BROWSER_CDP_URL` only points Hermes to Browserless as the browser backend. Hermes still needs the local `agent-browser` Node controller to speak CDP. The Agent image ships Node and `agent-browser`; the WebUI image does not.
+Cause: `BROWSER_CDP_URL` only points Hermes to Browserless as the browser backend. Hermes still needs the local `agent-browser` Node controller to speak CDP. The WebUI image does not include the Agent image's Node/npm toolchain.
 
-Fix in this installer: the `prepare-browser-cli` initContainer copies `node` from the Agent image to `/opt/data/node/bin/node` and exposes the mounted Agent source `node_modules` through `/opt/data/node_modules`. The WebUI `PATH` includes both directories.
+Fix in this installer: the `prepare-browser-cli` initContainer copies `node`, npm, and npx from the Agent image into `/opt/data/node`, copies the required `libatomic.so.1` runtime library, and exposes the mounted Agent source `node_modules` through `/opt/data/node_modules`. The WebUI `PATH` and `LD_LIBRARY_PATH` include the persistent runtime directories.
 
 Verification:
 

@@ -18,9 +18,8 @@ TIMEOUT = 20.0
 FLAGS = {
     "ansible": ("HERMES_ANSIBLE_SETUP", "HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP"),
     "ssh": ("HERMES_SSH_SETUP", "HERMES_PROFILE_DEFAULT_SSH_SETUP"),
-    "npx": ("HERMES_NPX_SETUP", "HERMES_PROFILE_DEFAULT_NPX_SETUP"),
 }
-LABELS = {"ansible": "Ansible", "ssh": "SSH keys", "npx": "NPX"}
+LABELS = {"ansible": "Ansible", "ssh": "SSH keys"}
 
 
 def profile_defaults(profile: Path) -> dict[str, bool]:
@@ -31,7 +30,7 @@ def profile_defaults(profile: Path) -> dict[str, bool]:
             raw[name] = value
     result: dict[str, bool] = {}
     for flag, (_, profile_name) in FLAGS.items():
-        global_default = {"ansible": "false", "ssh": "true", "npx": "false"}[flag]
+        global_default = {"ansible": "false", "ssh": "true"}[flag]
         value = raw.get(profile_name, global_default)
         if value not in {"true", "false"}:
             raise AssertionError(f"{profile.name}: missing valid {profile_name}")
@@ -266,9 +265,6 @@ def assert_outputs(
     if expected["ansible"]:
         ansible_summary += " (14.1.0)"
     assert ansible_summary in output, f"{profile.name}/{case}: Ansible summary mismatch"
-    assert f"NPX:         {bool_text(expected['npx'])}" in output, (
-        f"{profile.name}/{case}: NPX summary mismatch"
-    )
     assert f"SSH keys:    {bool_text(expected['ssh'])}" in output, (
         f"{profile.name}/{case}: SSH summary mismatch"
     )
@@ -441,16 +437,6 @@ def run_interactive(
                 ssh_answer,
             )
 
-        npx_default = prompt_defaults["npx"]
-        npx_answer = ""
-        if target == "npx":
-            npx_answer = "y" if value else "n"
-        answer(
-            fd,
-            transcript,
-            f"Prepare Node.js/npx for MCP and skill support? [{bool_suffix(npx_default)}]:",
-            npx_answer,
-        )
         answer(fd, transcript, "Install addon Python packages? [y/N]:", "n")
         answer(fd, transcript, "Overwrite existing bootstrap-managed files on the PVC? [y/N]:", "n")
 
@@ -572,22 +558,11 @@ def main() -> None:
         relative_custom_requirements = Path(os.path.relpath(custom_requirements_alias, ROOT))
         _, baseline_answers = run_interactive(profile, work, "blank")
         cases += 1
-        partial_answers = work / f"partial-answers-{profile.name}"
-        partial_answers.write_bytes(baseline_answers.read_bytes())
-        remove_assignment(partial_answers, "HERMES_NPX_SETUP")
-        run_interactive(
-            profile,
-            work,
-            "reuse-missing-npx-environment",
-            reused_answers=partial_answers,
-            preset={"npx": not defaults["npx"]},
-        )
-        cases += 1
         run_interactive(
             profile,
             work,
             "process-environment",
-            preset={"ansible": False, "ssh": False, "npx": not defaults["npx"]},
+            preset={"ansible": False, "ssh": False},
         )
         cases += 1
         _, custom_answers = run_interactive(
@@ -658,8 +633,7 @@ def main() -> None:
             "\n".join(
                 line
                 for line in defaults_path.read_text().splitlines()
-                if not line.startswith("HERMES_PROFILE_DEFAULT_NPX_SETUP=")
-                and not line.startswith("HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS=")
+                if not line.startswith("HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS=")
             )
             + "\n"
         )

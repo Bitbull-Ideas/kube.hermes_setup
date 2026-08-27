@@ -33,7 +33,6 @@ render_case() {
     export HERMES_BOOTSTRAP_MODE="$mode"
     export HERMES_ADDON_REQUIREMENTS=
     export HERMES_ANSIBLE_SETUP=false
-    export HERMES_NPX_SETUP=false
     export HERMES_SSH_SETUP=false
     export HERMES_RENDER_DIR="$TMP_DIR/render-$mode"
     prepare_paths

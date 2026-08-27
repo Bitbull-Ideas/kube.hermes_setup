@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Node.js, npm, and npx are now installed unconditionally in every profile and every installation, replacing the `HERMES_NPX_SETUP` toggle. The npm cache directory (`/opt/data/.npm`), `npm_config_yes=true` (Agent, WebUI, and the terminal profile hook), and the WebUI `prepare-browser-cli` npm/npx copy no longer depend on any conditional; they are part of the baseline runtime.
+- Removes `HERMES_NPX_SETUP` and `HERMES_PROFILE_DEFAULT_NPX_SETUP` from `install.sh`, `configure.sh` (interactive prompt, answers file, validation), `scripts/render_template.py` (boolean validation), all three bootstrap profile `defaults.conf` files, and `examples/hermes.env.example`. Operators upgrading from an installation with `HERMES_NPX_SETUP=false` in `hermes.env` are unaffected: the variable is simply ignored by the new installer/renderer.
+- Updates `docs/operations.md` and `docs/pvc-and-containers.md` to describe Node/npm/npx as always-on infrastructure rather than a toggle.
+- Updates `tests/qa-contract.sh`, `tests/profile-composition.sh`, `tests/configure.sh`, `tests/interactive-profile-defaults.py`, `tests/profile-resolution-model.py`, `tests/ssh-identity.sh`, and `tests/bootstrap-soul.sh` to drop the NPX matrix dimension; `tests/qa-contract.sh` now asserts `HERMES_NPX_SETUP` is absent from the rendered manifest.
+- Fixes `tests/ssh-identity.sh`'s SSH-init-block extraction, which located the end of the block via a `HERMES_NPX_SETUP`-conditional string that no longer exists; it now anchors on `installer_default_soul() {`, the next stable marker in the init job script.
+
+### Fixed
+
+- Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
+
 ## [v2.6.0] - 2026-08-25
 
 ### Added

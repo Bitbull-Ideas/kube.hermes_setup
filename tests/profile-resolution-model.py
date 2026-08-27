@@ -8,7 +8,6 @@ text = (ROOT / "configure.sh").read_text()
 entries = {
     "HERMES_ANSIBLE_SETUP": "boolean|HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP|false|Install and configure Ansible?|Ansible",
     "HERMES_SSH_SETUP": "boolean|HERMES_PROFILE_DEFAULT_SSH_SETUP|true|Prepare a persistent SSH keypair?|SSH keys",
-    "HERMES_NPX_SETUP": "boolean|HERMES_PROFILE_DEFAULT_NPX_SETUP|false|Prepare Node.js/npx for MCP and skill support?|NPX",
     "HERMES_ADDON_REQUIREMENTS": "path|HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS|||Addon packages",
 }
 

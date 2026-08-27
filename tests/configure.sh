@@ -18,7 +18,7 @@ profile_output="$TMP_DIR/profile-output"
 # Exercise the interactive wizard with deterministic answers and inspect its output.
 # Accept the profile, provider, image, pull-policy, and SSH defaults while
 # explicitly disabling unrelated optional components.
-printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\n\nn\nn\nn\n' | \
+printf '\n\n\n\n\n\n\n\nn\nn\nn\nn\n\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install \
     --config-dir "$TMP_DIR/profile-config" \
     --answers-file "$TMP_DIR/profile-answers" > "$profile_output"
@@ -156,7 +156,7 @@ grep -q 'HERMES_INSTALL_LIB_ONLY=false ENV_FILE=' "$ROOT_DIR/configure.sh"
 
 config_one="$TMP_DIR/current-one"
 answers_one="$TMP_DIR/answers-one"
-printf '\n\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\nn\nn\ny\n' | \
+printf '\n\n\n\n\n\n\n\nn\nn\nn\ny\n13.4.0\nn\ny\n' | \
   "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_one" --answers-file "$answers_one" >/dev/null
 
 [[ -f "$config_one/hermes.env" ]]
@@ -175,7 +175,6 @@ source "$config_one/hermes.env"
 [[ "$HERMES_ANSIBLE_SETUP" == true ]]
 [[ "$HERMES_ANSIBLE_VERSION" == 13.4.0 ]]
 [[ "$HERMES_SSH_SETUP" == true ]]
-[[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == overwrite ]]
 [[ "$MODEL_PROVIDER" == openai-codex ]]
 [[ "$MODEL_NAME" == gpt-5.6-luna ]]
@@ -280,7 +279,6 @@ values = {
     "HERMES_BROWSER_IMAGE": "browser:reuse",
     "HERMES_IMAGE_PULL_POLICY": "Always",
     "HERMES_ANSIBLE_SETUP": "false",
-    "HERMES_NPX_SETUP": "true",
     "HERMES_ADDON_PYTHON_VERSION": "3.13",
     "HERMES_ANSIBLE_VERSION": "",
     "HERMES_SSH_SETUP": "true",
@@ -315,7 +313,6 @@ source "$reuse_config/hermes.env"
 [[ "$MODEL_PROVIDER" == reuse-provider && "$MODEL_NAME" == reuse-model ]]
 [[ "$HERMES_IMAGE_PULL_POLICY" == Always ]]
 [[ "$HERMES_ANSIBLE_SETUP" == false && "$HERMES_SSH_SETUP" == true ]]
-[[ "$HERMES_NPX_SETUP" == true ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 
 unowned="$TMP_DIR/unowned"
@@ -329,7 +326,7 @@ fi
 
 config_two="$TMP_DIR/current-two"
 answers_two="$TMP_DIR/answers-two"
-printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\nn\nn\n' | \
+printf '\n\nopenrouter\nopenai/gpt-5.6\n\n\n\n\ny\ny\ny\nchat.example.com\nadmin.example.com\noperator\n\nn\nn\nn\nn\n' | \
   "$ROOT_DIR/configure.sh" --no-install --config-dir "$config_two" --answers-file "$answers_two" >/dev/null
 # shellcheck disable=SC1090
 source "$config_two/hermes.env"
@@ -343,7 +340,6 @@ DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 [[ -z "$DASHBOARD_AUTH_PASSWORD" ]]
 [[ "$HERMES_ANSIBLE_SETUP" == false ]]
 [[ "$HERMES_SSH_SETUP" == false ]]
-[[ "$HERMES_NPX_SETUP" == false ]]
 [[ "$HERMES_BOOTSTRAP_MODE" == missing ]]
 [[ "$MODEL_PROVIDER" == openrouter ]]
 [[ "$MODEL_NAME" == openai/gpt-5.6 ]]

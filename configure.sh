@@ -105,7 +105,6 @@ answer_bool_default() {
 PROFILE_SETTING_DEFINITIONS=(
   'HERMES_ANSIBLE_SETUP|boolean|HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP|false|Install and configure Ansible?|Ansible'
   'HERMES_SSH_SETUP|boolean|HERMES_PROFILE_DEFAULT_SSH_SETUP|true|Prepare a persistent SSH keypair?|SSH keys'
-  'HERMES_NPX_SETUP|boolean|HERMES_PROFILE_DEFAULT_NPX_SETUP|false|Prepare Node.js/npx for MCP and skill support?|NPX'
   'HERMES_ADDON_REQUIREMENTS|path|HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS|||Addon packages'
 )
 PROFILE_CONTROLLED_SETTINGS=()
@@ -172,7 +171,7 @@ load_profile_setting_defaults() {
     PROFILE_SETTING_DEFAULT_ORIGINS["$setting"]="$origin"
   done < <(
     unset HERMES_PROFILE_DEFAULT_SSH_SETUP HERMES_PROFILE_DEFAULT_ANSIBLE_SETUP
-    unset HERMES_PROFILE_DEFAULT_NPX_SETUP HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS
+    unset HERMES_PROFILE_DEFAULT_ADDON_REQUIREMENTS
     # defaults.conf is repository-controlled and validated above.
     # shellcheck disable=SC1090
     source "$defaults"
@@ -461,9 +460,6 @@ else
     PROFILE_SETTING_FINAL_ORIGINS[HERMES_SSH_SETUP]="$ssh_origin"
   fi
 
-  IFS=$'\t' read -r HERMES_NPX_SETUP npx_origin < <(prompt_profile_boolean_setting HERMES_NPX_SETUP)
-  PROFILE_SETTING_FINAL_ORIGINS[HERMES_NPX_SETUP]="$npx_origin"
-
   HERMES_ADDON_PYTHON_VERSION="$(answer_default HERMES_ADDON_PYTHON_VERSION '')"
   if ask_yes_no 'Install addon Python packages?' "$([[ -n "$HERMES_ADDON_PYTHON_VERSION" ]] && echo true || echo false)"; then
     while true; do
@@ -505,7 +501,6 @@ DASHBOARD_HOST="${DASHBOARD_HOST:-}"
 DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER:-}"
 DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}"
 HERMES_ANSIBLE_VERSION="${HERMES_ANSIBLE_VERSION:-}"
-HERMES_NPX_SETUP="${HERMES_NPX_SETUP:-}"
 HERMES_ADDON_PYTHON_VERSION="${HERMES_ADDON_PYTHON_VERSION:-}"
 MODEL_PROVIDER="${MODEL_PROVIDER:-openai-codex}"
 MODEL_NAME="${MODEL_NAME:-gpt-5.6-luna}"
