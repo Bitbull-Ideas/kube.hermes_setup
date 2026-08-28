@@ -333,14 +333,24 @@ def main() -> None:
                 'PYTHON_BIN=/opt/hermes/.venv/bin/python',
                 'NODE_SRC=/usr/local/bin/node',
                 'NPM_SRC=/usr/local/lib/node_modules/npm',
+                'cp -L /poc/requirements-a.lock /test-tmp/requirements-a.lock',
+                'cp -L /poc/requirements-b.lock /test-tmp/requirements-b.lock',
+                'cp -L /poc/requirements-bad.lock /test-tmp/requirements-bad.lock',
+                'REQUIREMENTS_A=/test-tmp/requirements-a.lock',
+                'REQUIREMENTS_B=/test-tmp/requirements-b.lock',
+                'REQUIREMENTS_BAD=/test-tmp/requirements-bad.lock',
             ),
             ROOT / "kubernetes/entrypoints/idempotency.sh": (
                 'PYTHON_BIN=/opt/hermes/.venv/bin/python',
                 'NODE_SRC=/usr/local/bin/node',
                 'NPM_SRC=/usr/local/lib/node_modules/npm',
+                'cp -L /poc/requirements-a.lock /test-tmp/requirements-a.lock',
+                'REQUIREMENTS_A=/test-tmp/requirements-a.lock',
             ),
             ROOT / "kubernetes/entrypoints/invalid-lock.sh": (
                 'PYTHON_BIN=/opt/hermes/.venv/bin/python',
+                'cp -L /poc/requirements-bad.lock /test-tmp/requirements-bad.lock',
+                'REQUIREMENTS_BAD=/test-tmp/requirements-bad.lock',
             ),
         }
         for script, required in entrypoint_contract.items():

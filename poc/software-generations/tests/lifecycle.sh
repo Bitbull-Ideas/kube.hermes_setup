@@ -4,7 +4,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${SOFTWARE_ROOT:?SOFTWARE_ROOT must be an externally managed fresh directory}"
-: "${TEST_TMP:?TEST_TMP must be an externally managed fresh directory}"
+: "${TEST_TMP:?TEST_TMP must be a separate externally managed fresh directory}"
+REQUIREMENTS_A="${REQUIREMENTS_A:-$ROOT_DIR/requirements-a.lock}"
+REQUIREMENTS_B="${REQUIREMENTS_B:-$ROOT_DIR/requirements-b.lock}"
+REQUIREMENTS_BAD="${REQUIREMENTS_BAD:-$ROOT_DIR/requirements-bad.lock}"
 PYTHON_BIN="${PYTHON_BIN:-/opt/data/uv/python/cpython-3.13-linux-x86_64-gnu/bin/python3}"
 NODE_SRC="${NODE_SRC:-/opt/data/node/bin/node}"
 NPM_SRC="${NPM_SRC:-/opt/data/node/lib/node_modules/npm}"
@@ -94,7 +97,7 @@ assert_rollback_rejects() {
 }
 
 # Python A: exact locked inventory, metadata, reuse, and no previous link.
-export SOFTWARE_ROOT PYTHON_BIN BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$ROOT_DIR/requirements-a.lock"
+export SOFTWARE_ROOT PYTHON_BIN BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$REQUIREMENTS_A"
 py_a="$($PY_RECONCILE)"
 [[ "$py_a" =~ ^[0-9a-f]{64}$ ]]
 [[ "$(wc -l <<<"$py_a")" == 1 ]]
@@ -110,7 +113,7 @@ py_count="$(generation_count "$SOFTWARE_ROOT/python")"
 assert_clean_component "$SOFTWARE_ROOT/python"
 
 # Python B removes six exactly; a bad lock cannot move links or add generations.
-export BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$ROOT_DIR/requirements-b.lock"
+export BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$REQUIREMENTS_B"
 py_b="$($PY_RECONCILE)"
 [[ "$py_b" != "$py_a" ]]
 [[ "$py_b" =~ ^[0-9a-f]{64}$ && "$(wc -l <<<"$py_b")" == 1 ]]
@@ -119,7 +122,7 @@ py_b="$($PY_RECONCILE)"
 assert_python_inventory "$SOFTWARE_ROOT/python/current/bin/python" pyfiglet
 if "$SOFTWARE_ROOT/python/current/bin/python" -c 'import six' 2>/dev/null; then exit 1; fi
 before_current="$(link_target "$SOFTWARE_ROOT/python/current")"; before_previous="$(link_target "$SOFTWARE_ROOT/python/previous")"; before_count="$(generation_count "$SOFTWARE_ROOT/python")"
-export BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$ROOT_DIR/requirements-bad.lock"
+export BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$REQUIREMENTS_BAD"
 if "$PY_RECONCILE" >"$TEST_TMP/python-bad.log" 2>&1; then exit 1; fi
 [[ "$(link_target "$SOFTWARE_ROOT/python/current")" == "$before_current" ]]
 [[ "$(link_target "$SOFTWARE_ROOT/python/previous")" == "$before_previous" ]]
@@ -131,7 +134,7 @@ assert_clean_component "$SOFTWARE_ROOT/python"
 [[ "$(link_target "$SOFTWARE_ROOT/python/current")" == "generations/$py_a" ]]
 [[ "$(link_target "$SOFTWARE_ROOT/python/previous")" == "generations/$py_b" ]]
 assert_python_inventory "$SOFTWARE_ROOT/python/current/bin/python" 'pyfiglet,six'
-export BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$ROOT_DIR/requirements-a.lock"
+export BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST" LOCKFILE="$REQUIREMENTS_A"
 "$PY_RECONCILE" >"$TEST_TMP/py-concurrent-1" & p1=$!
 "$PY_RECONCILE" >"$TEST_TMP/py-concurrent-2" & p2=$!
 wait "$p1"; wait "$p2"

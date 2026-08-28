@@ -7,6 +7,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${NODE_SRC:?}"
 : "${NPM_SRC:?}"
 : "${TEST_SOURCE_DIGEST:?}"
+REQUIREMENTS_A="${REQUIREMENTS_A:-$ROOT_DIR/requirements-a.lock}"
 state() {
   local component="$1"
   printf '%s|%s|%s|%s' \
@@ -17,7 +18,7 @@ state() {
 }
 py_before="$(state python)"
 node_before="$(state node)"
-export LOCKFILE="$ROOT_DIR/requirements-a.lock" BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST"
+export LOCKFILE="$REQUIREMENTS_A" BUILDER_IMAGE_DIGEST="$TEST_SOURCE_DIGEST"
 py_hash="$($ROOT_DIR/python/reconcile.sh)"
 export SOURCE_IMAGE_DIGEST="$TEST_SOURCE_DIGEST"
 node_hash="$($ROOT_DIR/node/reconcile.sh)"
