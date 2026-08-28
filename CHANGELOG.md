@@ -33,7 +33,10 @@ All notable changes to this project are documented in this file.
 
 - Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; malformed active-pointer recovery; unexpected-library and same-key content-corruption rebuild; repair idempotency; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
 - Passes the component/profile matrix, QA contract, full repository shell/Python validation, credential-preservation tests, and encrypted backup tests.
-- **Release gate pending after final review fixes:** rerun fresh-PVC transactional QA and the clean K3s component/full-stack/Chromium/unchanged-reinstall matrix after malformed-pointer recovery, complete payload-tree integrity, and startup-probe changes.
+- Passes fresh-PVC transactional QA at code commit `f026107`: malformed-pointer recovery, unexpected-library and payload-corruption rebuild, immediate repair idempotency, forced dependency failure preservation, inherited loader behavior, zero restarts/unexpected warnings, and cleanup.
+- Passes the clean live K3s Agent-only, Dashboard, WebUI, Browserless, and full-stack matrix at `f026107`; startup probes reported only expected not-ready events and readiness/liveness produced zero warnings.
+- Passes trusted external HTTPS Chromium before and after unchanged reinstall: invalid password rejected, configured password accepted, authenticated screenshots captured, and authenticated consoles clean.
+- Passes unchanged reinstall with Secret hash stability, PVC identity preservation, marker integrity, successful rollouts, and complete route/namespace/PV cleanup.
 - **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
 
 ## [v2.6.0] - 2026-08-25
