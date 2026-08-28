@@ -254,26 +254,32 @@ run_doctor_check() {
   PATH="$TMP_DIR/bin:$PATH" \
   FAKE_SECRET_REVISION="${FAKE_SECRET_REVISION_OVERRIDE:-$expected_revision}" \
   FAKE_REVISION="$expected_revision" FAKE_API_KEY=$api_key FAKE_HEALTH_URL="$health_url" \
-  HERMES_DOCTOR_LIB_ONLY=true HERMES_NAMESPACE=hermes \
+  HERMES_DOCTOR_LIB_ONLY=true HERMES_NAMESPACE=hermes HERMES_AUTH_MODE=external-oidc \
   HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true \
   "$@" bash -c 'source "$1"; check_api_key_convergence; printf "fail_count=%s\n" "$fail_count"' _ "$ROOT_DIR/doctor.sh"
 }
 
 healthy_output="$(run_doctor_check env)"
 for app in hermes-agent hermes-dashboard hermes-webui; do
-  grep -Fq "$app API key revision matches Secret, running process, and authenticated health" <<<"$healthy_output"
+  grep -Fq "$app API key revision matches Secret and running Pod" <<<"$healthy_output"
+  grep -Fq "$app internal API bearer authentication succeeds" <<<"$healthy_output"
 done
 grep -Fq 'fail_count=0' <<<"$healthy_output"
 ! grep -Fq "$api_key" <<<"$healthy_output"
 
 drift_output="$(run_doctor_check env FAKE_RUNTIME_DRIFT_APP=hermes-webui)"
-grep -Fq 'hermes-webui API key revision drift or authenticated health failure detected' <<<"$drift_output"
+grep -Fq 'hermes-webui internal API bearer authentication failed; external OIDC protects user login and does not replace the internal API key' <<<"$drift_output"
 grep -Fq 'fail_count=1' <<<"$drift_output"
 ! grep -Fq "$api_key" <<<"$drift_output"
+! grep -Fq 'revision drift or authenticated health failure' <<<"$drift_output"
 
 pod_drift_output="$(run_doctor_check env FAKE_POD_DRIFT_APP=hermes-dashboard)"
-grep -Fq 'hermes-dashboard API key revision drift or authenticated health failure detected' <<<"$pod_drift_output"
+grep -Fq 'hermes-dashboard running Pod API key revision does not match Secret' <<<"$pod_drift_output"
 grep -Fq 'fail_count=1' <<<"$pod_drift_output"
+
+template_drift_output="$(run_doctor_check env FAKE_DRIFT_APP=hermes-agent)"
+grep -Fq 'hermes-agent Deployment API key revision does not match Secret' <<<"$template_drift_output"
+grep -Fq 'fail_count=1' <<<"$template_drift_output"
 
 unsafe_revision_output="$(FAKE_SECRET_REVISION_OVERRIDE='unsafe revision' run_doctor_check env)"
 grep -Fq 'API server key Secret revision missing or unreadable' <<<"$unsafe_revision_output"
