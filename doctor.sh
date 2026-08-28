@@ -228,7 +228,7 @@ check_auth_mode() {
 }
 
 check_api_key_convergence() {
-  local expected_revision app template_revision pod pod_revision runtime_health
+  local expected_revision app template_revision pod pod_revision runtime_health revision_matches
   expected_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}' 2>/dev/null || true)"
   [[ "$expected_revision" =~ ^[A-Za-z0-9._:-]+$ ]] || { fail "API server key Secret revision missing or unreadable"; return; }
 
@@ -237,6 +237,18 @@ check_api_key_convergence() {
     pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
     [[ -n "$pod" ]] || { fail "no running $app pod for API key revision check"; continue; }
     pod_revision="$(kubectl -n "$HERMES_NAMESPACE" get pod "$pod" -o 'go-template={{ index .metadata.annotations "kube-hermes-setup.example.com/api-key-revision" }}' 2>/dev/null || true)"
+
+    revision_matches=true
+    if [[ "$template_revision" != "$expected_revision" ]]; then
+      fail "$app Deployment API key revision does not match Secret"
+      revision_matches=false
+    fi
+    if [[ "$pod_revision" != "$expected_revision" ]]; then
+      fail "$app running Pod API key revision does not match Secret"
+      revision_matches=false
+    fi
+    [[ "$revision_matches" == false ]] || ok "$app API key revision matches Secret and running Pod"
+
     runtime_health="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
       PY="$(command -v python3 || command -v python || true)"
       [ -n "$PY" ] || PY=/opt/hermes/.venv/bin/python
@@ -253,10 +265,12 @@ with urlopen(request, timeout=10) as response:
 print("ok")
 '\''
     ' 2>/dev/null || true)"
-    if [[ "$template_revision" == "$expected_revision" && "$pod_revision" == "$expected_revision" && "$runtime_health" == ok ]]; then
-      ok "$app API key revision matches Secret, running process, and authenticated health"
+    if [[ "$runtime_health" == ok ]]; then
+      ok "$app internal API bearer authentication succeeds"
+    elif [[ "$HERMES_AUTH_MODE" == external-oidc ]]; then
+      fail "$app internal API bearer authentication failed; external OIDC protects user login and does not replace the internal API key"
     else
-      fail "$app API key revision drift or authenticated health failure detected"
+      fail "$app internal API bearer authentication failed"
     fi
   done
 }
