@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Enforce the supported v2.7.0 release shape and reject experimental PoC artifacts.
+# Enforce the supported v2.7.1 release shape and reject experimental PoC artifacts.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-[[ "$(<VERSION)" == 2.7.0 ]]
+[[ "$(<VERSION)" == 2.7.1 ]]
+grep -Fq '## [v2.7.1] - 2026-08-28' CHANGELOG.md
 grep -Fq '## [v2.7.0] - 2026-08-28' CHANGELOG.md
 grep -Fq '[Issue #98]' CHANGELOG.md
 
@@ -31,4 +32,9 @@ grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' manifests/h
 # The production regression is part of the normal repository test tree.
 [[ -x tests/node-runtime-launcher.sh ]]
 
-printf 'v2.7.0 final-state contract passed\n'
+# Password-file automation must never echo the passphrase through the PTY.
+grep -Fq '"--echo",' scripts/age_passphrase.py
+grep -Fq '"never",' scripts/age_passphrase.py
+grep -Fq 'refusing to forward it' scripts/age_passphrase.py
+
+printf 'v2.7.1 final-state contract passed\n'
