@@ -31,12 +31,9 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
+- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; same-key content-corruption rebuild; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
 - Passes the component/profile matrix, QA contract, full repository shell/Python validation, credential-preservation tests, and encrypted backup tests.
-- Passes the clean live K3s component matrix at code commit `beb02f7`: Agent-only, Dashboard, WebUI, Browserless, and full stack; all enabled workloads and the init Job became ready with zero container restarts and zero Warning Events.
-- Passes trusted external HTTPS Chromium acceptance before and after unchanged reinstall: login page rendered, invalid password rejected, configured password accepted, authenticated UI screenshot captured, and authenticated browser console remained clean.
-- Passes unchanged reinstall with Secret hash stability, PVC identity preservation, persisted marker integrity, successful rollouts, and no readiness-probe Warning Events after the Agent/Dashboard startup-delay correction.
-- Passes fresh-PVC transactional Node-runtime QA at code commit `beb02f7`: forced dependency failure left the active tree, pointer, and Node/npm/npx versions unchanged; idempotent rerun, inherited loader preservation, zero restarts/warnings, and cleanup all succeeded.
+- **Release gate pending after the corruption-recovery review fix:** rerun fresh-PVC transactional QA and the clean K3s component/full-stack/Chromium/unchanged-reinstall matrix at the final code commit before publishing v2.7.0.
 - **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
 
 ## [v2.6.0] - 2026-08-25

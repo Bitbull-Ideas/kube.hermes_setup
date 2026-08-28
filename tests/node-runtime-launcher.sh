@@ -134,6 +134,22 @@ PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
 [[ -x "$ACTIVE_RUNTIME/libexec/node" ]]
 [[ "$("$NODE" marker)" == runtime-v1 ]]
 
+# A content-corrupted same-key runtime is replaced from the trusted source.
+corrupt_runtime="$ACTIVE_RUNTIME"
+printf '%s\n' '#!/bin/sh' 'printf corrupted-runtime\\n' > "$corrupt_runtime/libexec/node"
+chmod 755 "$corrupt_runtime/libexec/node"
+set +e
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh" >/dev/null 2>&1
+corrupt_repair_rc=$?
+set -e
+[[ "$corrupt_repair_rc" == 0 ]]
+ACTIVE_RUNTIME="$(readlink -f "$TMP_DIR/runtime/current")"
+[[ "$ACTIVE_RUNTIME" != "$corrupt_runtime" ]]
+[[ ! -e "$corrupt_runtime" ]]
+[[ "$("$NODE" marker)" == runtime-v1 ]]
+[[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPM" --version)" == npm-ok ]]
+[[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPX" --version)" == npx-ok ]]
+
 # A failed source-runtime refresh must not publish any part of the candidate.
 before_state="$(python3 - "$TMP_DIR/runtime" <<'PY'
 from pathlib import Path
