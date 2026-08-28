@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [v2.7.0] - 2026-08-28
 
 ### Added
 
@@ -22,6 +22,18 @@ All notable changes to this project are documented in this file.
 - Forces each internal API-key reconciliation to create exactly one real consumer rollout by adding a fresh non-secret request annotation alongside the Secret revision, then verifies only Ready Pods carrying both values. This prevents an already-current revision annotation from turning reconciliation into a no-op rollout while the Agent keeps an older in-memory key. [Issue #101]
 - Reads an existing `/opt/data/.env` through an atomic same-directory hard-link snapshot, rejects symlinked/non-regular targets, and disables service-account-token automounting for storage helper Pods so restore/reconciliation cannot follow a raced credential-file substitution into container credentials.
 - Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
+- Preserves a custom `HERMES_WEBUI_IMAGE` loader environment instead of replacing its `LD_LIBRARY_PATH` with the copied Node runtime directory. `prepare-browser-cli` stores the Node ELF under `/opt/data/node/libexec/node`; `/opt/data/node/bin/node` prepends the private library directory for Node processes only, preserves inherited paths without duplication, and treats `libatomic.so.1` as optional unless the source ELF resolves or requires it. [Issue #98]
+
+### Documentation
+
+- Updates PVC architecture and troubleshooting guidance for the Node payload/launcher split and custom WebUI image loader-path preservation.
+
+### Verification
+
+- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; and optional `libatomic.so.1` handling.
+- Passes the component/profile matrix, QA contract, full repository shell/Python validation, credential-preservation tests, and encrypted backup tests.
+- Passes a separate fresh-PVC live K3s Job using the exact production-rendered `prepare-browser-cli` script: Node/npm/npx execute from the default WebUI image, the launcher preserves `/custom/image/lib:/custom/extension/lib`, no service-account token is mounted, and Job/PVC cleanup completes.
+- **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
 
 ## [v2.6.0] - 2026-08-25
 
