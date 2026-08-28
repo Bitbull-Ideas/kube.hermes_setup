@@ -39,7 +39,7 @@ for name in ('hermes-agent','hermes-dashboard'):
     end=text.find('\n---\n',start)
     block=text[start:end if end >= 0 else None]
     match=re.search(r'readinessProbe:\n(?:.*\n){0,8}?\s+initialDelaySeconds:\s*(\d+)',block)
-    assert match and int(match.group(1)) >= 60, (name, match.group(1) if match else None)
+    assert match and int(match.group(1)) >= 90, (name, match.group(1) if match else None)
 PY
 
 # Required maintainer guidance must remain present in AGENTS.md.
