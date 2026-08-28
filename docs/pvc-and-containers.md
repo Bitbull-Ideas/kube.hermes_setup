@@ -90,7 +90,7 @@ The init Job and PVC-consuming application Pods use the configured `HERMES_RUNTI
 | `hermes-dashboard/prepare-permissions` | Both PVCs | `/opt/data` and `/workspace` RW | Restores ownership and security-sensitive modes before Dashboard starts. |
 | `hermes-webui/prepare-webui-state` | Both PVCs | `/opt/data` and `/workspace` RW | Prepares WebUI state and restores ownership/modes. |
 | `hermes-webui/copy-agent-source` | `emptyDir` `hermes-agent-src` | `/agent-src` RW | Copies the Agent source bundled in the Agent image. |
-| `hermes-webui/prepare-browser-cli` | PVC `hermes-home` | `/opt/data` RW | Refreshes the Node ELF payload, Node-only loader wrapper, npm/npx runtime, optional resolved `libatomic.so.1`, and browser dependency symlink. |
+| `hermes-webui/prepare-browser-cli` | PVC `hermes-home` | `/opt/data` RW | Builds and validates a complete Node/npm/npx runtime off-path, then atomically activates it through `/opt/data/node/current` and refreshes the browser dependency symlink. |
 | `hermes-webui/hermes-webui` | `emptyDir` `hermes-agent-src` | `/home/hermeswebui/.hermes/hermes-agent` read-only | Makes the copied Agent implementation available to WebUI chat sessions. Recreated with the Pod. |
 
 ## What resides on `hermes-home`
@@ -112,7 +112,7 @@ The init Job and PVC-consuming application Pods use the configured `HERMES_RUNTI
 | `hermes-managed/bin/` | Installer-managed wrapper directory. The persistent-config-aware `ssh` entry point exists only when SSH setup produced it. | Executable application support files. |
 | `addon-venv/` | Persistent addon Python virtual environment. | Rebuildable, but persisted to avoid reinstalling on every Pod start. |
 | `uv/` | Managed `uv` binary and Python installations. | Rebuildable toolchain cache/runtime. |
-| `node/` | Rebuildable Node payload under `libexec/`, launcher under `bin/`, npm tree, and optional private runtime library required by WebUI browser tools. | Rebuildable toolchain/runtime. |
+| `node/` | Validated Node/npm/npx runtimes under `runtimes/<hash>/`, atomic `current` pointer, stable launchers under `bin/`, and optional private runtime library required by WebUI browser tools. | Rebuildable toolchain/runtime. |
 | `node_modules` | PVC-resident symlink to the Agent dependency tree in WebUI's Pod-local `hermes-agent-src` `emptyDir`; refreshed on each WebUI Pod creation. | The symlink persists, but its target is recreated with the Pod. |
 | `.config/`, `.cache/`, `.local/`, `.npm/` | XDG state, browser harness data/cache, user-local binaries, and NPX data. | May contain caches, session artifacts, or tool state. |
 | `ansible/` | Ansible local temp files, SSH control sockets, and optionally installed collections/roles. | Runtime state; control sockets are ephemeral in meaning even though the directory is persistent. |

@@ -39,8 +39,12 @@ assert 'LD_LIBRARY_PATH' not in env, 'WebUI still replaces the image-defined LD_
 init=next(x for x in pod['initContainers'] if x['name']=='prepare-browser-cli')
 script=init['args'][0]
 assert 'node_root=/opt/data/node' in script
-assert '"$node_root/libexec/node"' in script
+assert 'runtimes="$node_root/runtimes"' in script
+assert 'runtime_stage="$runtimes/.$runtime_key.$$"' in script
+assert 'mv -fT "$current_tmp" "$node_root/current"' in script
 assert 'NODE_LAUNCHER' in script
+assert 'NPM_LAUNCHER' in script
+assert 'NPX_LAUNCHER' in script
 assert "[ -n \"$node_atomic_lib\" ] ||" not in script
 open(output,'w').write(script)
 PY
@@ -54,7 +58,9 @@ mkdir -p \
 cat > "$TMP_DIR/source/bin/node" <<'NODE'
 #!/bin/sh
 case "${1-}" in
+  --version) printf '%s\n' runtime-v1 ;;
   env) printenv LD_LIBRARY_PATH 2>/dev/null || true ;;
+  marker) printf '%s\n' runtime-v1 ;;
   args) shift; printf '%s\n' "$@" ;;
   exit) exit "$2" ;;
   */bin/npm|*/npm-cli.js) printf '%s\n' npm-ok ;;
@@ -69,6 +75,10 @@ printf '%s\n' '{}' > "$TMP_DIR/source/npm/package.json"
 chmod 755 "$TMP_DIR/source/npm/bin/"*.js
 cat > "$TMP_DIR/fake-bin/ldd" <<'LDD'
 #!/bin/sh
+if [ "${LDD_FAIL:-0}" = 1 ]; then
+  printf '%s\n' 'libatomic.so.1 => not found'
+  exit 0
+fi
 printf '%s\n' 'linux-vdso.so.1 (0x0000000000000000)'
 LDD
 chmod 755 "$TMP_DIR/fake-bin/ldd"
@@ -91,7 +101,9 @@ NODE="$TMP_DIR/runtime/bin/node"
 NPM="$TMP_DIR/runtime/bin/npm"
 NPX="$TMP_DIR/runtime/bin/npx"
 PRIVATE="$TMP_DIR/runtime/lib"
-[[ -x "$NODE" && -x "$TMP_DIR/runtime/libexec/node" ]]
+ACTIVE_RUNTIME="$(readlink -f "$TMP_DIR/runtime/current")"
+PRIVATE="$ACTIVE_RUNTIME/lib"
+[[ -x "$NODE" && -x "$ACTIVE_RUNTIME/libexec/node" ]]
 [[ ! -e "$PRIVATE/libatomic.so.1" && ! -L "$PRIVATE/libatomic.so.1" ]]
 unset LD_LIBRARY_PATH || true
 [[ "$("$NODE" env)" == "$PRIVATE" ]]
@@ -110,5 +122,85 @@ npm_result="$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPM" --version)"
 npx_result="$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPX" --version)"
 [[ "$npm_result" == npm-ok ]]
 [[ "$npx_result" == npx-ok ]]
+
+# A failed source-runtime refresh must not publish any part of the candidate.
+before_state="$(python3 - "$TMP_DIR/runtime" <<'PY'
+from pathlib import Path
+import hashlib,sys
+root=Path(sys.argv[1])
+rows=[]
+for path in sorted(x for x in root.rglob('*') if x.is_file() or x.is_symlink()):
+    rel=path.relative_to(root).as_posix()
+    if path.is_symlink(): payload=('L:'+path.readlink().as_posix()).encode()
+    else: payload=b'F:'+path.read_bytes()
+    rows.append(rel.encode()+b'\0'+payload)
+print(hashlib.sha256(b'\0'.join(rows)).hexdigest())
+PY
+)"
+sed -i 's/runtime-v1/runtime-v2/' "$TMP_DIR/source/bin/node"
+set +e
+LDD_FAIL=1 PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh" >/dev/null 2>&1
+refresh_rc=$?
+set -e
+[[ "$refresh_rc" != 0 ]]
+[[ "$("$NODE" marker)" == runtime-v1 ]]
+after_ldd_failure="$(python3 - "$TMP_DIR/runtime" <<'PY'
+from pathlib import Path
+import hashlib,sys
+root=Path(sys.argv[1]); rows=[]
+for path in sorted(x for x in root.rglob('*') if x.is_file() or x.is_symlink()):
+    rel=path.relative_to(root).as_posix()
+    payload=('L:'+path.readlink().as_posix()).encode() if path.is_symlink() else b'F:'+path.read_bytes()
+    rows.append(rel.encode()+b'\0'+payload)
+print(hashlib.sha256(b'\0'.join(rows)).hexdigest())
+PY
+)"
+[[ "$after_ldd_failure" == "$before_state" ]]
+
+# A malformed npm candidate must also fail before changing active commands.
+mv "$TMP_DIR/source/npm/bin/npm-cli.js" "$TMP_DIR/source/npm/bin/npm-cli.js.missing"
+set +e
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh" >/dev/null 2>&1
+npm_refresh_rc=$?
+set -e
+[[ "$npm_refresh_rc" != 0 ]]
+[[ "$("$NODE" marker)" == runtime-v1 ]]
+[[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPM" --version)" == npm-ok ]]
+[[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPX" --version)" == npx-ok ]]
+after_npm_failure="$(python3 - "$TMP_DIR/runtime" <<'PY'
+from pathlib import Path
+import hashlib,sys
+root=Path(sys.argv[1]); rows=[]
+for path in sorted(x for x in root.rglob('*') if x.is_file() or x.is_symlink()):
+    rel=path.relative_to(root).as_posix()
+    payload=('L:'+path.readlink().as_posix()).encode() if path.is_symlink() else b'F:'+path.read_bytes()
+    rows.append(rel.encode()+b'\0'+payload)
+print(hashlib.sha256(b'\0'.join(rows)).hexdigest())
+PY
+)"
+[[ "$after_npm_failure" == "$before_state" ]]
+
+# A complete v2 candidate publishes only after validation.
+mv "$TMP_DIR/source/npm/bin/npm-cli.js.missing" "$TMP_DIR/source/npm/bin/npm-cli.js"
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
+ACTIVE_RUNTIME="$(readlink -f "$TMP_DIR/runtime/current")"
+[[ "$ACTIVE_RUNTIME" == "$TMP_DIR/runtime/runtimes/"* ]]
+[[ "$("$NODE" marker)" == runtime-v2 ]]
+[[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPM" --version)" == npm-ok ]]
+[[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPX" --version)" == npx-ok ]]
+[[ "$(readlink -f "$TMP_DIR/runtime/previous")" != "$ACTIVE_RUNTIME" ]]
+[[ "$(find "$TMP_DIR/runtime/runtimes" -mindepth 1 -maxdepth 1 -type d | wc -l)" == 2 ]]
+
+# A third valid update retains v2 for rollback and garbage-collects v1.
+sed -i 's/runtime-v2/runtime-v3/' "$TMP_DIR/source/bin/node"
+v2_runtime="$ACTIVE_RUNTIME"
+v1_runtime="$(readlink -f "$TMP_DIR/runtime/previous")"
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
+v3_runtime="$(readlink -f "$TMP_DIR/runtime/current")"
+[[ "$v3_runtime" != "$v2_runtime" ]]
+[[ "$(readlink -f "$TMP_DIR/runtime/previous")" == "$v2_runtime" ]]
+[[ ! -e "$v1_runtime" ]]
+[[ "$(find "$TMP_DIR/runtime/runtimes" -mindepth 1 -maxdepth 1 -type d | wc -l)" == 2 ]]
+[[ "$("$NODE" marker)" == runtime-v3 ]]
 
 printf 'production Node launcher tests passed\n'

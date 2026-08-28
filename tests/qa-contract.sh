@@ -14,12 +14,15 @@ MANIFEST="$ROOT_DIR/manifests/hermes.yaml.tpl"
 
 # The WebUI image must receive a complete, runnable Node/npm/npx toolchain
 # from the Agent image without replacing the WebUI image's own loader path.
-grep -Fq 'cp -a "$npm_source" "$node_root/lib/node_modules/npm"' "$MANIFEST"
-grep -Fq 'ln -sfn "$node_root/lib/node_modules/npm/bin/npx-cli.js" "$node_root/bin/npx"' "$MANIFEST"
-grep -Fq 'ldd_output="$(ldd "$node_source" 2>&1)"' "$MANIFEST"
-grep -Fq 'node_root=/opt/data/node' "$MANIFEST"
-grep -Fq '"$node_root/libexec/node"' "$MANIFEST"
+# Candidate runtimes are validated off-path and activated through one pointer.
+grep -Fq 'cp -a "$npm_source" "$runtime_stage/lib/node_modules/npm"' "$MANIFEST"
+grep -Fq 'runtime_stage="$runtimes/.$runtime_key.$$"' "$MANIFEST"
+grep -Fq 'LD_LIBRARY_PATH="$runtime_stage/lib" "$runtime_stage/libexec/node" --version' "$MANIFEST"
+grep -Fq 'mv -fT "$current_tmp" "$node_root/current"' "$MANIFEST"
+grep -Fq 'runtime="$(readlink -f "$node_root/current")"' "$MANIFEST"
 grep -Fq 'NODE_LAUNCHER' "$MANIFEST"
+grep -Fq 'NPM_LAUNCHER' "$MANIFEST"
+grep -Fq 'NPX_LAUNCHER' "$MANIFEST"
 grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
 ! grep -Fq '        - name: LD_LIBRARY_PATH' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
