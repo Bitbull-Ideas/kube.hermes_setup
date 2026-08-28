@@ -13,12 +13,15 @@ QA_DOC="$ROOT_DIR/docs/qa.md"
 MANIFEST="$ROOT_DIR/manifests/hermes.yaml.tpl"
 
 # The WebUI image must receive a complete, runnable Node/npm/npx toolchain
-# from the Agent image, unconditionally, including the shared library absent
-# from WebUI.
-grep -Fq 'cp -a /usr/local/lib/node_modules/npm /opt/data/node/lib/node_modules/npm' "$MANIFEST"
-grep -Fq 'ln -sfn /opt/data/node/lib/node_modules/npm/bin/npx-cli.js /opt/data/node/bin/npx' "$MANIFEST"
-grep -Fq 'ldd /usr/local/bin/node' "$MANIFEST"
-grep -Fq 'name: LD_LIBRARY_PATH' "$MANIFEST"
+# from the Agent image without replacing the WebUI image's own loader path.
+grep -Fq 'cp -a "$npm_source" "$node_root/lib/node_modules/npm"' "$MANIFEST"
+grep -Fq 'ln -sfn "$node_root/lib/node_modules/npm/bin/npx-cli.js" "$node_root/bin/npx"' "$MANIFEST"
+grep -Fq 'ldd_output="$(ldd "$node_source" 2>&1)"' "$MANIFEST"
+grep -Fq 'node_root=/opt/data/node' "$MANIFEST"
+grep -Fq '"$node_root/libexec/node"' "$MANIFEST"
+grep -Fq 'NODE_LAUNCHER' "$MANIFEST"
+grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
+! grep -Fq '        - name: LD_LIBRARY_PATH' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
 ! grep -Fq 'HERMES_NPX_SETUP' "$MANIFEST"
 

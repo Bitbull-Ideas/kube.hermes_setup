@@ -48,6 +48,7 @@ Profiles seed the persistent Hermes home and workspace with a curated identity, 
 | Guide | Purpose |
 |---|---|
 | [`docs/operations.md`](docs/operations.md) | Installation lifecycle, maintenance, upgrades, backup/restore, credentials, bootstrap behavior, and persistent tooling |
+| [`docs/software-generations-poc.md`](docs/software-generations-poc.md) | Experimental immutable software-generation architecture, security boundary, QA package, and issue #98 relationship |
 | [`docs/security.md`](docs/security.md) | Secrets, authentication, TLS, container security, Browserless/CDP controls, and backup protection |
 | [`docs/authelia-freeipa-sso-overview.md`](docs/authelia-freeipa-sso-overview.md) | Authelia + FreeIPA SSO architecture, authentication modes, maintenance, upgrades, and backup boundaries |
 | [`docs/authelia-freeipa-sso-setup-guide.md`](docs/authelia-freeipa-sso-setup-guide.md) | Step-by-step Hermes, Authelia, FreeIPA LDAP bind, OIDC, QA, and cleanup procedure |
