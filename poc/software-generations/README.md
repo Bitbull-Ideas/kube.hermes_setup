@@ -30,7 +30,11 @@ This PoC does not make arbitrary Agent-image binaries portable across incompatib
 
 ## QA deployment
 
-The QA harness uses an isolated `qa` namespace, one 2 GiB PVC, one immutable ConfigMap, and sequential completed Jobs using digest-pinned Agent and WebUI images. It validates lifecycle, persistence across Pods, exact removal semantics, idempotency, invalid-lock failure safety, atomic rollback, hostile-PATH isolation, and inherited loader preservation.
+The QA package is designed to use an isolated `qa` namespace, one 2 GiB PVC, one content-addressed immutable ConfigMap, and sequential completed Jobs using digest-pinned Agent and WebUI images. Its acceptance sequence covers lifecycle, persistence across Pods, exact removal semantics, idempotency, invalid-lock failure safety, atomic rollback, hostile-PATH isolation, and inherited loader preservation.
+
+`verify-webui-state.js` is the canonical cross-image verifier. It executes only the persisted Node/npm/npx generation from the WebUI image and treats the Agent-built Python environment as metadata because cross-image Python ABI compatibility is not assumed. `verify-webui-state.py` remains a local/Agent-image development verifier and is not projected into the WebUI Job.
+
+Passing render/schema checks or server-side dry-run does not mean live QA passed. Record the actual completed Job evidence before describing the package as live-validated.
 
 The retained QA namespace can be removed when inspection is complete:
 
