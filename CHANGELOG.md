@@ -2,28 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
-
-### Added
-
-- Adds `maintain.sh reconcile-browser-token --source secret` to converge the Kubernetes Browserless token/CDP Secrets, persistent root and profile `.env` files, and every enabled consumer without printing credentials. Verification accepts only Ready Pods carrying the exact Secret revisions and a fresh reconciliation request, then executes `Browser.getVersion` from each consumer.
-
-### Fixed
-
-- Prevents migrated profile `.env` files from overriding the current Kubernetes `BROWSER_CDP_URL` with an older Browserless token. Installer reruns now update existing profile-level Browserless overrides, `rotate-browser-token` uses the same convergence path, and `doctor.sh` reports root/profile persistence drift instead of checking only the Pod base environment. Explicit, reused, and reconciled Browserless tokens now fail closed unless they use the shell- and URL-query-safe persistence alphabet `[A-Za-z0-9._:/=@-]`; profile roots, profile directories, and `.env` targets must also be non-symlinked.
-- Makes bare `rotate-browser-token` generate a fresh token unconditionally instead of silently reusing `BROWSER_TOKEN` loaded from `hermes.env`; deliberate automation values now require process-scoped `BROWSER_TOKEN` plus `--from-env`.
-- Restores the previous matching Browserless Secret pair if either Secret update fails during rotation, and makes `doctor.sh` fail when the token and CDP Secrets are missing, malformed, or disagree.
-
-### Verification
-
-- Adds `tests/browser-cdp-convergence.sh` covering Secret-pair mismatch refusal, partial-rotation rollback, doctor pair diagnostics, unsafe-token rejection, numeric identity preflight, symlink-boundary protection, atomic root/profile synchronization, consumer rollout annotations, redaction, profile drift diagnostics, and fresh token rotation.
-
 ## [v2.7.0] - 2026-08-28
 
 ### Added
 
 - `configure.sh` now asks for the authentication mode (`local-password` or `external-oidc`) directly whenever Dashboard or WebUI is enabled, instead of always asking for a local username/password regardless of the intended `HERMES_AUTH_MODE`. Selecting `local-password` asks the existing username/password questions; selecting `external-oidc` asks for the issuer, Dashboard/WebUI OIDC client IDs, public/redirect URLs, and allow claim/values instead — the two question sets are mutually exclusive, matching the mutually exclusive manifest wiring. All wizard-collected values are written to `hermes.env` and the answers file and pass through `install.sh`'s existing `validate_external_oidc_urls`/`HERMES_AUTH_MODE` validation unchanged; no validation logic is duplicated in the wizard.
 - Adds `maintain.sh reconcile-api-key --source secret` for finalizing manual/external PVC migrations: validates the existing Kubernetes Secret without printing it, atomically synchronizes only `API_SERVER_KEY` into persistent `/opt/data/.env`, rolls all enabled internal API consumers together, verifies real Bearer authentication, and removes its helper Pod on success or failure. [Issue #101]
+- Adds `maintain.sh reconcile-browser-token --source secret` to converge the Kubernetes Browserless token/CDP Secrets, persistent root and profile `.env` files, and every enabled consumer without printing credentials. Verification accepts only Ready Pods carrying the exact Secret revisions and a fresh reconciliation request, then executes `Browser.getVersion` from each consumer.
 
 ### Changed
 
@@ -40,6 +25,9 @@ All notable changes to this project are documented in this file.
 - Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
 - Preserves a custom `HERMES_WEBUI_IMAGE` loader environment instead of replacing its `LD_LIBRARY_PATH` with the copied Node runtime directory. `prepare-browser-cli` builds and validates a content-addressed Node/npm/npx runtime under `/opt/data/node/runtimes/<hash>`, then atomically switches `/opt/data/node/current`; stable launchers prepend only the selected runtime's private library directory, preserve inherited paths without duplication, and leave the active runtime unchanged when a candidate dependency or npm payload fails validation. `libatomic.so.1` remains optional unless the source ELF resolves or requires it. [Issue #98]
 - Gates Agent and Dashboard readiness/liveness with a 180-second startup-probe budget, allowing readiness to restore traffic immediately after startup succeeds without exposing traffic early or racing slow full-stack restarts.
+- Prevents migrated profile `.env` files from overriding the current Kubernetes `BROWSER_CDP_URL` with an older Browserless token. Installer reruns now update existing profile-level Browserless overrides, `rotate-browser-token` uses the same convergence path, and `doctor.sh` reports root/profile persistence drift instead of checking only the Pod base environment. Explicit, reused, and reconciled Browserless tokens now fail closed unless they use the shell- and URL-query-safe persistence alphabet `[A-Za-z0-9._:/=@-]`; profile roots, profile directories, and `.env` targets must also be non-symlinked.
+- Makes bare `rotate-browser-token` generate a fresh token unconditionally instead of silently reusing `BROWSER_TOKEN` loaded from `hermes.env`; deliberate automation values now require process-scoped `BROWSER_TOKEN` plus `--from-env`.
+- Restores the previous matching Browserless Secret pair if either Secret update fails during rotation, and makes `doctor.sh` fail when the token and CDP Secrets are missing, malformed, or disagree.
 
 ### Documentation
 
@@ -54,6 +42,7 @@ All notable changes to this project are documented in this file.
 - Passes trusted external HTTPS Chromium before and after unchanged reinstall: invalid password rejected, configured password accepted, authenticated screenshots captured, and authenticated consoles clean.
 - Passes unchanged reinstall with Secret hash stability, PVC identity preservation, marker integrity, successful rollouts, and complete route/namespace/PV cleanup.
 - **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
+- Adds `tests/browser-cdp-convergence.sh` covering Secret-pair mismatch refusal, partial-rotation rollback, doctor pair diagnostics, unsafe-token rejection, numeric identity preflight, symlink-boundary protection, atomic root/profile synchronization, consumer rollout annotations, redaction, profile drift diagnostics, and fresh token rotation.
 
 ## [v2.6.0] - 2026-08-25
 
