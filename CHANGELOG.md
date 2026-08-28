@@ -2,12 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [v2.7.0] - 2026-08-28
 
 ### Added
 
 - `configure.sh` now asks for the authentication mode (`local-password` or `external-oidc`) directly whenever Dashboard or WebUI is enabled, instead of always asking for a local username/password regardless of the intended `HERMES_AUTH_MODE`. Selecting `local-password` asks the existing username/password questions; selecting `external-oidc` asks for the issuer, Dashboard/WebUI OIDC client IDs, public/redirect URLs, and allow claim/values instead — the two question sets are mutually exclusive, matching the mutually exclusive manifest wiring. All wizard-collected values are written to `hermes.env` and the answers file and pass through `install.sh`'s existing `validate_external_oidc_urls`/`HERMES_AUTH_MODE` validation unchanged; no validation logic is duplicated in the wizard.
 - Adds `maintain.sh reconcile-api-key --source secret` for finalizing manual/external PVC migrations: validates the existing Kubernetes Secret without printing it, atomically synchronizes only `API_SERVER_KEY` into persistent `/opt/data/.env`, rolls all enabled internal API consumers together, verifies real Bearer authentication, and removes its helper Pod on success or failure. [Issue #101]
+- Adds an experimental immutable software-generation PoC under `poc/software-generations/`: hash-locked Python environments and a Node/npm/npx runtime use content-addressed generations, validated `.complete` markers, stable `current`/`previous` links, serialized reconciliation, and atomic rollback. The normal installer does not enable the PoC.
+- Adds a deterministic Kubernetes QA package renderer for the PoC. It requires digest-pinned images and non-root IDs, publishes with `renameat2(RENAME_NOREPLACE)`, and renders a restricted, credential-free Namespace/PVC/ConfigMap/sequential-Job acceptance package without Service, Ingress, Secret, RBAC, or API-token mounts.
 
 ### Changed
 
@@ -21,6 +23,25 @@ All notable changes to this project are documented in this file.
 
 - Reads an existing `/opt/data/.env` through an atomic same-directory hard-link snapshot, rejects symlinked/non-regular targets, and disables service-account-token automounting for storage helper Pods so restore/reconciliation cannot follow a raced credential-file substitution into container credentials.
 - Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
+- Preserves a custom `HERMES_WEBUI_IMAGE` loader environment instead of replacing its `LD_LIBRARY_PATH` with the copied Node runtime directory. `prepare-browser-cli` now stores the Node ELF under `/opt/data/node/libexec/node`; `/opt/data/node/bin/node` prepends the private library directory for Node processes only, preserves inherited paths without duplication, and makes `libatomic.so.1` optional unless the source ELF resolves or requires it. [Issue #98]
+
+### Security
+
+- Keeps PoC software declarations operator-reviewed and hash-pinned; skill command requirements remain readiness metadata rather than installation authority.
+- Runs the QA package as UID/GID 10000 with restricted Pod Security, read-only root filesystems, dropped capabilities, bounded scratch volumes, digest-pinned images, and no Kubernetes API token.
+
+### Documentation
+
+- Adds an operator-facing software-generation architecture and QA guide, including software ownership classes, exact reconciliation, rollback, security boundaries, cleanup, known ABI limits, and the relationship to issue #98.
+- Updates PVC and troubleshooting documentation for the Node payload/launcher split and WebUI image loader-path preservation.
+
+### Verification
+
+- Passes focused Node-launcher behavior tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx wrapper traversal; and optional `libatomic.so.1` handling.
+- Passes the component/profile matrix, QA contract, deterministic renderer contract, concurrent no-clobber renderer race tests, server-side dry-run for all ten QA resources, and full repository shell/Python validation completed before release preparation.
+- Passes sequential live K3s QA with seven digest-pinned Jobs: exact Python generations, cross-Pod persistence, unchanged idempotency, invalid-lock failure safety, two-way rollback, WebUI Node/npm/npx compatibility, final verification, zero Pod restarts, zero current-stage Warning Events, and preserved PVC identity.
+- Passes a separate fresh-PVC live Job using the exact production-rendered `prepare-browser-cli` script: Node/npm/npx execute from the default WebUI image, the Node wrapper preserves `/custom/image/lib:/custom/extension/lib`, no service-account token is mounted, and Job/PVC cleanup completes.
+- **Remaining limitation:** the production live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with a Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available for this validation.
 
 ## [v2.6.0] - 2026-08-25
 
