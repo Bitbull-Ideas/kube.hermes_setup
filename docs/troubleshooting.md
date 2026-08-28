@@ -149,7 +149,7 @@ Create the normal protected backup required by your production change procedure,
 ./doctor.sh
 ```
 
-Do not print or manually copy the URL. The maintenance command checks that both Browserless Secrets agree, updates only persistent `BROWSER_CDP_URL` assignments, performs a verified consumer rollout, and runs `Browser.getVersion`. `doctor.sh` additionally checks root/profile persistence and reports only sanitized PASS/FAIL status.
+Do not print or manually copy the URL. The maintenance command checks that both Browserless Secrets agree, updates only persistent `BROWSER_CDP_URL` assignments, performs a verified consumer rollout, and runs `Browser.getVersion`. `doctor.sh` additionally compares the token and CDP Secrets, checks root/profile persistence, and reports only sanitized PASS/FAIL status. Deliberately rotating the token uses a protected temporary snapshot and restores the previous pair if either Secret update fails.
 
 
 ## `CDP call timed out ... opening handshake`

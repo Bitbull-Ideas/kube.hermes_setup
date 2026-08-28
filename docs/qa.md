@@ -133,6 +133,7 @@ For ordinary reinstall tests:
 ./tests/matrix.sh
 ./tests/ssh-identity.sh
 ./tests/credentials.sh
+./tests/browser-cdp-convergence.sh
 
 # Live run, with an explicitly isolated namespace and generated env file.
 ENV_FILE=./current_config/hermes.env HERMES_RENDER_DIR=./current_config/artifacts ./install.sh

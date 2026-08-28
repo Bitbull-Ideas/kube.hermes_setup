@@ -12,10 +12,11 @@ All notable changes to this project are documented in this file.
 
 - Prevents migrated profile `.env` files from overriding the current Kubernetes `BROWSER_CDP_URL` with an older Browserless token. Installer reruns now update existing profile-level Browserless overrides, `rotate-browser-token` uses the same convergence path, and `doctor.sh` reports root/profile persistence drift instead of checking only the Pod base environment. Explicit, reused, and reconciled Browserless tokens now fail closed unless they use the shell- and URL-query-safe persistence alphabet `[A-Za-z0-9._:/=@-]`; profile roots, profile directories, and `.env` targets must also be non-symlinked.
 - Makes bare `rotate-browser-token` generate a fresh token unconditionally instead of silently reusing `BROWSER_TOKEN` loaded from `hermes.env`; deliberate automation values now require process-scoped `BROWSER_TOKEN` plus `--from-env`.
+- Restores the previous matching Browserless Secret pair if either Secret update fails during rotation, and makes `doctor.sh` fail when the token and CDP Secrets are missing, malformed, or disagree.
 
 ### Verification
 
-- Adds `tests/browser-cdp-convergence.sh` covering Secret-pair mismatch refusal, unsafe-token rejection, numeric identity preflight, symlink-boundary protection, atomic root/profile synchronization, consumer rollout annotations, redaction, profile drift diagnostics, and fresh token rotation.
+- Adds `tests/browser-cdp-convergence.sh` covering Secret-pair mismatch refusal, partial-rotation rollback, doctor pair diagnostics, unsafe-token rejection, numeric identity preflight, symlink-boundary protection, atomic root/profile synchronization, consumer rollout annotations, redaction, profile drift diagnostics, and fresh token rotation.
 
 ## [v2.7.0] - 2026-08-28
 

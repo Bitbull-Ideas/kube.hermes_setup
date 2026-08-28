@@ -1318,6 +1318,51 @@ Show the current credentials with:
 For lab passwords use --lab or HERMES_PASSWORD_POLICY=lab explicitly.
 EOF
 }
+apply_browser_secret_file() {
+  local secret="$1" key="$2" source_file="$3"
+  kubectl -n "$HERMES_NAMESPACE" create secret generic "$secret" \
+    --from-file="$key=$source_file" \
+    --dry-run=client -o yaml | kubectl apply -f -
+}
+
+restore_browser_secret_pair() {
+  local old_token_file="$1" old_cdp_file="$2" restored=true
+  apply_browser_secret_file hermes-browser-token token "$old_token_file" || restored=false
+  apply_browser_secret_file hermes-browser-cdp BROWSER_CDP_URL "$old_cdp_file" || restored=false
+  [[ "$restored" == true ]]
+}
+
+apply_browser_secret_pair() {
+  local new_token_file="$1" new_cdp_file="$2" workdir="$3"
+  local old_token_file="$workdir/old-token" old_cdp_file="$workdir/old-BROWSER_CDP_URL"
+  install -d -m 0700 "$workdir"
+  get_secret_value hermes-browser-token token > "$old_token_file" \
+    || fail 'Unable to snapshot the current Browserless token Secret before rotation'
+  get_secret_value hermes-browser-cdp BROWSER_CDP_URL > "$old_cdp_file" \
+    || fail 'Unable to snapshot the current Browserless CDP Secret before rotation'
+  chmod 600 "$old_token_file" "$old_cdp_file"
+  local old_token old_cdp
+  old_token="$(<"$old_token_file")"
+  old_cdp="$(<"$old_cdp_file")"
+  validate_browser_token_value "$old_token"
+  [[ "$old_cdp" == "ws://hermes-browser:3000/chromium?token=${old_token}" ]] \
+    || fail 'Current Browserless token and CDP Secrets disagree; refusing rotation before any update'
+  unset old_token old_cdp
+
+  if ! apply_browser_secret_file hermes-browser-token token "$new_token_file"; then
+    if restore_browser_secret_pair "$old_token_file" "$old_cdp_file"; then
+      fail 'Browserless token Secret update failed; the previous pair was restored'
+    fi
+    fail 'CRITICAL: Browserless token Secret update and rollback both failed; restore the pair from backup before restarting workloads'
+  fi
+  if ! apply_browser_secret_file hermes-browser-cdp BROWSER_CDP_URL "$new_cdp_file"; then
+    if restore_browser_secret_pair "$old_token_file" "$old_cdp_file"; then
+      fail 'Browserless CDP Secret update failed; the previous pair was restored'
+    fi
+    fail 'CRITICAL: Browserless CDP Secret update and rollback both failed; restore the pair from backup before restarting workloads'
+  fi
+}
+
 rotate_browser_token() {
   is_truthy "$HERMES_BROWSER_ENABLED" || fail "Browser component is disabled"
   local input_mode=generate token='' tmpdir
@@ -1341,17 +1386,12 @@ rotate_browser_token() {
   local cdp="ws://hermes-browser:3000/chromium?token=${token}"
   tmpdir="$(mktemp -d -t hermes-browser-token.XXXXXX)"
   chmod 700 "$tmpdir"
-  trap 'rm -rf -- "$tmpdir"' ERR
+  trap 'rm -rf -- "$tmpdir"' EXIT
   printf '%s' "$token" > "$tmpdir/token"
   printf '%s' "$cdp" > "$tmpdir/BROWSER_CDP_URL"
   chmod 600 "$tmpdir/token" "$tmpdir/BROWSER_CDP_URL"
-  kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-token \
-    --from-file=token="$tmpdir/token" \
-    --dry-run=client -o yaml | kubectl apply -f -
-  kubectl -n "$HERMES_NAMESPACE" create secret generic hermes-browser-cdp \
-    --from-file=BROWSER_CDP_URL="$tmpdir/BROWSER_CDP_URL" \
-    --dry-run=client -o yaml | kubectl apply -f -
-  trap - ERR
+  apply_browser_secret_pair "$tmpdir/token" "$tmpdir/BROWSER_CDP_URL" "$tmpdir/rollback"
+  trap - EXIT
   rm -rf -- "$tmpdir"
   reconcile_browser_token --source secret --restart-browser
   echo "Rotated Browserless token. CDP endpoint: ws://hermes-browser:3000/chromium?token=<redacted>"

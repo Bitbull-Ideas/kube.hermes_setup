@@ -61,6 +61,12 @@ case "${1:-} ${2:-}" in
       printf '%s' rv-token-current
     elif [[ "${3:-}" == hermes-browser-cdp && "${4:-}" == -o && "${5:-}" == 'jsonpath={.metadata.resourceVersion}' ]]; then
       printf '%s' rv-cdp-current
+    elif [[ "${3:-}" == hermes-browser-token && "${4:-}" == -o && "${5:-}" == 'jsonpath={.data.token}' ]]; then
+      token="${FAKE_BROWSER_TOKEN:?}"
+      [[ "${FAKE_DOCTOR_TOKEN_MISMATCH:-false}" != true ]] || token=different-browser-token
+      printf '%s' "$token" | base64 -w0
+    elif [[ "${3:-}" == hermes-browser-cdp && "${4:-}" == -o && "${5:-}" == 'jsonpath={.data.BROWSER_CDP_URL}' ]]; then
+      printf '%s' "${FAKE_CDP_URL:?}" | base64 -w0
     else
       printf 'unexpected Secret lookup: %s\n' "$*" >&2
       exit 2
@@ -207,6 +213,20 @@ grep -Fq 'persistent root/profile BROWSER_CDP_URL missing or drifted' <<<"$symli
 grep -Fq 'fail_count=1' <<<"$symlink_doctor"
 rm -f "$TMP_DIR/home/profiles/evil"
 
+run_doctor_secret_pair_check() {
+  PATH="$TMP_DIR/bin:$PATH" ENV_FILE=/dev/null FAKE_KUBECTL_CALLS="$TMP_DIR/doctor-pair.calls" \
+  FAKE_BROWSER_TOKEN="$browser_token" FAKE_CDP_URL="$cdp_url" HERMES_DOCTOR_LIB_ONLY=true HERMES_NAMESPACE=hermes \
+  bash -c 'source "$1"; check_browser_secret_pair || true; printf "fail_count=%s\n" "$fail_count"' _ "$ROOT_DIR/doctor.sh"
+}
+: > "$TMP_DIR/doctor-pair.calls"
+healthy_pair="$(run_doctor_secret_pair_check)"
+grep -Fq 'Browserless token and CDP Secrets agree' <<<"$healthy_pair"
+grep -Fq 'fail_count=0' <<<"$healthy_pair"
+mismatched_pair="$(FAKE_DOCTOR_TOKEN_MISMATCH=true run_doctor_secret_pair_check)"
+grep -Fq 'Browserless token and CDP Secrets are missing, malformed, or disagree' <<<"$mismatched_pair"
+grep -Fq 'fail_count=1' <<<"$mismatched_pair"
+! grep -Fq "$browser_token" <<<"$mismatched_pair"
+
 rotation_probe="$TMP_DIR/rotation-probe"
 ENV_FILE=/dev/null HERMES_MAINTAIN_LIB_ONLY=true HERMES_NAMESPACE=hermes \
 HERMES_DASHBOARD_ENABLED=true HERMES_WEBUI_ENABLED=true HERMES_BROWSER_ENABLED=true \
@@ -215,6 +235,13 @@ BROWSER_TOKEN=rotation-test-token bash -c '
   source "$1"
   probe="$2"
   rand_hex() { printf "%s" fresh-generated-browser-token; }
+  get_secret_value() {
+    case "$1/$2" in
+      hermes-browser-token/token) printf "%s" old-browser-token ;;
+      hermes-browser-cdp/BROWSER_CDP_URL) printf "%s" "ws://hermes-browser:3000/chromium?token=old-browser-token" ;;
+      *) return 2 ;;
+    esac
+  }
   kubectl() {
     if [[ "$*" == *" create secret generic "* ]]; then
       if [[ "$*" == *"hermes-browser-token"* ]]; then
@@ -236,5 +263,47 @@ BROWSER_TOKEN=rotation-test-token bash -c '
 grep -qx -- '--source secret --restart-browser' "$rotation_probe"
 grep -qx 'fresh-generated-browser-token' "$rotation_probe.token"
 ! grep -Fq 'rotation-test-token' "$rotation_probe.token"
+
+rollback_probe="$TMP_DIR/rollback-probe"
+mkdir -p "$rollback_probe/tmp"
+for fail_secret in hermes-browser-token hermes-browser-cdp; do
+  printf '%s' old-browser-token > "$rollback_probe/live-token"
+  printf '%s' 'ws://hermes-browser:3000/chromium?token=old-browser-token' > "$rollback_probe/live-cdp"
+  if TMPDIR="$rollback_probe/tmp" ENV_FILE=/dev/null HERMES_MAINTAIN_LIB_ONLY=true HERMES_NAMESPACE=hermes \
+      HERMES_BROWSER_ENABLED=true BROWSER_TOKEN=new-browser-token FAKE_FAIL_SECRET="$fail_secret" bash -c '
+    set -euo pipefail
+    source "$1"
+    probe="$2"
+    get_secret_value() {
+      case "$1/$2" in
+        hermes-browser-token/token) cat "$probe/live-token" ;;
+        hermes-browser-cdp/BROWSER_CDP_URL) cat "$probe/live-cdp" ;;
+        *) return 2 ;;
+      esac
+    }
+    apply_browser_secret_file() {
+      name="$1"; key="$2"; source_file="$3"
+      value="$(cat "$source_file")"
+      if [[ "$name" == "${FAKE_FAIL_SECRET:?}" && "$value" == *new-browser-token* ]]; then
+        return 1
+      fi
+      case "$name/$key" in
+        hermes-browser-token/token) printf "%s" "$value" > "$probe/live-token" ;;
+        hermes-browser-cdp/BROWSER_CDP_URL) printf "%s" "$value" > "$probe/live-cdp" ;;
+        *) return 2 ;;
+      esac
+    }
+    reconcile_browser_token() { printf called > "$probe/reconcile-called"; }
+    rotate_browser_token --from-env
+  ' _ "$ROOT_DIR/maintain.sh" "$rollback_probe" > "$rollback_probe/$fail_secret.out" 2>&1; then
+    printf 'partial Secret update unexpectedly succeeded for %s\n' "$fail_secret" >&2
+    exit 1
+  fi
+  grep -qx 'old-browser-token' "$rollback_probe/live-token"
+  grep -qx 'ws://hermes-browser:3000/chromium?token=old-browser-token' "$rollback_probe/live-cdp"
+  grep -Fq 'previous pair was restored' "$rollback_probe/$fail_secret.out"
+  [[ ! -e "$rollback_probe/reconcile-called" ]]
+  ! compgen -G "$rollback_probe/tmp/hermes-browser-token.*" >/dev/null
+done
 
 printf 'Browserless convergence tests passed\n'

@@ -297,7 +297,7 @@ Bare `rotate-browser-token` and explicit `--generate` always generate a fresh ra
 BROWSER_TOKEN='use-a-url-safe-random-value' ./maintain.sh rotate-browser-token --from-env
 ```
 
-Rotation updates both Browserless Secrets and then invokes the same persistent/profile convergence and verified rollout path as `reconcile-browser-token`; it also recreates Browserless so the new server token and all consumers become active together. Do not patch one Browserless Secret independently.
+Rotation snapshots the previous matching Secret values into private temporary files before updating either resource. If either Kubernetes update fails, it restores both previous values and does not restart workloads; a rollback failure is reported as critical and requires restoration from the protected application backup. After a successful pair update, rotation invokes the same persistent/profile convergence and verified rollout path as `reconcile-browser-token`; it also recreates Browserless so the new server token and all consumers become active together. Do not patch one Browserless Secret independently.
 
 ## Codex re-authentication
 
