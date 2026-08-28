@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - `configure.sh` now asks for the authentication mode (`local-password` or `external-oidc`) directly whenever Dashboard or WebUI is enabled, instead of always asking for a local username/password regardless of the intended `HERMES_AUTH_MODE`. Selecting `local-password` asks the existing username/password questions; selecting `external-oidc` asks for the issuer, Dashboard/WebUI OIDC client IDs, public/redirect URLs, and allow claim/values instead — the two question sets are mutually exclusive, matching the mutually exclusive manifest wiring. All wizard-collected values are written to `hermes.env` and the answers file and pass through `install.sh`'s existing `validate_external_oidc_urls`/`HERMES_AUTH_MODE` validation unchanged; no validation logic is duplicated in the wizard.
+- Adds `maintain.sh reconcile-api-key --source secret` for finalizing manual/external PVC migrations: validates the existing Kubernetes Secret without printing it, atomically synchronizes only `API_SERVER_KEY` into persistent `/opt/data/.env`, rolls all enabled internal API consumers together, verifies real Bearer authentication, and removes its helper Pod on success or failure. [Issue #101]
 
 ### Changed
 
@@ -18,6 +19,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Reads an existing `/opt/data/.env` through an atomic same-directory hard-link snapshot, rejects symlinked/non-regular targets, and disables service-account-token automounting for storage helper Pods so restore/reconciliation cannot follow a raced credential-file substitution into container credentials.
 - Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
 
 ## [v2.6.0] - 2026-08-25
