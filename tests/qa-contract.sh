@@ -28,6 +28,20 @@ grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
 ! grep -Fq 'HERMES_NPX_SETUP' "$MANIFEST"
 
+# Agent and Dashboard must not emit connection-refused readiness Warnings during
+# ordinary restart/reinstall startup on the accepted K3s target.
+python3 - "$MANIFEST" <<'PY'
+from pathlib import Path
+import re,sys
+text=Path(sys.argv[1]).read_text()
+for name in ('hermes-agent','hermes-dashboard'):
+    start=text.index(f'kind: Deployment\nmetadata:\n  name: {name}\n')
+    end=text.find('\n---\n',start)
+    block=text[start:end if end >= 0 else None]
+    match=re.search(r'readinessProbe:\n(?:.*\n){0,8}?\s+initialDelaySeconds:\s*(\d+)',block)
+    assert match and int(match.group(1)) >= 30, (name, match.group(1) if match else None)
+PY
+
 # Required maintainer guidance must remain present in AGENTS.md.
 for needle in \
   'live Linux/K3s or real-VM test is mandatory' \
