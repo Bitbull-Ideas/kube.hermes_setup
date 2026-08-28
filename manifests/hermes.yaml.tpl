@@ -780,7 +780,8 @@ spec:
           node_source=/usr/local/bin/node
           npm_source=/usr/local/lib/node_modules/npm
           runtimes="$node_root/runtimes"
-          mkdir -p "$node_root/bin" "$runtimes"
+          repairs="$node_root/repairs"
+          mkdir -p "$node_root/bin" "$runtimes" "$repairs"
 
           for required in "$node_source" "$npm_source/package.json" "$npm_source/bin/npm-cli.js" "$npm_source/bin/npx-cli.js"; do
             [ -f "$required" ] || { echo "managed Node runtime source missing: $required" >&2; exit 1; }
@@ -863,6 +864,18 @@ spec:
             [ "$stored_source_key" = "$base_runtime_key" ] || return 1
           }
 
+          repair_map="$repairs/$base_runtime_key"
+          if [ -f "$repair_map" ] && [ ! -L "$repair_map" ]; then
+            mapped_runtime_key="$(cat "$repair_map")"
+            if valid_hash "$mapped_runtime_key" && { [ -e "$runtimes/$mapped_runtime_key" ] || [ -L "$runtimes/$mapped_runtime_key" ]; }; then
+              runtime_key="$mapped_runtime_key"
+            else
+              rm -f -- "$repair_map"
+            fi
+          elif [ -e "$repair_map" ] || [ -L "$repair_map" ]; then
+            rm -f -- "$repair_map"
+          fi
+
           repair_round=0
           runtime="$runtimes/$runtime_key"
           while [ -e "$runtime" ] || [ -L "$runtime" ]; do
@@ -908,6 +921,14 @@ spec:
           LD_LIBRARY_PATH="$runtime/lib" "$runtime/libexec/node" --version >/dev/null
           LD_LIBRARY_PATH="$runtime/lib" "$runtime/libexec/node" "$runtime/lib/node_modules/npm/bin/npm-cli.js" --version >/dev/null
           LD_LIBRARY_PATH="$runtime/lib" "$runtime/libexec/node" "$runtime/lib/node_modules/npm/bin/npx-cli.js" --version >/dev/null
+          if [ "$runtime_key" != "$base_runtime_key" ]; then
+            repair_map_tmp="$repairs/.$base_runtime_key.$$"
+            printf '%s\n' "$runtime_key" > "$repair_map_tmp"
+            chmod 644 "$repair_map_tmp"
+            mv -fT "$repair_map_tmp" "$repair_map"
+          else
+            rm -f -- "$repair_map"
+          fi
 
           # Prepare stable wrappers before activating the complete runtime.
           node_launcher_tmp="$node_root/bin/.node.$$"
@@ -993,6 +1014,12 @@ spec:
             if [ "$relative" != "$current_runtime" ] && [ "$relative" != "$previous_runtime" ]; then
               rm -rf -- "$candidate"
             fi
+          done
+          for candidate_map in "$repairs"/[0-9a-f]*; do
+            [ -e "$candidate_map" ] || [ -L "$candidate_map" ] || continue
+            map_key="$(basename "$candidate_map")"
+            valid_hash "$map_key" || { echo "refusing unknown managed Node repair map: $candidate_map" >&2; exit 1; }
+            [ "$map_key" = "$base_runtime_key" ] || rm -f -- "$candidate_map"
           done
 
           ln -sfn /home/hermeswebui/.hermes/hermes-agent/node_modules /opt/data/node_modules

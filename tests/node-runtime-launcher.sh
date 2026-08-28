@@ -149,6 +149,30 @@ ACTIVE_RUNTIME="$(readlink -f "$TMP_DIR/runtime/current")"
 [[ "$("$NODE" marker)" == runtime-v1 ]]
 [[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPM" --version)" == npm-ok ]]
 [[ "$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPX" --version)" == npx-ok ]]
+repair_state="$(python3 - "$TMP_DIR/runtime" <<'PY'
+from pathlib import Path
+import hashlib,sys
+root=Path(sys.argv[1]); rows=[]
+for path in sorted(x for x in root.rglob('*') if x.is_file() or x.is_symlink()):
+    rel=path.relative_to(root).as_posix()
+    payload=('L:'+path.readlink().as_posix()).encode() if path.is_symlink() else b'F:'+path.read_bytes()
+    rows.append(rel.encode()+b'\0'+payload)
+print(hashlib.sha256(b'\0'.join(rows)).hexdigest())
+PY
+)"
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
+repair_state_after="$(python3 - "$TMP_DIR/runtime" <<'PY'
+from pathlib import Path
+import hashlib,sys
+root=Path(sys.argv[1]); rows=[]
+for path in sorted(x for x in root.rglob('*') if x.is_file() or x.is_symlink()):
+    rel=path.relative_to(root).as_posix()
+    payload=('L:'+path.readlink().as_posix()).encode() if path.is_symlink() else b'F:'+path.read_bytes()
+    rows.append(rel.encode()+b'\0'+payload)
+print(hashlib.sha256(b'\0'.join(rows)).hexdigest())
+PY
+)"
+[[ "$repair_state_after" == "$repair_state" ]]
 
 # A failed source-runtime refresh must not publish any part of the candidate.
 before_state="$(python3 - "$TMP_DIR/runtime" <<'PY'
