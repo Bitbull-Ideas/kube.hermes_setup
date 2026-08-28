@@ -28,8 +28,8 @@ grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
 ! grep -Fq 'HERMES_NPX_SETUP' "$MANIFEST"
 
-# Agent and Dashboard must not emit connection-refused readiness Warnings during
-# ordinary restart/reinstall startup on the accepted K3s target.
+# Agent and Dashboard must not emit connection-refused readiness/liveness
+# Warnings during ordinary restart/reinstall startup on the accepted K3s target.
 python3 - "$MANIFEST" <<'PY'
 from pathlib import Path
 import re,sys
@@ -38,8 +38,9 @@ for name in ('hermes-agent','hermes-dashboard'):
     start=text.index(f'kind: Deployment\nmetadata:\n  name: {name}\n')
     end=text.find('\n---\n',start)
     block=text[start:end if end >= 0 else None]
-    match=re.search(r'readinessProbe:\n(?:.*\n){0,8}?\s+initialDelaySeconds:\s*(\d+)',block)
-    assert match and int(match.group(1)) >= 90, (name, match.group(1) if match else None)
+    for probe in ('readinessProbe','livenessProbe'):
+        match=re.search(rf'{probe}:\n(?:.*\n){{0,8}}?\s+initialDelaySeconds:\s*(\d+)',block)
+        assert match and int(match.group(1)) >= 120, (name, probe, match.group(1) if match else None)
 PY
 
 # Required maintainer guidance must remain present in AGENTS.md.

@@ -521,14 +521,14 @@ spec:
           httpGet:
             path: /health
             port: api
-          initialDelaySeconds: 90
+          initialDelaySeconds: 120
           periodSeconds: 10
           failureThreshold: 18
         livenessProbe:
           httpGet:
             path: /health
             port: api
-          initialDelaySeconds: 90
+          initialDelaySeconds: 120
           periodSeconds: 20
           failureThreshold: 6
         resources:
@@ -684,13 +684,13 @@ spec:
         readinessProbe:
           tcpSocket:
             port: dashboard
-          initialDelaySeconds: 90
+          initialDelaySeconds: 120
           periodSeconds: 10
           failureThreshold: 18
         livenessProbe:
           tcpSocket:
             port: dashboard
-          initialDelaySeconds: 90
+          initialDelaySeconds: 120
           periodSeconds: 20
           failureThreshold: 6
         resources:
