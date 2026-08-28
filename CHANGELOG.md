@@ -30,9 +30,9 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; failed dependency and malformed npm refresh preservation; and validated v1-to-v2 atomic activation.
+- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
 - Passes the component/profile matrix, QA contract, full repository shell/Python validation, credential-preservation tests, and encrypted backup tests.
-- Passes a separate fresh-PVC live K3s Job using the exact production-rendered `prepare-browser-cli` script: Node/npm/npx execute from the default WebUI image, the launcher preserves `/custom/image/lib:/custom/extension/lib`, no service-account token is mounted, and Job/PVC cleanup completes.
+- **Release gate pending for the transactional follow-up:** rerun the fresh-PVC production-script Job and mandatory clean full-stack/Chromium/unchanged-reinstall acceptance at the final corrective commit before publishing v2.7.0.
 - **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
 
 ## [v2.6.0] - 2026-08-25

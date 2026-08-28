@@ -841,6 +841,7 @@ spec:
 
           [ -f "$runtime/.complete" ] || { echo 'managed Node runtime is incomplete' >&2; exit 1; }
           [ "$(sha256sum "$runtime/libexec/node" | cut -d' ' -f1)" = "$node_sha" ] || { echo 'managed Node payload hash mismatch' >&2; exit 1; }
+          chmod 755 "$runtime/libexec/node"
           [ -f "$runtime/lib/node_modules/npm/bin/npm-cli.js" ] || { echo 'managed npm CLI is missing' >&2; exit 1; }
           [ -f "$runtime/lib/node_modules/npm/bin/npx-cli.js" ] || { echo 'managed npx CLI is missing' >&2; exit 1; }
           runtime_npm_sha="$(tar -C "$runtime/lib/node_modules/npm" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . | sha256sum | cut -d' ' -f1)"

@@ -123,6 +123,17 @@ npx_result="$(PATH="$TMP_DIR/runtime/bin:$PATH" "$NPX" --version)"
 [[ "$npm_result" == npm-ok ]]
 [[ "$npx_result" == npx-ok ]]
 
+# A trusted retained payload with a lost execute bit is repaired on rerun.
+chmod 644 "$ACTIVE_RUNTIME/libexec/node"
+set +e
+"$NODE" marker >/dev/null 2>&1
+mode_rc=$?
+set -e
+[[ "$mode_rc" != 0 ]]
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
+[[ -x "$ACTIVE_RUNTIME/libexec/node" ]]
+[[ "$("$NODE" marker)" == runtime-v1 ]]
+
 # A failed source-runtime refresh must not publish any part of the candidate.
 before_state="$(python3 - "$TMP_DIR/runtime" <<'PY'
 from pathlib import Path
