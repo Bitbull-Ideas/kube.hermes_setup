@@ -163,7 +163,7 @@ After any manual or external PVC migration, make the destination Browserless Sec
 ./doctor.sh
 ```
 
-The command requires `hermes-browser-token` and `hermes-browser-cdp` to contain the same non-empty token, the expected internal `/chromium` URL, and the shell- and URL-query-safe token alphabet `[A-Za-z0-9._:/=@-]`. It writes no credential to the operator host and prints no token. A storage helper atomically updates `/opt/data/.env` plus existing profile `.env` files that already override `BROWSER_CDP_URL`, preserving unrelated entries and mode `0600`. It then rolls Agent, Dashboard, and WebUI with both Secret revisions and a fresh reconciliation request, accepts only Ready Pods carrying those annotations, executes `Browser.getVersion` from every enabled consumer, rechecks both Secret revisions, and removes the helper Pod. Expect a brief interruption during the Recreate rollouts.
+The command requires `hermes-browser-token` and `hermes-browser-cdp` to contain the same non-empty token, the expected internal `/chromium` URL, and the shell- and URL-query-safe token alphabet `[A-Za-z0-9._:/=@-]`. It writes no credential to the operator host and prints no token. A storage helper atomically updates `/opt/data/.env` plus existing profile `.env` files that already override `BROWSER_CDP_URL`, preserving unrelated entries and mode `0600`. It then rolls Browserless plus Agent, Dashboard, and WebUI with both Secret revisions and a fresh reconciliation request, accepts only Ready Pods carrying those annotations, executes `Browser.getVersion` from every enabled client, rechecks both Secret revisions, and removes the helper Pod. Expect a brief interruption during the Recreate rollouts.
 
 ## Bootstrap agent configuration
 

@@ -873,7 +873,7 @@ print("ok")
 }
 
 reconcile_browser_token() {
-  local source='' restart_browser=false snapshot token_revision cdp_revision encoded_url current_token_revision current_cdp_revision
+  local source='' snapshot token_revision cdp_revision encoded_url current_token_revision current_cdp_revision
   local script reconcile_request patch app pod runtime_result attempt stable=false
   local helper_pod=hermes-browser-token-reconcile
   local -a deployments=()
@@ -883,7 +883,6 @@ reconcile_browser_token() {
         [[ $# -ge 2 ]] || fail '--source requires secret'
         source="$2"; shift 2 ;;
       --source=*) source="${1#*=}"; shift ;;
-      --restart-browser) restart_browser=true; shift ;;
       *) fail "unknown reconcile-browser-token option: $1" ;;
     esac
   done
@@ -895,8 +894,7 @@ reconcile_browser_token() {
   require_cmd openssl
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_UID must be numeric'
   [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_GID must be numeric'
-  mapfile -t deployments < <(enabled_write_deployments)
-  [[ "$restart_browser" != true ]] || deployments+=(hermes-browser)
+  mapfile -t deployments < <(enabled_deployments)
   for app in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" get deployment "$app" >/dev/null \
       || fail "required Browserless consumer Deployment is missing: $app"
@@ -1393,7 +1391,7 @@ rotate_browser_token() {
   apply_browser_secret_pair "$tmpdir/token" "$tmpdir/BROWSER_CDP_URL" "$tmpdir/rollback"
   trap - EXIT
   rm -rf -- "$tmpdir"
-  reconcile_browser_token --source secret --restart-browser
+  reconcile_browser_token --source secret
   echo "Rotated Browserless token. CDP endpoint: ws://hermes-browser:3000/chromium?token=<redacted>"
 }
 

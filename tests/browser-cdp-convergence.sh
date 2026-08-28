@@ -143,12 +143,13 @@ grep -qx 'PROFILE_WITHOUT_OVERRIDE=keep-unchanged' "$TMP_DIR/home/profiles/two/.
 ! grep -q '^BROWSER_CDP_URL=' "$TMP_DIR/home/profiles/two/.env"
 [[ "$(stat -c %a "$TMP_DIR/home/.env")" == 600 ]]
 [[ "$(stat -c %a "$TMP_DIR/home/profiles/one/.env")" == 600 ]]
-for app in hermes-agent hermes-dashboard hermes-webui; do
+for app in hermes-agent hermes-dashboard hermes-webui hermes-browser; do
   grep -Fq "patch deployment $app" "$TMP_DIR/kubectl.calls"
   grep -Fq "rollout status deploy/$app --timeout=600s" "$TMP_DIR/kubectl.calls"
-  grep -Fq "exec $app-pod" "$TMP_DIR/kubectl.calls"
+  if [[ "$app" != hermes-browser ]]; then
+    grep -Fq "exec $app-pod" "$TMP_DIR/kubectl.calls"
+  fi
 done
-! grep -Fq 'patch deployment hermes-browser' "$TMP_DIR/kubectl.calls"
 ! grep -Fq "$browser_token" "$TMP_DIR/reconcile.out"
 ! grep -Fq "$browser_token" "$TMP_DIR/kubectl.calls"
 grep -Fq 'Browserless token reconciled from Kubernetes Secrets; persistent profile state and enabled consumers are healthy.' "$TMP_DIR/reconcile.out"
@@ -260,7 +261,7 @@ BROWSER_TOKEN=rotation-test-token bash -c '
   reconcile_browser_token() { printf "%s\n" "$*" > "$probe"; }
   rotate_browser_token >/dev/null
 ' _ "$ROOT_DIR/maintain.sh" "$rotation_probe"
-grep -qx -- '--source secret --restart-browser' "$rotation_probe"
+grep -qx -- '--source secret' "$rotation_probe"
 grep -qx 'fresh-generated-browser-token' "$rotation_probe.token"
 ! grep -Fq 'rotation-test-token' "$rotation_probe.token"
 
