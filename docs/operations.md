@@ -138,7 +138,7 @@ After copying PVC data by any path other than `maintain.sh restore`, make the Ku
 ./doctor.sh
 ```
 
-The explicit source is required; the command never guesses between two valid credentials and never generates a new key. It validates the Secret without printing it, atomically replaces only `API_SERVER_KEY` in `/opt/data/.env`, preserves unrelated entries with mode `0600`, applies one non-secret Secret-revision template mutation to each enabled Agent API consumer, waits for those rollouts, verifies only Ready Pods carrying that exact revision against `/health/detailed`, and removes its helper Pod on success or failure. Expect a brief interruption while those Deployments roll out.
+The explicit source is required; the command never guesses between two valid credentials and never generates a new key. It validates the Secret without printing it, atomically replaces only `API_SERVER_KEY` in `/opt/data/.env`, preserves unrelated entries with mode `0600`, applies one non-secret Secret-revision template mutation to each enabled Agent API consumer, waits for those rollouts, verifies only Ready Pods carrying that exact revision against `/health/detailed`, rechecks the authoritative Secret revision after verification, and removes its helper Pod on success or failure. If the Secret changes at any point, the command retries before rollout or fails without reporting convergence after rollout; rerun it to converge the newer revision. Expect a brief interruption while those Deployments roll out.
 
 Before a production reconciliation, create an encrypted application backup. The archive preserves both the Kubernetes Secret snapshot and the pre-change persistent `.env` without writing either credential source to a separate plaintext host file:
 

@@ -41,7 +41,14 @@ case "${1:-} ${2:-}" in
         encoded="$(printf '%s' "$key" | base64 -w0)"
         printf '{"metadata":{"resourceVersion":"%s"},"data":{"api-key":"%s"}}\n' "$revision" "$encoded"
         ;;
-      'jsonpath={.metadata.resourceVersion}') printf '%s' rv-secret-current ;;
+      'jsonpath={.metadata.resourceVersion}')
+        revision_checks="$(grep -Fc "jsonpath={.metadata.resourceVersion}" "${FAKE_KUBECTL_CALLS:?}")"
+        if [[ "${FAKE_ROTATE_AFTER_VERIFY:-false}" == true && "$revision_checks" -ge 2 ]]; then
+          printf '%s' rv-secret-newer
+        else
+          printf '%s' rv-secret-current
+        fi
+        ;;
       *) printf 'unexpected Secret lookup: %s\n' "$*" >&2; exit 2 ;;
     esac
     ;;
@@ -136,6 +143,29 @@ grep -Fq 'api-key-revision' "$TMP_DIR/rotation.calls"
 grep -Fq 'rv-secret-current' "$TMP_DIR/rotation.calls"
 ! grep -Fq 'rv-secret-superseded' "$TMP_DIR/rotation.calls"
 grep -Fq 'changed during reconciliation attempt 1' "$TMP_DIR/rotation.out"
+
+printf '%s\n' 'API_SERVER_KEY=stale-before-final-rotation' > "$TMP_DIR/runtime.env"
+: > "$TMP_DIR/final-rotation.calls"
+printf '0' > "$TMP_DIR/snapshot.count"
+if run_reconcile env FAKE_ROTATE_AFTER_VERIFY=true FAKE_KUBECTL_CALLS="$TMP_DIR/final-rotation.calls" > "$TMP_DIR/final-rotation.out" 2>&1; then
+  printf 'post-verification Secret rotation unexpectedly reported success\n' >&2
+  exit 1
+fi
+grep -qx "API_SERVER_KEY=$secret_key" "$TMP_DIR/runtime.env"
+grep -Fq 'changed during rollout verification' "$TMP_DIR/final-rotation.out"
+for app in hermes-agent hermes-dashboard hermes-webui; do
+  grep -Fq "rollout status deploy/$app --timeout=600s" "$TMP_DIR/final-rotation.calls"
+  grep -Fq "exec $app-pod" "$TMP_DIR/final-rotation.calls"
+done
+grep -Fq 'delete pod hermes-api-key-reconcile' "$TMP_DIR/final-rotation.calls"
+! grep -Fq 'Internal API key reconciled from Kubernetes Secret' "$TMP_DIR/final-rotation.out"
+
+: > "$TMP_DIR/final-rotation-retry.calls"
+printf '0' > "$TMP_DIR/snapshot.count"
+run_reconcile env FAKE_KUBECTL_CALLS="$TMP_DIR/final-rotation-retry.calls" >/dev/null
+for app in hermes-agent hermes-dashboard hermes-webui; do
+  grep -Fq "patch deployment $app" "$TMP_DIR/final-rotation-retry.calls"
+done
 
 printf '%s\n' 'UNRELATED_SETTING=keep-preflight' 'API_SERVER_KEY=stale-preflight' > "$TMP_DIR/runtime.env"
 : > "$TMP_DIR/preflight.calls"

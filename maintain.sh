@@ -756,6 +756,11 @@ print("ok")
     [[ "$runtime_health" == ok ]] || fail "$app internal API bearer authentication failed after reconciliation"
   done
 
+  current_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}')" \
+    || fail 'Unable to perform final API server key Secret revision check'
+  [[ "$current_revision" == "$revision" ]] \
+    || fail 'API server key Secret changed during rollout verification; rerun reconciliation to converge the newer Secret revision'
+
   trap - EXIT
   reconcile_api_key_cleanup
   unset revision current_revision patch
