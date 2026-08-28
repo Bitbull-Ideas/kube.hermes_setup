@@ -2,7 +2,7 @@
 # Use the probe-verified Agent-image runtimes and verify unchanged reconciliation.
 set -euo pipefail
 
-PYTHON_BIN=/opt/hermes/.venv/bin/python
+PYTHON_BIN=/usr/bin/python3.13
 NODE_SRC=/usr/local/bin/node
 NPM_SRC=/usr/local/lib/node_modules/npm
 cp -L /poc/requirements-a.lock /test-tmp/requirements-a.lock

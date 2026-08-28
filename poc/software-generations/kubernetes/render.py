@@ -50,7 +50,7 @@ JOB_FILES = (
     ("jobs/10-lifecycle.yaml", "hermes-software-poc-lifecycle", "agent", False,
      ["/bin/bash", "/poc/kubernetes/entrypoints/lifecycle.sh"], 1800),
     ("jobs/20-persist.yaml", "hermes-software-poc-persist", "agent", True,
-     ["/opt/hermes/.venv/bin/python", "/poc/verify-state.py"], 300),
+     ["/usr/bin/python3.13", "/poc/verify-state.py"], 300),
     ("jobs/30-idempotency.yaml", "hermes-software-poc-idempotency", "agent", False,
      ["/bin/bash", "/poc/kubernetes/entrypoints/idempotency.sh"], 900),
     ("jobs/40-invalid-lock.yaml", "hermes-software-poc-invalid-lock", "agent", False,
@@ -60,7 +60,7 @@ JOB_FILES = (
     ("jobs/60-webui.yaml", "hermes-software-poc-webui", "webui", True,
      ["/software/node/current/bin/node", "/poc/verify-webui-state.js"], 300),
     ("jobs/70-final-verify.yaml", "hermes-software-poc-final-verify", "agent", True,
-     ["/opt/hermes/.venv/bin/python", "/poc/verify-state.py"], 300),
+     ["/usr/bin/python3.13", "/poc/verify-state.py"], 300),
 )
 
 
@@ -225,7 +225,7 @@ def job_object(
     environment = [
         {"name": "HOME", "value": "/tmp"},
         {"name": "TMPDIR", "value": "/test-tmp"},
-        {"name": "PATH", "value": "/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+        {"name": "PATH", "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
         {"name": "PYTHONDONTWRITEBYTECODE", "value": "1"},
         {"name": "PIP_CACHE_DIR", "value": "/test-tmp/pip-cache"},
         {"name": "XDG_CACHE_HOME", "value": "/test-tmp/xdg-cache"},

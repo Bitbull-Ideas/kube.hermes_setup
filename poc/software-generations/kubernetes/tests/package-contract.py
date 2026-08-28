@@ -34,12 +34,12 @@ EXPECTED_FILES = {
 }
 JOB_CONTRACT = {
     "hermes-software-poc-lifecycle": (AGENT, False, ["/bin/bash", "/poc/kubernetes/entrypoints/lifecycle.sh"]),
-    "hermes-software-poc-persist": (AGENT, True, ["/opt/hermes/.venv/bin/python", "/poc/verify-state.py"]),
+    "hermes-software-poc-persist": (AGENT, True, ["/usr/bin/python3.13", "/poc/verify-state.py"]),
     "hermes-software-poc-idempotency": (AGENT, False, ["/bin/bash", "/poc/kubernetes/entrypoints/idempotency.sh"]),
     "hermes-software-poc-invalid-lock": (AGENT, False, ["/bin/bash", "/poc/kubernetes/entrypoints/invalid-lock.sh"]),
     "hermes-software-poc-rollback": (AGENT, False, ["/bin/bash", "/poc/tests/rollback-cycle.sh"]),
     "hermes-software-poc-webui": (WEBUI, True, ["/software/node/current/bin/node", "/poc/verify-webui-state.js"]),
-    "hermes-software-poc-final-verify": (AGENT, True, ["/opt/hermes/.venv/bin/python", "/poc/verify-state.py"]),
+    "hermes-software-poc-final-verify": (AGENT, True, ["/usr/bin/python3.13", "/poc/verify-state.py"]),
 }
 FORBIDDEN_KINDS = {
     "Secret", "Service", "Ingress", "Role", "RoleBinding", "ClusterRole",
@@ -115,8 +115,7 @@ def assert_container(container: dict, *, expected_image: str, read_only_software
     assert env["HOME"] == "/tmp"
     assert env["TMPDIR"] == "/test-tmp"
     assert env["PATH"] == (
-        "/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:"
-        "/usr/sbin:/usr/bin:/sbin:/bin"
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     )
     assert env["PYTHONDONTWRITEBYTECODE"] == "1"
     assert env["PIP_CACHE_DIR"] == "/test-tmp/pip-cache"
@@ -330,7 +329,7 @@ def main() -> None:
         assert not any(re.search(r"(?:^|/)(?:python[0-9.]*|(?:ba)?sh)$", target, re.I) for target in extracted)
         entrypoint_contract = {
             ROOT / "kubernetes/entrypoints/lifecycle.sh": (
-                'PYTHON_BIN=/opt/hermes/.venv/bin/python',
+                'PYTHON_BIN=/usr/bin/python3.13',
                 'NODE_SRC=/usr/local/bin/node',
                 'NPM_SRC=/usr/local/lib/node_modules/npm',
                 'cp -L /poc/requirements-a.lock /test-tmp/requirements-a.lock',
@@ -341,14 +340,14 @@ def main() -> None:
                 'REQUIREMENTS_BAD=/test-tmp/requirements-bad.lock',
             ),
             ROOT / "kubernetes/entrypoints/idempotency.sh": (
-                'PYTHON_BIN=/opt/hermes/.venv/bin/python',
+                'PYTHON_BIN=/usr/bin/python3.13',
                 'NODE_SRC=/usr/local/bin/node',
                 'NPM_SRC=/usr/local/lib/node_modules/npm',
                 'cp -L /poc/requirements-a.lock /test-tmp/requirements-a.lock',
                 'REQUIREMENTS_A=/test-tmp/requirements-a.lock',
             ),
             ROOT / "kubernetes/entrypoints/invalid-lock.sh": (
-                'PYTHON_BIN=/opt/hermes/.venv/bin/python',
+                'PYTHON_BIN=/usr/bin/python3.13',
                 'cp -L /poc/requirements-bad.lock /test-tmp/requirements-bad.lock',
                 'REQUIREMENTS_BAD=/test-tmp/requirements-bad.lock',
             ),

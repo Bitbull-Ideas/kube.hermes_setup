@@ -144,7 +144,10 @@ ignored={'pip','setuptools','wheel'}
 print(json.dumps(sorted((x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version for x in md.distributions() if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored),separators=(',',':')))
 PY
 )"
-[[ "$installed_json" == "$expected_json" ]] || { printf '%s\n' 'Python inventory mismatch' >&2; exit 1; }
+if [[ "$installed_json" != "$expected_json" ]]; then
+  printf 'Python inventory mismatch expected=%s actual=%s\n' "$expected_json" "$installed_json" >&2
+  exit 1
+fi
 python3 - "$final/metadata.json" "$SOFTWARE_ROOT" "$component" "$final" "$generation" "$BUILDER_IMAGE_DIGEST" "$lock_sha" "$reconciler_sha" "$RECONCILER_VERSION" "$runtime_json" "$installed_json" <<'PY'
 import json,pathlib,sys
 p,sroot,croot,gpath,gh,digest,lsha,rsha,version,runtime,installed=sys.argv[1:]
