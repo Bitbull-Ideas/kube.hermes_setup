@@ -776,22 +776,65 @@ spec:
         args:
         - |
           set -eu
-          mkdir -p /opt/data/node/bin
-          cp /usr/local/bin/node /opt/data/node/bin/node
-          chmod 755 /opt/data/node/bin/node
-          mkdir -p /opt/data/node/lib
-          node_atomic_lib="$(ldd /usr/local/bin/node | awk '$1 == "libatomic.so.1" && $3 ~ /^\// { print $3; exit }')"
-          [ -n "$node_atomic_lib" ] || { echo 'libatomic.so.1 is required by the managed Node runtime' >&2; exit 1; }
-          node_atomic_name="$(basename "$node_atomic_lib")"
-          cp -a "$node_atomic_lib" "/opt/data/node/lib/$node_atomic_name"
-          ln -sfn "$node_atomic_name" /opt/data/node/lib/libatomic.so.1
-          mkdir -p /opt/data/node/lib/node_modules
-          rm -rf /opt/data/node/lib/node_modules/npm
-          cp -a /usr/local/lib/node_modules/npm /opt/data/node/lib/node_modules/npm
-          ln -sfn /opt/data/node/lib/node_modules/npm/bin/npm-cli.js /opt/data/node/bin/npm
-          ln -sfn /opt/data/node/lib/node_modules/npm/bin/npx-cli.js /opt/data/node/bin/npx
+          node_root=/opt/data/node
+          node_source=/usr/local/bin/node
+          npm_source=/usr/local/lib/node_modules/npm
+          mkdir -p "$node_root/bin" "$node_root/lib" "$node_root/libexec"
+
+          node_payload_tmp="$node_root/libexec/.node.$$"
+          cp "$node_source" "$node_payload_tmp"
+          chmod 755 "$node_payload_tmp"
+          mv -f "$node_payload_tmp" "$node_root/libexec/node"
+
+          ldd_output="$(ldd "$node_source" 2>&1)" || {
+            printf '%s\n' "$ldd_output" >&2
+            echo 'unable to inspect managed Node runtime dependencies' >&2
+            exit 1
+          }
+          if printf '%s\n' "$ldd_output" | grep -Eq 'libatomic[.]so[.]1[[:space:]]+=>[[:space:]]+not found'; then
+            echo 'libatomic.so.1 required by the managed Node runtime is unresolved' >&2
+            exit 1
+          fi
+          node_atomic_lib="$(printf '%s\n' "$ldd_output" | awk '$1 == "libatomic.so.1" && $3 ~ /^\// { print $3; exit }')"
+          if [ -n "$node_atomic_lib" ]; then
+            atomic_tmp="$node_root/lib/.libatomic.so.1.$$"
+            cp -pL "$node_atomic_lib" "$atomic_tmp"
+            chmod 644 "$atomic_tmp"
+            mv -f "$atomic_tmp" "$node_root/lib/libatomic.so.1"
+          else
+            rm -f "$node_root/lib/libatomic.so.1"
+          fi
+
+          mkdir -p "$node_root/lib/node_modules"
+          rm -rf "$node_root/lib/node_modules/npm"
+          cp -a "$npm_source" "$node_root/lib/node_modules/npm"
+          ln -sfn "$node_root/lib/node_modules/npm/bin/npm-cli.js" "$node_root/bin/npm"
+          ln -sfn "$node_root/lib/node_modules/npm/bin/npx-cli.js" "$node_root/bin/npx"
+
+          launcher_tmp="$node_root/bin/.node.$$"
+          cat > "$launcher_tmp" <<'NODE_LAUNCHER'
+          #!/bin/sh
+          set -eu
+          node_root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+          private_lib="$node_root/lib"
+          current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"
+          case ":$current:" in
+            *":$private_lib:"*) ;;
+            *)
+              if [ -n "$current" ]; then
+                current="$private_lib:$current"
+              else
+                current="$private_lib"
+              fi
+              ;;
+          esac
+          exec env LD_LIBRARY_PATH="$current" "$node_root/libexec/node" "$@"
+          NODE_LAUNCHER
+          chmod 755 "$launcher_tmp"
+          mv -f "$launcher_tmp" "$node_root/bin/node"
+
           ln -sfn /home/hermeswebui/.hermes/hermes-agent/node_modules /opt/data/node_modules
-          chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data/node
+          chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} "$node_root"
         volumeMounts:
         - name: home
           mountPath: /opt/data
@@ -878,8 +921,6 @@ spec:
           value: "${HERMES_ANSIBLE_CONFIG}"
         - name: PATH
           value: /opt/data/hermes-managed/bin:${HERMES_ADDON_VENV}/bin:${HERMES_UV_DIR}/bin:/opt/data/node/bin:/opt/data/node_modules/.bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        - name: LD_LIBRARY_PATH
-          value: /opt/data/node/lib
         - name: HERMES_API_URL
           value: http://hermes-agent:8642
         - name: HERMES_API_KEY
