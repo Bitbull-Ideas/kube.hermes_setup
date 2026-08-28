@@ -61,10 +61,12 @@ case "${1:-} ${2:-}" in
     ;;
   'get pods')
     app="${4#app=}"
-    printf '%s-pod' "$app"
+    [[ "${7:-}" == json ]] || exit 2
+    printf '{"items":[{"metadata":{"name":"%s-pod","annotations":{"kube-hermes-setup.example.com/api-key-revision":"rv-secret-current"}},"status":{"conditions":[{"type":"Ready","status":"True"}],"containerStatuses":[{"ready":true}]}}]}\n' "$app"
     ;;
   'get deployment')
     case "${3:-}" in hermes-agent|hermes-dashboard|hermes-webui) ;; *) exit 2 ;; esac
+    [[ "${3:-}" != "${FAKE_MISSING_DEPLOYMENT:-}" ]] || exit 1
     ;;
   'exec hermes-agent-pod'|'exec hermes-dashboard-pod'|'exec hermes-webui-pod')
     app="${2%-pod}"
@@ -78,8 +80,9 @@ case "${1:-} ${2:-}" in
     app="$3"
     case "$app" in hermes-agent|hermes-dashboard|hermes-webui) ;; *) exit 2 ;; esac
     [[ "$*" == *'api-key-revision'* && "$*" == *'rv-secret-current'* ]] || exit 2
+    [[ "$app" != "${FAKE_PATCH_FAIL_APP:-}" ]] || exit 1
     ;;
-  'rollout restart'|'rollout status')
+  'rollout status')
     exit 0
     ;;
   *)
@@ -116,10 +119,10 @@ grep -qx "API_SERVER_KEY=$secret_key" "$TMP_DIR/runtime.env"
 ! grep -Fq "$secret_key" "$TMP_DIR/kubectl.calls"
 for app in hermes-agent hermes-dashboard hermes-webui; do
   grep -Fq "patch deployment $app" "$TMP_DIR/kubectl.calls"
-  grep -Fq "rollout restart deploy/$app" "$TMP_DIR/kubectl.calls"
   grep -Fq "rollout status deploy/$app --timeout=600s" "$TMP_DIR/kubectl.calls"
   grep -Fq "exec $app-pod" "$TMP_DIR/kubectl.calls"
 done
+! grep -Fq 'rollout restart' "$TMP_DIR/kubectl.calls"
 [[ "$(grep -c 'delete pod hermes-api-key-reconcile' "$TMP_DIR/kubectl.calls")" -ge 2 ]]
 grep -Fq 'Internal API key reconciled from Kubernetes Secret; all enabled consumers authenticate successfully.' "$TMP_DIR/reconcile.out"
 
@@ -133,6 +136,39 @@ grep -Fq 'api-key-revision' "$TMP_DIR/rotation.calls"
 grep -Fq 'rv-secret-current' "$TMP_DIR/rotation.calls"
 ! grep -Fq 'rv-secret-superseded' "$TMP_DIR/rotation.calls"
 grep -Fq 'changed during reconciliation attempt 1' "$TMP_DIR/rotation.out"
+
+printf '%s\n' 'UNRELATED_SETTING=keep-preflight' 'API_SERVER_KEY=stale-preflight' > "$TMP_DIR/runtime.env"
+: > "$TMP_DIR/preflight.calls"
+printf '0' > "$TMP_DIR/snapshot.count"
+if run_reconcile env FAKE_MISSING_DEPLOYMENT=hermes-dashboard FAKE_KUBECTL_CALLS="$TMP_DIR/preflight.calls" >/dev/null 2>&1; then
+  printf 'missing deployment preflight unexpectedly succeeded\n' >&2
+  exit 1
+fi
+grep -qx 'API_SERVER_KEY=stale-preflight' "$TMP_DIR/runtime.env"
+! grep -Fq 'apply -f -' "$TMP_DIR/preflight.calls"
+! grep -Fq 'patch deployment' "$TMP_DIR/preflight.calls"
+
+printf '%s\n' 'API_SERVER_KEY=stale-before-patch-failure' > "$TMP_DIR/runtime.env"
+: > "$TMP_DIR/patch-failure.calls"
+printf '0' > "$TMP_DIR/snapshot.count"
+if run_reconcile env FAKE_PATCH_FAIL_APP=hermes-dashboard FAKE_KUBECTL_CALLS="$TMP_DIR/patch-failure.calls" >/dev/null 2>&1; then
+  printf 'injected deployment patch failure unexpectedly succeeded\n' >&2
+  exit 1
+fi
+grep -qx "API_SERVER_KEY=$secret_key" "$TMP_DIR/runtime.env"
+grep -Fq 'patch deployment hermes-agent' "$TMP_DIR/patch-failure.calls"
+grep -Fq 'patch deployment hermes-dashboard' "$TMP_DIR/patch-failure.calls"
+! grep -Fq 'patch deployment hermes-webui' "$TMP_DIR/patch-failure.calls"
+! grep -Fq 'rollout status' "$TMP_DIR/patch-failure.calls"
+grep -Fq 'delete pod hermes-api-key-reconcile' "$TMP_DIR/patch-failure.calls"
+
+: > "$TMP_DIR/retry.calls"
+printf '0' > "$TMP_DIR/snapshot.count"
+run_reconcile env FAKE_KUBECTL_CALLS="$TMP_DIR/retry.calls" >/dev/null
+for app in hermes-agent hermes-dashboard hermes-webui; do
+  grep -Fq "patch deployment $app" "$TMP_DIR/retry.calls"
+  grep -Fq "rollout status deploy/$app --timeout=600s" "$TMP_DIR/retry.calls"
+done
 
 : > "$TMP_DIR/invalid.calls"
 if PATH="$TMP_DIR/bin:$PATH" ENV_FILE=/dev/null FAKE_KUBECTL_CALLS="$TMP_DIR/invalid.calls" \

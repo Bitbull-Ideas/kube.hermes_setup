@@ -138,7 +138,7 @@ After copying PVC data by any path other than `maintain.sh restore`, make the Ku
 ./doctor.sh
 ```
 
-The explicit source is required; the command never guesses between two valid credentials and never generates a new key. It validates the Secret without printing it, atomically replaces only `API_SERVER_KEY` in `/opt/data/.env`, preserves unrelated entries with mode `0600`, refreshes the non-secret Secret-revision annotation, rolls out Agent/Dashboard/WebUI together, verifies each consumer against `/health/detailed`, and removes its helper Pod on success or failure. Expect a brief interruption while those Deployments roll out.
+The explicit source is required; the command never guesses between two valid credentials and never generates a new key. It validates the Secret without printing it, atomically replaces only `API_SERVER_KEY` in `/opt/data/.env`, preserves unrelated entries with mode `0600`, applies one non-secret Secret-revision template mutation to each enabled Agent API consumer, waits for those rollouts, verifies only Ready Pods carrying that exact revision against `/health/detailed`, and removes its helper Pod on success or failure. Expect a brief interruption while those Deployments roll out.
 
 Before a production reconciliation, create an encrypted application backup. The archive preserves both the Kubernetes Secret snapshot and the pre-change persistent `.env` without writing either credential source to a separate plaintext host file:
 
@@ -150,7 +150,7 @@ install -d -m 0700 "$rollback_dir"
 ./maintain.sh backup "$rollback_dir/hermes.age"
 ```
 
-Keep the passphrase outside the checkout. The encrypted archive belongs in the ignored `backups/` directory and must not be committed. A normal restore intentionally normalizes the saved Secret into persistent `.env`; prefer rerunning `reconcile-api-key --source secret` when the goal is service recovery. If forensic reproduction of the deliberately inconsistent pre-change state is required, use `maintain.sh extract --full` only in a temporary mode-`0700` recovery directory, restore the Secret snapshot and `opt/data/.env` separately under an approved incident procedure, then securely remove the decrypted recovery directory.
+Keep the passphrase outside the checkout. The encrypted archive belongs in the ignored `backups/` directory and must not be committed. The operation is idempotent: if a Deployment patch, rollout, or verification step fails after persistent `.env` was synchronized, correct the reported Kubernetes problem and rerun the same command to converge every consumer to the still-authoritative Secret. Do not rotate or edit either key as an ad-hoc recovery step. A normal restore intentionally normalizes the saved Secret into persistent `.env`; prefer rerunning `reconcile-api-key --source secret` when the goal is service recovery. If forensic reproduction of the deliberately inconsistent pre-change state is required, use `maintain.sh extract --full` only in a temporary mode-`0700` recovery directory, restore the Secret snapshot and `opt/data/.env` separately under an approved incident procedure, then securely remove the decrypted recovery directory.
 
 ## Bootstrap agent configuration
 

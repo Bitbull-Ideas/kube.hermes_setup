@@ -715,15 +715,28 @@ print(f"{revision}\t{encoded}", end="")
     kubectl -n "$HERMES_NAMESPACE" patch deployment "$app" --type=merge -p "$patch" >/dev/null
   done
   for app in "${deployments[@]}"; do
-    kubectl -n "$HERMES_NAMESPACE" rollout restart "deploy/$app"
-  done
-  for app in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$app" --timeout=600s
   done
 
   for app in "${deployments[@]}"; do
-    pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
-    [[ -n "$pod" ]] || fail "no running $app Pod for internal API authentication verification"
+    pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o json | \
+      API_KEY_REVISION="$revision" python3 -c '
+import json
+import os
+import sys
+
+revision = os.environ["API_KEY_REVISION"]
+for pod in json.load(sys.stdin).get("items", []):
+    metadata = pod.get("metadata", {})
+    annotations = metadata.get("annotations", {})
+    status = pod.get("status", {})
+    statuses = status.get("containerStatuses", [])
+    pod_ready = any(item.get("type") == "Ready" and item.get("status") == "True" for item in status.get("conditions", []))
+    if annotations.get("kube-hermes-setup.example.com/api-key-revision") == revision and pod_ready and statuses and all(item.get("ready") for item in statuses):
+        print(metadata.get("name", ""), end="")
+        break
+')"
+    [[ -n "$pod" ]] || fail "no Ready $app Pod carrying API key revision $revision for authentication verification"
     runtime_health="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
       PY="$(command -v python3 || command -v python || true)"
       [ -n "$PY" ] || PY=/opt/hermes/.venv/bin/python
