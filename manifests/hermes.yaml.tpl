@@ -517,18 +517,24 @@ spec:
           mountPath: /opt/data
         - name: workspace
           mountPath: /workspace
+        startupProbe:
+          httpGet:
+            path: /health
+            port: api
+          periodSeconds: 5
+          failureThreshold: 36
         readinessProbe:
           httpGet:
             path: /health
             port: api
-          initialDelaySeconds: 120
+          initialDelaySeconds: 0
           periodSeconds: 10
           failureThreshold: 18
         livenessProbe:
           httpGet:
             path: /health
             port: api
-          initialDelaySeconds: 120
+          initialDelaySeconds: 0
           periodSeconds: 20
           failureThreshold: 6
         resources:
@@ -681,16 +687,21 @@ spec:
           mountPath: /opt/data
         - name: workspace
           mountPath: /workspace
+        startupProbe:
+          tcpSocket:
+            port: dashboard
+          periodSeconds: 5
+          failureThreshold: 36
         readinessProbe:
           tcpSocket:
             port: dashboard
-          initialDelaySeconds: 120
+          initialDelaySeconds: 0
           periodSeconds: 10
           failureThreshold: 18
         livenessProbe:
           tcpSocket:
             port: dashboard
-          initialDelaySeconds: 120
+          initialDelaySeconds: 0
           periodSeconds: 20
           failureThreshold: 6
         resources:
@@ -832,13 +843,16 @@ spec:
             [ "$(grep -c '^npm_sha=' "$metadata")" -eq 1 ] || return 1
             [ "$(grep -c '^atomic_sha=' "$metadata")" -eq 1 ] || return 1
             [ "$(grep -c '^source_key=' "$metadata")" -eq 1 ] || return 1
+            [ "$(grep -c '^payload_sha=' "$metadata")" -eq 1 ] || return 1
             stored_node_sha="$(sed -n 's/^node_sha=//p' "$metadata")"
             stored_npm_sha="$(sed -n 's/^npm_sha=//p' "$metadata")"
             stored_atomic_sha="$(sed -n 's/^atomic_sha=//p' "$metadata")"
             stored_source_key="$(sed -n 's/^source_key=//p' "$metadata")"
+            stored_payload_sha="$(sed -n 's/^payload_sha=//p' "$metadata")"
             valid_hash "$stored_node_sha" || return 1
             valid_hash "$stored_npm_sha" || return 1
             valid_hash "$stored_source_key" || return 1
+            valid_hash "$stored_payload_sha" || return 1
             [ "$stored_atomic_sha" = none ] || valid_hash "$stored_atomic_sha" || return 1
             [ -f "$candidate/libexec/node" ] && [ ! -L "$candidate/libexec/node" ] || return 1
             [ "$(sha256sum "$candidate/libexec/node" | cut -d' ' -f1)" = "$stored_node_sha" ] || return 1
@@ -855,6 +869,8 @@ spec:
               [ -f "$candidate/lib/libatomic.so.1" ] && [ ! -L "$candidate/lib/libatomic.so.1" ] || return 1
               [ "$(sha256sum "$candidate/lib/libatomic.so.1" | cut -d' ' -f1)" = "$stored_atomic_sha" ] || return 1
             fi
+            candidate_payload_sha="$(tar -C "$candidate" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --mode=0777 -cf - libexec lib | sha256sum | cut -d' ' -f1)"
+            [ "$candidate_payload_sha" = "$stored_payload_sha" ] || return 1
           }
           runtime_matches_source() {
             runtime_integrity_valid "$1" || return 1
@@ -899,11 +915,13 @@ spec:
               chmod 644 "$runtime_stage/lib/libatomic.so.1"
             fi
             cp -a "$npm_source" "$runtime_stage/lib/node_modules/npm"
+            payload_sha="$(tar -C "$runtime_stage" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --mode=0777 -cf - libexec lib | sha256sum | cut -d' ' -f1)"
             cat > "$runtime_stage/.metadata" <<RUNTIME_METADATA
           node_sha=$node_sha
           npm_sha=$npm_sha
           atomic_sha=$atomic_sha
           source_key=$base_runtime_key
+          payload_sha=$payload_sha
           RUNTIME_METADATA
             chmod 644 "$runtime_stage/.metadata"
             [ -f "$runtime_stage/lib/node_modules/npm/bin/npm-cli.js" ] || { echo 'staged npm CLI is missing' >&2; exit 1; }
@@ -990,10 +1008,13 @@ spec:
           case "$old_current" in
             '') ;;
             runtimes/*)
-              valid_runtime_pointer "$old_current" || { echo 'active managed Node runtime pointer is invalid' >&2; exit 1; }
-              runtime_integrity_valid "$node_root/$old_current" && old_current_valid=true
+              if valid_runtime_pointer "$old_current"; then
+                runtime_integrity_valid "$node_root/$old_current" && old_current_valid=true
+              else
+                old_current=''
+              fi
               ;;
-            *) echo 'active managed Node runtime pointer is invalid' >&2; exit 1 ;;
+            *) old_current='' ;;
           esac
           mv -fT "$current_tmp" "$node_root/current"
           if [ "$old_current_valid" = true ] && [ "$old_current" != "runtimes/$runtime_key" ]; then

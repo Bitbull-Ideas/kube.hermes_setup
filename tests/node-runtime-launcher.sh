@@ -134,6 +134,23 @@ PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
 [[ -x "$ACTIVE_RUNTIME/libexec/node" ]]
 [[ "$("$NODE" marker)" == runtime-v1 ]]
 
+# A malformed active pointer is replaced without retaining it as previous.
+ln -sfn '../malformed-runtime-pointer' "$TMP_DIR/runtime/current"
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
+ACTIVE_RUNTIME="$(readlink -f "$TMP_DIR/runtime/current")"
+[[ "$ACTIVE_RUNTIME" == "$TMP_DIR/runtime/runtimes/"* ]]
+[[ "$("$NODE" marker)" == runtime-v1 ]]
+
+# An unexpected private library invalidates and rebuilds the generation.
+unexpected_runtime="$ACTIVE_RUNTIME"
+printf '%s\n' invalid-library > "$unexpected_runtime/lib/libstdc++.so.6"
+PATH="$TMP_DIR/fake-bin:$PATH" sh "$TMP_DIR/init.sh"
+ACTIVE_RUNTIME="$(readlink -f "$TMP_DIR/runtime/current")"
+[[ "$ACTIVE_RUNTIME" != "$unexpected_runtime" ]]
+[[ ! -e "$unexpected_runtime" ]]
+[[ ! -e "$ACTIVE_RUNTIME/lib/libstdc++.so.6" ]]
+[[ "$("$NODE" marker)" == runtime-v1 ]]
+
 # A content-corrupted same-key runtime is replaced from the trusted source.
 corrupt_runtime="$ACTIVE_RUNTIME"
 printf '%s\n' '#!/bin/sh' 'printf corrupted-runtime\\n' > "$corrupt_runtime/libexec/node"

@@ -23,7 +23,7 @@ All notable changes to this project are documented in this file.
 - Reads an existing `/opt/data/.env` through an atomic same-directory hard-link snapshot, rejects symlinked/non-regular targets, and disables service-account-token automounting for storage helper Pods so restore/reconciliation cannot follow a raced credential-file substitution into container credentials.
 - Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
 - Preserves a custom `HERMES_WEBUI_IMAGE` loader environment instead of replacing its `LD_LIBRARY_PATH` with the copied Node runtime directory. `prepare-browser-cli` builds and validates a content-addressed Node/npm/npx runtime under `/opt/data/node/runtimes/<hash>`, then atomically switches `/opt/data/node/current`; stable launchers prepend only the selected runtime's private library directory, preserve inherited paths without duplication, and leave the active runtime unchanged when a candidate dependency or npm payload fails validation. `libatomic.so.1` remains optional unless the source ELF resolves or requires it. [Issue #98]
-- Uses a conservative 120-second startup window for Agent and Dashboard readiness/liveness probes so ordinary full-stack restart/reinstall startup does not emit connection-refused Warning Events before their sockets listen.
+- Gates Agent and Dashboard readiness/liveness with a 180-second startup-probe budget, allowing readiness to restore traffic immediately after startup succeeds without exposing traffic early or racing slow full-stack restarts.
 
 ### Documentation
 
@@ -31,12 +31,9 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; same-key content-corruption rebuild; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
+- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; malformed active-pointer recovery; unexpected-library and same-key content-corruption rebuild; repair idempotency; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
 - Passes the component/profile matrix, QA contract, full repository shell/Python validation, credential-preservation tests, and encrypted backup tests.
-- Passes the clean live K3s component matrix at code commit `b9a6483`: Agent-only, Dashboard, WebUI, Browserless, and full stack; all enabled workloads and the init Job became ready with zero container restarts and zero Warning Events.
-- Passes trusted external HTTPS Chromium acceptance before and after unchanged reinstall: login page rendered, invalid password rejected, configured password accepted, authenticated UI screenshots captured, and authenticated browser consoles remained clean.
-- Passes unchanged reinstall with Secret hash stability, PVC identity preservation, persisted marker integrity, successful rollouts, and zero Warning Events under the 120-second startup window.
-- Passes fresh-PVC transactional Node-runtime QA at code commit `79aa296`; the rendered Node init script is byte-identical at `b9a6483`. Real payload corruption rebuilt to a different validated generation, removed the corrupt directory, and was byte-identical on immediate rerun; forced dependency failure preserved the active tree/pointer and Node/npm/npx versions, inherited loader preservation passed, and cleanup completed with zero restarts/Warnings.
+- **Release gate pending after final review fixes:** rerun fresh-PVC transactional QA and the clean K3s component/full-stack/Chromium/unchanged-reinstall matrix after malformed-pointer recovery, complete payload-tree integrity, and startup-probe changes.
 - **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
 
 ## [v2.6.0] - 2026-08-25
