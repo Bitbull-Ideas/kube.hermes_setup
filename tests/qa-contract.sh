@@ -14,16 +14,40 @@ MANIFEST="$ROOT_DIR/manifests/hermes.yaml.tpl"
 
 # The WebUI image must receive a complete, runnable Node/npm/npx toolchain
 # from the Agent image without replacing the WebUI image's own loader path.
-grep -Fq 'cp -a "$npm_source" "$node_root/lib/node_modules/npm"' "$MANIFEST"
-grep -Fq 'ln -sfn "$node_root/lib/node_modules/npm/bin/npx-cli.js" "$node_root/bin/npx"' "$MANIFEST"
-grep -Fq 'ldd_output="$(ldd "$node_source" 2>&1)"' "$MANIFEST"
-grep -Fq 'node_root=/opt/data/node' "$MANIFEST"
-grep -Fq '"$node_root/libexec/node"' "$MANIFEST"
+# Candidate runtimes are validated off-path and activated through one pointer.
+grep -Fq 'cp -a "$npm_source" "$runtime_stage/lib/node_modules/npm"' "$MANIFEST"
+grep -Fq 'runtime_stage="$runtimes/.$runtime_key.$$"' "$MANIFEST"
+grep -Fq 'LD_LIBRARY_PATH="$runtime_stage/lib" "$runtime_stage/libexec/node" --version' "$MANIFEST"
+grep -Fq 'mv -fT "$current_tmp" "$node_root/current"' "$MANIFEST"
+grep -Fq 'runtime="$(readlink -f "$node_root/current")"' "$MANIFEST"
 grep -Fq 'NODE_LAUNCHER' "$MANIFEST"
+grep -Fq 'NPM_LAUNCHER' "$MANIFEST"
+grep -Fq 'NPX_LAUNCHER' "$MANIFEST"
 grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
 ! grep -Fq '        - name: LD_LIBRARY_PATH' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
 ! grep -Fq 'HERMES_NPX_SETUP' "$MANIFEST"
+
+# Agent and Dashboard use startup probes to gate prompt readiness without
+# exposing traffic early or starting liveness before slow startup completes.
+python3 - "$MANIFEST" <<'PY'
+from pathlib import Path
+import re,sys
+text=Path(sys.argv[1]).read_text()
+for name in ('hermes-agent','hermes-dashboard'):
+    start=text.index(f'kind: Deployment\nmetadata:\n  name: {name}\n')
+    end=text.find('\n---\n',start)
+    block=text[start:end if end >= 0 else None]
+    startup=re.search(r'startupProbe:\n(?P<body>(?:.*\n){1,10})',block)
+    assert startup, (name,'startupProbe')
+    period=re.search(r'periodSeconds:\s*(\d+)',startup.group('body'))
+    failures=re.search(r'failureThreshold:\s*(\d+)',startup.group('body'))
+    assert period and failures and int(period.group(1))*int(failures.group(1)) >= 120, (name,'startupBudget')
+    readiness=re.search(r'readinessProbe:\n(?:.*\n){0,8}?\s+initialDelaySeconds:\s*(\d+)',block)
+    assert readiness and int(readiness.group(1)) <= 5, (name,'readinessDelay')
+    liveness=re.search(r'livenessProbe:\n(?:.*\n){0,8}?\s+initialDelaySeconds:\s*(\d+)',block)
+    assert liveness and int(liveness.group(1)) <= 5, (name,'livenessDelay')
+PY
 
 # Required maintainer guidance must remain present in AGENTS.md.
 for needle in \

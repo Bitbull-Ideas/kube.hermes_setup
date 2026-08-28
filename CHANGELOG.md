@@ -38,7 +38,8 @@ All notable changes to this project are documented in this file.
 - Forces each internal API-key reconciliation to create exactly one real consumer rollout by adding a fresh non-secret request annotation alongside the Secret revision, then verifies only Ready Pods carrying both values. This prevents an already-current revision annotation from turning reconciliation into a no-op rollout while the Agent keeps an older in-memory key. [Issue #101]
 - Reads an existing `/opt/data/.env` through an atomic same-directory hard-link snapshot, rejects symlinked/non-regular targets, and disables service-account-token automounting for storage helper Pods so restore/reconciliation cannot follow a raced credential-file substitution into container credentials.
 - Carries forward the WebUI `prepare-browser-cli` fixes from the in-review `fix/persist-node-npm-npx-runtime` branch: resolves the actual `libatomic.so.1` linked by `/usr/local/bin/node` via `ldd` (previously the first `libatomic.so.1*` basename match under `/lib`/`/usr/lib`, which could select an incompatible ELF on images with multiple implementations), and sets `npm_config_yes=true` on the WebUI deployment so WebUI-launched `npx` invocations are non-interactive.
-- Preserves a custom `HERMES_WEBUI_IMAGE` loader environment instead of replacing its `LD_LIBRARY_PATH` with the copied Node runtime directory. `prepare-browser-cli` stores the Node ELF under `/opt/data/node/libexec/node`; `/opt/data/node/bin/node` prepends the private library directory for Node processes only, preserves inherited paths without duplication, and treats `libatomic.so.1` as optional unless the source ELF resolves or requires it. [Issue #98]
+- Preserves a custom `HERMES_WEBUI_IMAGE` loader environment instead of replacing its `LD_LIBRARY_PATH` with the copied Node runtime directory. `prepare-browser-cli` builds and validates a content-addressed Node/npm/npx runtime under `/opt/data/node/runtimes/<hash>`, then atomically switches `/opt/data/node/current`; stable launchers prepend only the selected runtime's private library directory, preserve inherited paths without duplication, and leave the active runtime unchanged when a candidate dependency or npm payload fails validation. `libatomic.so.1` remains optional unless the source ELF resolves or requires it. [Issue #98]
+- Gates Agent and Dashboard readiness/liveness with a 180-second startup-probe budget, allowing readiness to restore traffic immediately after startup succeeds without exposing traffic early or racing slow full-stack restarts.
 
 ### Documentation
 
@@ -46,9 +47,12 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; and optional `libatomic.so.1` handling.
+- Passes focused Node-launcher tests for unset, inherited, and already-present loader paths; argument and exit-code propagation; npm/npx traversal; optional `libatomic.so.1` handling; trusted execute-bit repair; malformed active-pointer recovery; unexpected-library and same-key content-corruption rebuild; repair idempotency; failed dependency and malformed npm refresh preservation; and validated v1-to-v3 atomic activation with current/previous retention.
 - Passes the component/profile matrix, QA contract, full repository shell/Python validation, credential-preservation tests, and encrypted backup tests.
-- Passes a separate fresh-PVC live K3s Job using the exact production-rendered `prepare-browser-cli` script: Node/npm/npx execute from the default WebUI image, the launcher preserves `/custom/image/lib:/custom/extension/lib`, no service-account token is mounted, and Job/PVC cleanup completes.
+- Passes fresh-PVC transactional QA at code commit `f026107`: malformed-pointer recovery, unexpected-library and payload-corruption rebuild, immediate repair idempotency, forced dependency failure preservation, inherited loader behavior, zero restarts/unexpected warnings, and cleanup.
+- Passes the clean live K3s Agent-only, Dashboard, WebUI, Browserless, and full-stack matrix at `f026107`; startup probes reported only expected not-ready events and readiness/liveness produced zero warnings.
+- Passes trusted external HTTPS Chromium before and after unchanged reinstall: invalid password rejected, configured password accepted, authenticated screenshots captured, and authenticated consoles clean.
+- Passes unchanged reinstall with Secret hash stability, PVC identity preservation, marker integrity, successful rollouts, and complete route/namespace/PV cleanup.
 - **Validation limitation:** the live test injects the inherited loader value through the test Pod. Static rendering proves the WebUI Deployment no longer overrides it, but a separately built custom WebUI image with Dockerfile-defined `ENV LD_LIBRARY_PATH` was not available.
 
 ## [v2.6.0] - 2026-08-25

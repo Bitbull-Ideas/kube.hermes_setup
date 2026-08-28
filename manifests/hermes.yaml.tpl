@@ -560,18 +560,24 @@ spec:
           mountPath: /opt/data
         - name: workspace
           mountPath: /workspace
+        startupProbe:
+          httpGet:
+            path: /health
+            port: api
+          periodSeconds: 5
+          failureThreshold: 36
         readinessProbe:
           httpGet:
             path: /health
             port: api
-          initialDelaySeconds: 20
+          initialDelaySeconds: 0
           periodSeconds: 10
           failureThreshold: 18
         livenessProbe:
           httpGet:
             path: /health
             port: api
-          initialDelaySeconds: 90
+          initialDelaySeconds: 0
           periodSeconds: 20
           failureThreshold: 6
         resources:
@@ -724,16 +730,21 @@ spec:
           mountPath: /opt/data
         - name: workspace
           mountPath: /workspace
+        startupProbe:
+          tcpSocket:
+            port: dashboard
+          periodSeconds: 5
+          failureThreshold: 36
         readinessProbe:
           tcpSocket:
             port: dashboard
-          initialDelaySeconds: 20
+          initialDelaySeconds: 0
           periodSeconds: 10
           failureThreshold: 18
         livenessProbe:
           tcpSocket:
             port: dashboard
-          initialDelaySeconds: 90
+          initialDelaySeconds: 0
           periodSeconds: 20
           failureThreshold: 6
         resources:
@@ -822,13 +833,16 @@ spec:
           node_root=/opt/data/node
           node_source=/usr/local/bin/node
           npm_source=/usr/local/lib/node_modules/npm
-          mkdir -p "$node_root/bin" "$node_root/lib" "$node_root/libexec"
+          runtimes="$node_root/runtimes"
+          repairs="$node_root/repairs"
+          mkdir -p "$node_root/bin" "$runtimes" "$repairs"
 
-          node_payload_tmp="$node_root/libexec/.node.$$"
-          cp "$node_source" "$node_payload_tmp"
-          chmod 755 "$node_payload_tmp"
-          mv -f "$node_payload_tmp" "$node_root/libexec/node"
+          for required in "$node_source" "$npm_source/package.json" "$npm_source/bin/npm-cli.js" "$npm_source/bin/npx-cli.js"; do
+            [ -f "$required" ] || { echo "managed Node runtime source missing: $required" >&2; exit 1; }
+          done
+          [ -x "$node_source" ] || { echo 'managed Node source is not executable' >&2; exit 1; }
 
+          # Validate every source dependency before touching the active runtime.
           ldd_output="$(ldd "$node_source" 2>&1)" || {
             printf '%s\n' "$ldd_output" >&2
             echo 'unable to inspect managed Node runtime dependencies' >&2
@@ -839,42 +853,238 @@ spec:
             exit 1
           fi
           node_atomic_lib="$(printf '%s\n' "$ldd_output" | awk '$1 == "libatomic.so.1" && $3 ~ /^\// { print $3; exit }')"
+          node_sha="$(sha256sum "$node_source" | cut -d' ' -f1)"
+          npm_sha="$(tar -C "$npm_source" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . | sha256sum | cut -d' ' -f1)"
+          atomic_sha=none
           if [ -n "$node_atomic_lib" ]; then
-            atomic_tmp="$node_root/lib/.libatomic.so.1.$$"
-            cp -pL "$node_atomic_lib" "$atomic_tmp"
-            chmod 644 "$atomic_tmp"
-            mv -f "$atomic_tmp" "$node_root/lib/libatomic.so.1"
-          else
-            rm -f "$node_root/lib/libatomic.so.1"
+            [ -f "$node_atomic_lib" ] || { echo 'resolved libatomic.so.1 is not a file' >&2; exit 1; }
+            atomic_sha="$(sha256sum "$node_atomic_lib" | cut -d' ' -f1)"
+          fi
+          base_runtime_key="$(printf '%s\n' "$node_sha" "$npm_sha" "$atomic_sha" | sha256sum | cut -d' ' -f1)"
+          runtime_key="$base_runtime_key"
+          valid_runtime_pointer() {
+            pointer="$1"
+            case "$pointer" in
+              runtimes/*) key="$(printf '%s' "$pointer" | cut -c10-)" ;;
+              *) return 1 ;;
+            esac
+            [ "$(printf '%s' "$key" | wc -c)" -eq 64 ] || return 1
+            case "$key" in *[!0-9a-f]*) return 1 ;; esac
+          }
+          valid_hash() {
+            value="$1"
+            [ "$(printf '%s' "$value" | wc -c)" -eq 64 ] || return 1
+            case "$value" in *[!0-9a-f]*) return 1 ;; esac
+          }
+          runtime_integrity_valid() {
+            candidate="$1"
+            [ -d "$candidate" ] && [ ! -L "$candidate" ] || return 1
+            [ -f "$candidate/.complete" ] && [ ! -L "$candidate/.complete" ] || return 1
+            metadata="$candidate/.metadata"
+            [ -f "$metadata" ] && [ ! -L "$metadata" ] || return 1
+            [ "$(grep -c '^node_sha=' "$metadata")" -eq 1 ] || return 1
+            [ "$(grep -c '^npm_sha=' "$metadata")" -eq 1 ] || return 1
+            [ "$(grep -c '^atomic_sha=' "$metadata")" -eq 1 ] || return 1
+            [ "$(grep -c '^source_key=' "$metadata")" -eq 1 ] || return 1
+            [ "$(grep -c '^payload_sha=' "$metadata")" -eq 1 ] || return 1
+            stored_node_sha="$(sed -n 's/^node_sha=//p' "$metadata")"
+            stored_npm_sha="$(sed -n 's/^npm_sha=//p' "$metadata")"
+            stored_atomic_sha="$(sed -n 's/^atomic_sha=//p' "$metadata")"
+            stored_source_key="$(sed -n 's/^source_key=//p' "$metadata")"
+            stored_payload_sha="$(sed -n 's/^payload_sha=//p' "$metadata")"
+            valid_hash "$stored_node_sha" || return 1
+            valid_hash "$stored_npm_sha" || return 1
+            valid_hash "$stored_source_key" || return 1
+            valid_hash "$stored_payload_sha" || return 1
+            [ "$stored_atomic_sha" = none ] || valid_hash "$stored_atomic_sha" || return 1
+            [ -f "$candidate/libexec/node" ] && [ ! -L "$candidate/libexec/node" ] || return 1
+            [ "$(sha256sum "$candidate/libexec/node" | cut -d' ' -f1)" = "$stored_node_sha" ] || return 1
+            npm_candidate="$candidate/lib/node_modules/npm"
+            [ -d "$npm_candidate" ] && [ ! -L "$npm_candidate" ] || return 1
+            for npm_file in package.json bin/npm-cli.js bin/npx-cli.js; do
+              [ -f "$npm_candidate/$npm_file" ] && [ ! -L "$npm_candidate/$npm_file" ] || return 1
+            done
+            candidate_npm_sha="$(tar -C "$npm_candidate" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - . | sha256sum | cut -d' ' -f1)"
+            [ "$candidate_npm_sha" = "$stored_npm_sha" ] || return 1
+            if [ "$stored_atomic_sha" = none ]; then
+              [ ! -e "$candidate/lib/libatomic.so.1" ] && [ ! -L "$candidate/lib/libatomic.so.1" ] || return 1
+            else
+              [ -f "$candidate/lib/libatomic.so.1" ] && [ ! -L "$candidate/lib/libatomic.so.1" ] || return 1
+              [ "$(sha256sum "$candidate/lib/libatomic.so.1" | cut -d' ' -f1)" = "$stored_atomic_sha" ] || return 1
+            fi
+            candidate_payload_sha="$(tar -C "$candidate" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --mode=0777 -cf - libexec lib | sha256sum | cut -d' ' -f1)"
+            [ "$candidate_payload_sha" = "$stored_payload_sha" ] || return 1
+          }
+          runtime_matches_source() {
+            runtime_integrity_valid "$1" || return 1
+            [ "$stored_node_sha" = "$node_sha" ] || return 1
+            [ "$stored_npm_sha" = "$npm_sha" ] || return 1
+            [ "$stored_atomic_sha" = "$atomic_sha" ] || return 1
+            [ "$stored_source_key" = "$base_runtime_key" ] || return 1
+          }
+
+          repair_map="$repairs/$base_runtime_key"
+          if [ -f "$repair_map" ] && [ ! -L "$repair_map" ]; then
+            mapped_runtime_key="$(cat "$repair_map")"
+            if valid_hash "$mapped_runtime_key" && { [ -e "$runtimes/$mapped_runtime_key" ] || [ -L "$runtimes/$mapped_runtime_key" ]; }; then
+              runtime_key="$mapped_runtime_key"
+            else
+              rm -f -- "$repair_map"
+            fi
+          elif [ -e "$repair_map" ] || [ -L "$repair_map" ]; then
+            rm -f -- "$repair_map"
           fi
 
-          mkdir -p "$node_root/lib/node_modules"
-          rm -rf "$node_root/lib/node_modules/npm"
-          cp -a "$npm_source" "$node_root/lib/node_modules/npm"
-          ln -sfn "$node_root/lib/node_modules/npm/bin/npm-cli.js" "$node_root/bin/npm"
-          ln -sfn "$node_root/lib/node_modules/npm/bin/npx-cli.js" "$node_root/bin/npx"
+          repair_round=0
+          runtime="$runtimes/$runtime_key"
+          while [ -e "$runtime" ] || [ -L "$runtime" ]; do
+            runtime_matches_source "$runtime" && break
+            repair_round=$((repair_round + 1))
+            [ "$repair_round" -le 8 ] || { echo 'too many corrupt managed Node runtimes' >&2; exit 1; }
+            corrupt_sha="$(tar -C "$runtimes" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -cf - "$(basename "$runtime")" | sha256sum | cut -d' ' -f1)"
+            runtime_key="$(printf '%s\n' "$base_runtime_key" "$runtime_key" "$corrupt_sha" | sha256sum | cut -d' ' -f1)"
+            runtime="$runtimes/$runtime_key"
+          done
+          runtime_stage="$runtimes/.$runtime_key.$$"
 
-          launcher_tmp="$node_root/bin/.node.$$"
-          cat > "$launcher_tmp" <<'NODE_LAUNCHER'
+          if [ ! -d "$runtime" ]; then
+            rm -rf -- "$runtime_stage"
+            trap 'rm -rf -- "$runtime_stage"' 0 1 2 15
+            mkdir -p "$runtime_stage/libexec" "$runtime_stage/lib/node_modules"
+            cp "$node_source" "$runtime_stage/libexec/node"
+            chmod 755 "$runtime_stage/libexec/node"
+            if [ -n "$node_atomic_lib" ]; then
+              cp -pL "$node_atomic_lib" "$runtime_stage/lib/libatomic.so.1"
+              chmod 644 "$runtime_stage/lib/libatomic.so.1"
+            fi
+            cp -a "$npm_source" "$runtime_stage/lib/node_modules/npm"
+            payload_sha="$(tar -C "$runtime_stage" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner --mode=0777 -cf - libexec lib | sha256sum | cut -d' ' -f1)"
+            cat > "$runtime_stage/.metadata" <<RUNTIME_METADATA
+          node_sha=$node_sha
+          npm_sha=$npm_sha
+          atomic_sha=$atomic_sha
+          source_key=$base_runtime_key
+          payload_sha=$payload_sha
+          RUNTIME_METADATA
+            chmod 644 "$runtime_stage/.metadata"
+            [ -f "$runtime_stage/lib/node_modules/npm/bin/npm-cli.js" ] || { echo 'staged npm CLI is missing' >&2; exit 1; }
+            [ -f "$runtime_stage/lib/node_modules/npm/bin/npx-cli.js" ] || { echo 'staged npx CLI is missing' >&2; exit 1; }
+            LD_LIBRARY_PATH="$runtime_stage/lib" "$runtime_stage/libexec/node" --version >/dev/null
+            LD_LIBRARY_PATH="$runtime_stage/lib" "$runtime_stage/libexec/node" "$runtime_stage/lib/node_modules/npm/bin/npm-cli.js" --version >/dev/null
+            LD_LIBRARY_PATH="$runtime_stage/lib" "$runtime_stage/libexec/node" "$runtime_stage/lib/node_modules/npm/bin/npx-cli.js" --version >/dev/null
+            printf '%s\n' complete > "$runtime_stage/.complete"
+            mv -T "$runtime_stage" "$runtime"
+            trap - 0 1 2 15
+          fi
+
+          runtime_matches_source "$runtime" || { echo 'managed Node runtime validation failed' >&2; exit 1; }
+          chmod 755 "$runtime/libexec/node"
+          LD_LIBRARY_PATH="$runtime/lib" "$runtime/libexec/node" --version >/dev/null
+          LD_LIBRARY_PATH="$runtime/lib" "$runtime/libexec/node" "$runtime/lib/node_modules/npm/bin/npm-cli.js" --version >/dev/null
+          LD_LIBRARY_PATH="$runtime/lib" "$runtime/libexec/node" "$runtime/lib/node_modules/npm/bin/npx-cli.js" --version >/dev/null
+          if [ "$runtime_key" != "$base_runtime_key" ]; then
+            repair_map_tmp="$repairs/.$base_runtime_key.$$"
+            printf '%s\n' "$runtime_key" > "$repair_map_tmp"
+            chmod 644 "$repair_map_tmp"
+            mv -fT "$repair_map_tmp" "$repair_map"
+          else
+            rm -f -- "$repair_map"
+          fi
+
+          # Prepare stable wrappers before activating the complete runtime.
+          node_launcher_tmp="$node_root/bin/.node.$$"
+          cat > "$node_launcher_tmp" <<'NODE_LAUNCHER'
           #!/bin/sh
           set -eu
           node_root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-          private_lib="$node_root/lib"
+          runtime="$(readlink -f "$node_root/current")"
+          case "$runtime" in "$node_root"/runtimes/*) ;; *) echo 'invalid managed Node runtime' >&2; exit 1 ;; esac
+          [ -f "$runtime/.complete" ] || { echo 'incomplete managed Node runtime' >&2; exit 1; }
+          private_lib="$runtime/lib"
           current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"
           case ":$current:" in
             *":$private_lib:"*) ;;
-            *)
-              if [ -n "$current" ]; then
-                current="$private_lib:$current"
+            *) if [ -n "$current" ]; then current="$private_lib:$current"; else current="$private_lib"; fi ;;
+          esac
+          exec env LD_LIBRARY_PATH="$current" "$runtime/libexec/node" "$@"
+          NODE_LAUNCHER
+
+          npm_launcher_tmp="$node_root/bin/.npm.$$"
+          cat > "$npm_launcher_tmp" <<'NPM_LAUNCHER'
+          #!/bin/sh
+          set -eu
+          node_root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+          runtime="$(readlink -f "$node_root/current")"
+          case "$runtime" in "$node_root"/runtimes/*) ;; *) echo 'invalid managed Node runtime' >&2; exit 1 ;; esac
+          [ -f "$runtime/.complete" ] || { echo 'incomplete managed Node runtime' >&2; exit 1; }
+          private_lib="$runtime/lib"
+          current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"
+          case ":$current:" in
+            *":$private_lib:"*) ;;
+            *) if [ -n "$current" ]; then current="$private_lib:$current"; else current="$private_lib"; fi ;;
+          esac
+          exec env LD_LIBRARY_PATH="$current" "$runtime/libexec/node" "$runtime/lib/node_modules/npm/bin/npm-cli.js" "$@"
+          NPM_LAUNCHER
+
+          npx_launcher_tmp="$node_root/bin/.npx.$$"
+          cat > "$npx_launcher_tmp" <<'NPX_LAUNCHER'
+          #!/bin/sh
+          set -eu
+          node_root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+          runtime="$(readlink -f "$node_root/current")"
+          case "$runtime" in "$node_root"/runtimes/*) ;; *) echo 'invalid managed Node runtime' >&2; exit 1 ;; esac
+          [ -f "$runtime/.complete" ] || { echo 'incomplete managed Node runtime' >&2; exit 1; }
+          private_lib="$runtime/lib"
+          current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"
+          case ":$current:" in
+            *":$private_lib:"*) ;;
+            *) if [ -n "$current" ]; then current="$private_lib:$current"; else current="$private_lib"; fi ;;
+          esac
+          exec env LD_LIBRARY_PATH="$current" "$runtime/libexec/node" "$runtime/lib/node_modules/npm/bin/npx-cli.js" "$@"
+          NPX_LAUNCHER
+          chmod 755 "$node_launcher_tmp" "$npm_launcher_tmp" "$npx_launcher_tmp"
+
+          current_tmp="$node_root/.current.$$"
+          ln -s "runtimes/$runtime_key" "$current_tmp"
+          old_current="$(readlink "$node_root/current" 2>/dev/null || true)"
+          old_current_valid=false
+          case "$old_current" in
+            '') ;;
+            runtimes/*)
+              if valid_runtime_pointer "$old_current"; then
+                runtime_integrity_valid "$node_root/$old_current" && old_current_valid=true
               else
-                current="$private_lib"
+                old_current=''
               fi
               ;;
+            *) old_current='' ;;
           esac
-          exec env LD_LIBRARY_PATH="$current" "$node_root/libexec/node" "$@"
-          NODE_LAUNCHER
-          chmod 755 "$launcher_tmp"
-          mv -f "$launcher_tmp" "$node_root/bin/node"
+          mv -fT "$current_tmp" "$node_root/current"
+          if [ "$old_current_valid" = true ] && [ "$old_current" != "runtimes/$runtime_key" ]; then
+            previous_tmp="$node_root/.previous.$$"
+            ln -s "$old_current" "$previous_tmp"
+            mv -fT "$previous_tmp" "$node_root/previous"
+          fi
+          mv -fT "$npm_launcher_tmp" "$node_root/bin/npm"
+          mv -fT "$npx_launcher_tmp" "$node_root/bin/npx"
+          mv -fT "$node_launcher_tmp" "$node_root/bin/node"
+
+          current_runtime="$(readlink "$node_root/current")"
+          previous_runtime="$(readlink "$node_root/previous" 2>/dev/null || true)"
+          for candidate in "$runtimes"/[0-9a-f]*; do
+            [ -d "$candidate" ] || continue
+            relative="runtimes/$(basename "$candidate")"
+            valid_runtime_pointer "$relative" || { echo "refusing unknown managed Node runtime directory: $candidate" >&2; exit 1; }
+            if [ "$relative" != "$current_runtime" ] && [ "$relative" != "$previous_runtime" ]; then
+              rm -rf -- "$candidate"
+            fi
+          done
+          for candidate_map in "$repairs"/[0-9a-f]*; do
+            [ -e "$candidate_map" ] || [ -L "$candidate_map" ] || continue
+            map_key="$(basename "$candidate_map")"
+            valid_hash "$map_key" || { echo "refusing unknown managed Node repair map: $candidate_map" >&2; exit 1; }
+            [ "$map_key" = "$base_runtime_key" ] || rm -f -- "$candidate_map"
+          done
 
           ln -sfn /home/hermeswebui/.hermes/hermes-agent/node_modules /opt/data/node_modules
           chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} "$node_root"
