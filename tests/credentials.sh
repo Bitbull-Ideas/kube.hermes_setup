@@ -116,6 +116,18 @@ case "$TEST_SCENARIO" in
     export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
     export API_SERVER_KEY='~1234567890123456' BROWSER_TOKEN=explicit-browser-token
     ;;
+  multiline-browser)
+    export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
+    export API_SERVER_KEY=explicit-api-key-long BROWSER_TOKEN=$'explicit-browser-token\ninjected-setting=true'
+    ;;
+  dotenv-browser)
+    export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
+    export API_SERVER_KEY=explicit-api-key-long BROWSER_TOKEN='browser-token;touch /tmp/unsafe'
+    ;;
+  url-unsafe-browser)
+    export DASHBOARD_AUTH_USER=explicit-user DASHBOARD_AUTH_PASSWORD=explicit-password
+    export API_SERVER_KEY=explicit-api-key-long BROWSER_TOKEN='browser+token'
+    ;;
   disabled)
     export HERMES_DASHBOARD_ENABLED=false HERMES_WEBUI_ENABLED=false HERMES_BROWSER_ENABLED=false
     ;;
@@ -203,7 +215,7 @@ touch "$TMP_DIR/state/namespace"
 put_secret hermes-dashboard-auth username existing-user
 put_secret hermes-dashboard-auth password 'Existing passphrase! # $ café'
 put_secret hermes-api-server api-key existing-api-key-long-enough
-put_secret hermes-browser-token token 'existing browser token !#$'
+put_secret hermes-browser-token token existing-browser-token
 run_resolver reuse
 grep -qx 'dashboard=reused api=reused browser=reused' "$TMP_DIR/reuse.sources"
 grep -q 'dashboard_password_sha=' "$TMP_DIR/reuse.result"
@@ -213,7 +225,7 @@ grep -q 'browser_sha=' "$TMP_DIR/reuse.result"
 expected_user_sha="$(printf '%s' existing-user | sha256sum | cut -d' ' -f1)"
 grep -qx "dashboard_user_sha=$expected_user_sha" "$TMP_DIR/reuse.result"
 ! compgen -G "$TMP_DIR/render-reuse/generated-credentials.txt" >/dev/null
-expected_cdp_sha="$(printf '%s' 'ws://hermes-browser:3000/chromium?token=existing browser token !#$' | sha256sum | cut -d' ' -f1)"
+expected_cdp_sha="$(printf '%s' 'ws://hermes-browser:3000/chromium?token=existing-browser-token' | sha256sum | cut -d' ' -f1)"
 grep -qx "cdp_sha=$expected_cdp_sha" "$TMP_DIR/reuse.result"
 cp "$TMP_DIR/reuse.result" "$TMP_DIR/reuse-first.result"
 run_resolver reuse-second
@@ -273,6 +285,27 @@ fi
 grep -Fq 'API_SERVER_KEY contains characters that cannot be safely persisted' "$TMP_DIR/tilde-api.stderr"
 ! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
 reset_state
+if run_resolver multiline-browser multiline-browser; then
+  printf 'multiline Browserless token unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'BROWSER_TOKEN must be a single-line value' "$TMP_DIR/multiline-browser.stderr"
+! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
+reset_state
+if run_resolver dotenv-browser dotenv-browser; then
+  printf 'dotenv-unsafe Browserless token unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'BROWSER_TOKEN contains characters that cannot be safely persisted' "$TMP_DIR/dotenv-browser.stderr"
+! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
+reset_state
+if run_resolver url-unsafe-browser url-unsafe-browser; then
+  printf 'query-unsafe Browserless token unexpectedly accepted\n' >&2
+  exit 1
+fi
+grep -Fq 'BROWSER_TOKEN contains characters that cannot be safely persisted' "$TMP_DIR/url-unsafe-browser.stderr"
+! grep -q 'get \|create\|apply' "$TMP_DIR/state/calls"
+reset_state
 touch "$TMP_DIR/state/namespace"
 assert_failed secret-error 'Unable to safely resolve Dashboard/WebUI credentials' secret
 reset_state
@@ -303,6 +336,13 @@ put_secret hermes-dashboard-auth password existing-dashboard-password
 put_secret hermes-api-server api-key '~existing-api-key-long-enough'
 put_secret hermes-browser-token token existing-browser-token
 assert_failed reused-tilde-api 'API_SERVER_KEY contains characters that cannot be safely persisted' none
+reset_state
+touch "$TMP_DIR/state/namespace"
+put_secret hermes-dashboard-auth username existing-user
+put_secret hermes-dashboard-auth password existing-dashboard-password
+put_secret hermes-api-server api-key existing-api-key-long-enough
+put_secret hermes-browser-token token 'unsafe browser token'
+assert_failed reused-unsafe-browser 'BROWSER_TOKEN contains characters that cannot be safely persisted' none
 reset_state
 touch "$TMP_DIR/state/namespace"
 put_secret hermes-dashboard-auth username existing-user

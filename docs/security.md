@@ -120,9 +120,11 @@ The WebUI password is therefore the same value as `DASHBOARD_AUTH_PASSWORD`. `HE
 
 Hermes Agent refuses to start the API server when `API_SERVER_KEY` is a placeholder or shorter than 16 characters. `install.sh` requires the final explicit, reused, or generated value to be at least 16 characters. Use a high-entropy value such as `openssl rand -hex 32` for explicit production configuration.
 
-Because the resolved key is persisted as an unquoted dotenv/shell assignment on the shared PVC, explicit and restored API keys are restricted to `[A-Za-z0-9._:/+=@%-]`. Whitespace, `#`, `~`, control characters, non-ASCII bytes, and other shell-sensitive characters are rejected rather than normalized. Dashboard passwords, Browserless tokens, and usernames are not subject to this API-key-specific alphabet restriction.
+Because the resolved values are persisted as unquoted dotenv/shell assignments on the shared PVC, explicit, reused, and reconciled API keys are restricted to `[A-Za-z0-9._:/+=@%-]`, while Browserless tokens use the URL-query-safe subset `[A-Za-z0-9._:/=@-]`. Whitespace, `#`, `~`, `+`, `%`, control characters, non-ASCII bytes, command substitutions, and other shell- or query-sensitive characters are rejected rather than normalized. Dashboard passwords and usernames are not subject to this persistence-specific alphabet restriction.
 
 External OIDC authenticates human access to Dashboard and WebUI; it does not replace the Bearer key used by those consumers to call the internal Agent API. After a manual or external PVC migration, run `maintain.sh reconcile-api-key --source secret` so a migrated `/opt/data/.env` cannot keep an older API key authoritative after the Kubernetes Secret has been rotated. The reconciliation path never renders or prints the key and verifies real authenticated API access after the coordinated rollout.
+
+Browserless has the same persistent-precedence boundary across both `/opt/data/.env` and profile `.env` files. After an external PVC migration, run `maintain.sh reconcile-browser-token --source secret`. It first proves `hermes-browser-token` and `hermes-browser-cdp` agree, rejects symlinked profile roots/directories/`.env` targets, then synchronizes existing persistent overrides without exposing the URL/token and verifies `Browser.getVersion` from each enabled consumer. `rotate-browser-token` invokes this path automatically.
 
 ## Bootstrap data
 

@@ -287,6 +287,58 @@ check_internal_health() {
   fi
 }
 
+check_persistent_browser_cdp() {
+  local cdp="$1" pod="$2" result
+  result="$(printf '%s' "$cdp" | kubectl -n "$HERMES_NAMESPACE" exec -i "$pod" -- sh -c '
+    set -eu
+    home_dir="${1:-/opt/data}"
+    expected_with_sentinel="$(cat; printf X)"
+    expected="${expected_with_sentinel%X}"
+    unset expected_with_sentinel
+    check_env_file() {
+      env_file="$1"
+      required="$2"
+      [ ! -L "$env_file" ] || exit 1
+      if [ ! -f "$env_file" ]; then
+        [ "$required" = false ] && return 0
+        exit 1
+      fi
+      count="$(grep -c '^BROWSER_CDP_URL=' "$env_file" || true)"
+      if [ "$count" = 0 ] && [ "$required" = false ]; then
+        return 0
+      fi
+      [ "$count" = 1 ] || exit 1
+      grep -Fqx "BROWSER_CDP_URL=$expected" "$env_file"
+    }
+    profiles_root="$home_dir/profiles"
+    if [ -e "$profiles_root" ] || [ -L "$profiles_root" ]; then
+      [ -d "$profiles_root" ] && [ ! -L "$profiles_root" ] || exit 1
+      for profile_dir in "$profiles_root"/*; do
+        if [ ! -e "$profile_dir" ] && [ ! -L "$profile_dir" ]; then
+          continue
+        fi
+        [ -d "$profile_dir" ] && [ ! -L "$profile_dir" ] || exit 1
+        [ ! -L "$profile_dir/.env" ] || exit 1
+      done
+    fi
+    check_env_file "$home_dir/.env" true
+    if [ -d "$profiles_root" ]; then
+      for profile_dir in "$profiles_root"/*; do
+        [ -d "$profile_dir" ] || continue
+        env_file="$profile_dir/.env"
+        [ -f "$env_file" ] || continue
+        check_env_file "$env_file" false
+      done
+    fi
+    printf ok
+  ' sh /opt/data 2>/dev/null || true)"
+  if [[ "$result" == ok ]]; then
+    ok 'persistent root/profile BROWSER_CDP_URL matches Secret'
+  else
+    fail 'persistent root/profile BROWSER_CDP_URL missing or drifted'
+  fi
+}
+
 check_browser_cdp() {
   is_truthy "$HERMES_BROWSER_ENABLED" || return 0
   local app pod env_cdp browser_pod cdp token pressure pressure_state running max_concurrent queued is_available timeout_seconds
@@ -308,6 +360,13 @@ check_browser_cdp() {
     ok "Browserless Service has ready endpoints"
   else
     fail "Browserless Service has no ready endpoints"
+  fi
+
+  pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app=hermes-agent --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  if [[ -n "$pod" ]]; then
+    check_persistent_browser_cdp "$cdp" "$pod"
+  else
+    fail 'no running hermes-agent pod for persistent Browserless credential check'
   fi
 
   if [[ -n "$browser_pod" ]]; then

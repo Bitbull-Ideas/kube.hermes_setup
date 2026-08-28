@@ -152,6 +152,19 @@ install -d -m 0700 "$rollback_dir"
 
 Keep the passphrase outside the checkout. The encrypted archive belongs in the ignored `backups/` directory and must not be committed. The operation is idempotent: if a Deployment patch, rollout, or verification step fails after persistent `.env` was synchronized, correct the reported Kubernetes problem and rerun the same command to converge every consumer to the still-authoritative Secret. Do not rotate or edit either key as an ad-hoc recovery step. A normal restore intentionally normalizes the saved Secret into persistent `.env`; prefer rerunning `reconcile-api-key --source secret` when the goal is service recovery. If forensic reproduction of the deliberately inconsistent pre-change state is required, use `maintain.sh extract --full` only in a temporary mode-`0700` recovery directory, restore the Secret snapshot and `opt/data/.env` separately under an approved incident procedure, then securely remove the decrypted recovery directory.
 
+## Reconcile Browserless after an external PVC migration
+
+A copied `/opt/data/.env` or `/opt/data/profiles/<name>/.env` can retain the source installation's `BROWSER_CDP_URL`. Profile loading gives those persistent files precedence over the Pod's Secret-backed base environment, so ordinary Kubernetes checks can look healthy while Hermes browser tools receive HTTP 401 from Browserless.
+
+After any manual or external PVC migration, make the destination Browserless Secrets authoritative:
+
+```bash
+./maintain.sh reconcile-browser-token --source secret
+./doctor.sh
+```
+
+The command requires `hermes-browser-token` and `hermes-browser-cdp` to contain the same non-empty token, the expected internal `/chromium` URL, and the shell- and URL-query-safe token alphabet `[A-Za-z0-9._:/=@-]`. It writes no credential to the operator host and prints no token. A storage helper atomically updates `/opt/data/.env` plus existing profile `.env` files that already override `BROWSER_CDP_URL`, preserving unrelated entries and mode `0600`. It then rolls Agent, Dashboard, and WebUI with both Secret revisions and a fresh reconciliation request, accepts only Ready Pods carrying those annotations, executes `Browser.getVersion` from every enabled consumer, rechecks both Secret revisions, and removes the helper Pod. Expect a brief interruption during the Recreate rollouts.
+
 ## Bootstrap agent configuration
 
 The recommended configuration lifecycle is:
@@ -277,6 +290,14 @@ Plaintext passwords are not stored locally or printed for any rotation mode. The
 ./maintain.sh rotate-browser-token
 ./doctor.sh
 ```
+
+Bare `rotate-browser-token` and explicit `--generate` always generate a fresh random token; they never reuse `BROWSER_TOKEN` loaded from `hermes.env`. Non-interactive automation may provide a deliberate value only through the process environment and `--from-env`:
+
+```bash
+BROWSER_TOKEN='use-a-url-safe-random-value' ./maintain.sh rotate-browser-token --from-env
+```
+
+Rotation updates both Browserless Secrets and then invokes the same persistent/profile convergence and verified rollout path as `reconcile-browser-token`; it also recreates Browserless so the new server token and all consumers become active together. Do not patch one Browserless Secret independently.
 
 ## Codex re-authentication
 

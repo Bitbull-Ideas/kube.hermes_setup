@@ -3,7 +3,7 @@
 # Scope: Provide status, restart/upgrade, backup/restore, credential display and rotation,
 #        while keeping operations constrained to the configured namespace.
 # Requirements: Bash, kubectl, age, Python 3, base64, OpenSSL, and sha256sum where applicable.
-# Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|extract|restore|rotate-passwords|rotate-browser-token}
+# Usage: ./maintain.sh {status|show-passwords|restart|upgrade|backup|extract|restore|reconcile-api-key|reconcile-browser-token|rotate-passwords|rotate-browser-token}
 # Exit status: 0 means the requested operation completed; non-zero identifies a failure.
 set -euo pipefail
 
@@ -89,6 +89,12 @@ require_cmd() {
 }
 rand_hex() { openssl rand -hex "${1:-32}"; }
 generate_password() { openssl rand -base64 "${1:-36}" | tr -d '\n'; }
+validate_browser_token_value() {
+  local value="$1"
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || fail "BROWSER_TOKEN must be a single-line value"
+  [[ -n "$value" ]] || fail "BROWSER_TOKEN must not be empty"
+  [[ "$value" =~ ^[A-Za-z0-9._:/=@-]+$ ]] || fail "BROWSER_TOKEN contains characters that cannot be safely persisted in the runtime environment file"
+}
 validate_backup_archive() {
   local archive="$1"
   python3 - "$archive" <<'PY'
@@ -137,13 +143,14 @@ Usage:
   ./maintain.sh upgrade
   ./maintain.sh backup <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
   ./maintain.sh reconcile-api-key --source secret
+  ./maintain.sh reconcile-browser-token --source secret
   ./maintain.sh restore <backup.age> [--full] [--dry-run] [--force]
       [--password-prompt|--password-file PATH|--password-stdin]
   ./maintain.sh extract <backup.age> --output-dir PATH [--component data|config|bootstrap|full]
       [--password-prompt|--password-file PATH|--password-stdin] [--dry-run]
   ./maintain.sh show-passwords
   ./maintain.sh rotate-passwords [--lab] [--prompt|--generate|--from-env]
-  ./maintain.sh rotate-browser-token
+  ./maintain.sh rotate-browser-token [--generate|--from-env]
 
 Environment:
   ENV_FILE=./hermes.env
@@ -641,6 +648,100 @@ sync_restored_api_key() {
   unset RESTORED_API_KEY_ENCODED
 }
 
+browser_cdp_sync_script() {
+  cat <<'SH'
+set -eu
+umask 077
+uid="$1"
+gid="$2"
+home_dir="${3:-/opt/data}"
+mode="${4:-write}"
+cdp_with_sentinel="$(cat; printf X)"
+cdp_url="${cdp_with_sentinel%X}"
+unset cdp_with_sentinel
+case "$cdp_url" in
+  ws://hermes-browser:3000/chromium\?token=*) ;;
+  *) exit 1 ;;
+esac
+token="${cdp_url#ws://hermes-browser:3000/chromium?token=}"
+[ -n "$token" ] || exit 1
+newline="$(printf '\nX')"
+newline="${newline%X}"
+carriage_return="$(printf '\rX')"
+carriage_return="${carriage_return%X}"
+case "$cdp_url" in *"$newline"*|*"$carriage_return"*) exit 1 ;; esac
+case "$token" in *[!A-Za-z0-9._:/=@-]*) exit 1 ;; esac
+[ -d "$home_dir" ] && [ ! -L "$home_dir" ] || exit 1
+[ "$mode" = validate-only ] && exit 0
+[ "$mode" = write ] || exit 1
+
+sync_env_file() {
+  env_file="$1"
+  only_if_present="$2"
+  source_env="$(mktemp "${env_file}.source.XXXXXX")"
+  tmp_env=''
+  trap 'rm -f "${tmp_env:-}" "$source_env"' 0 1 2 15
+  rm -f "$source_env"
+  have_source=false
+  if ln "$env_file" "$source_env" 2>/dev/null; then
+    [ -f "$source_env" ] && [ ! -L "$source_env" ] || { rm -f "$source_env"; exit 1; }
+    have_source=true
+  elif [ -e "$env_file" ] || [ -L "$env_file" ]; then
+    exit 1
+  fi
+  if [ "$only_if_present" = true ]; then
+    [ "$have_source" = true ] || { rm -f "$source_env"; trap - 0 1 2 15; return 0; }
+    grep -q '^BROWSER_CDP_URL=' "$source_env" || { rm -f "$source_env"; trap - 0 1 2 15; return 0; }
+  fi
+  tmp_env="$(mktemp "${env_file}.XXXXXX")"
+  found=false
+  if [ "$have_source" = true ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        BROWSER_CDP_URL=*)
+          if [ "$found" = false ]; then
+            printf 'BROWSER_CDP_URL=%s\n' "$cdp_url"
+            found=true
+          fi
+          ;;
+        *) printf '%s\n' "$line" ;;
+      esac
+    done < "$source_env" > "$tmp_env"
+  fi
+  if [ "$found" = false ]; then
+    printf 'BROWSER_CDP_URL=%s\n' "$cdp_url" >> "$tmp_env"
+  fi
+  chmod 600 "$tmp_env"
+  chown "$uid:$gid" "$tmp_env"
+  mv -f "$tmp_env" "$env_file"
+  rm -f "$source_env"
+  trap - 0 1 2 15
+}
+
+profiles_root="$home_dir/profiles"
+if [ -e "$profiles_root" ] || [ -L "$profiles_root" ]; then
+  [ -d "$profiles_root" ] && [ ! -L "$profiles_root" ] || exit 1
+  for profile_dir in "$profiles_root"/*; do
+    if [ ! -e "$profile_dir" ] && [ ! -L "$profile_dir" ]; then
+      continue
+    fi
+    [ -d "$profile_dir" ] && [ ! -L "$profile_dir" ] || exit 1
+    [ ! -L "$profile_dir/.env" ] || exit 1
+  done
+fi
+
+sync_env_file "$home_dir/.env" false
+if [ -d "$profiles_root" ]; then
+  for profile_dir in "$profiles_root"/*; do
+    [ -d "$profile_dir" ] || continue
+    env_file="$profile_dir/.env"
+    [ -f "$env_file" ] || continue
+    sync_env_file "$env_file" true
+  done
+fi
+SH
+}
+
 reconcile_api_key() {
   local source='' encoded script revision current_revision reconcile_request secret_snapshot patch app pod runtime_health attempt stable=false
   local helper_pod=hermes-api-key-reconcile
@@ -769,6 +870,175 @@ print("ok")
   reconcile_api_key_cleanup
   unset revision current_revision reconcile_request patch
   log 'Internal API key reconciled from Kubernetes Secret; all enabled consumers authenticate successfully.'
+}
+
+reconcile_browser_token() {
+  local source='' restart_browser=false snapshot token_revision cdp_revision encoded_url current_token_revision current_cdp_revision
+  local script reconcile_request patch app pod runtime_result attempt stable=false
+  local helper_pod=hermes-browser-token-reconcile
+  local -a deployments=()
+  while (($#)); do
+    case "$1" in
+      --source)
+        [[ $# -ge 2 ]] || fail '--source requires secret'
+        source="$2"; shift 2 ;;
+      --source=*) source="${1#*=}"; shift ;;
+      --restart-browser) restart_browser=true; shift ;;
+      *) fail "unknown reconcile-browser-token option: $1" ;;
+    esac
+  done
+  [[ "$source" == secret ]] || fail 'reconcile-browser-token requires --source secret'
+  is_truthy "$HERMES_BROWSER_ENABLED" || fail 'Browser component is disabled'
+  require_cmd kubectl
+  require_cmd python3
+  require_cmd base64
+  require_cmd openssl
+  [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_UID must be numeric'
+  [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_GID must be numeric'
+  mapfile -t deployments < <(enabled_write_deployments)
+  [[ "$restart_browser" != true ]] || deployments+=(hermes-browser)
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" get deployment "$app" >/dev/null \
+      || fail "required Browserless consumer Deployment is missing: $app"
+  done
+  script="$(browser_cdp_sync_script)"
+
+  reconcile_browser_token_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod "$helper_pod" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+    unset encoded_url
+  }
+  trap reconcile_browser_token_cleanup EXIT
+  kubectl -n "$HERMES_NAMESPACE" delete pod "$helper_pod" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  create_storage_helper_pod "$helper_pod" reconcile
+  kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready "pod/$helper_pod" --timeout=120s >/dev/null
+
+  for attempt in 1 2 3; do
+    snapshot="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-token hermes-browser-cdp -o json | python3 -c '
+import base64
+import binascii
+import json
+import re
+import sys
+from urllib.parse import parse_qs, urlsplit
+
+items = {item.get("metadata", {}).get("name"): item for item in json.load(sys.stdin).get("items", [])}
+if set(items) != {"hermes-browser-token", "hermes-browser-cdp"}:
+    raise SystemExit(1)
+token_item = items["hermes-browser-token"]
+cdp_item = items["hermes-browser-cdp"]
+try:
+    token = base64.b64decode(token_item.get("data", {}).get("token", ""), validate=True).decode("ascii")
+    encoded_url = cdp_item.get("data", {}).get("BROWSER_CDP_URL", "")
+    url = base64.b64decode(encoded_url, validate=True).decode("ascii")
+except (binascii.Error, UnicodeDecodeError):
+    raise SystemExit(1)
+parsed = urlsplit(url)
+query = parse_qs(parsed.query, keep_blank_values=True)
+if parsed.scheme != "ws" or parsed.hostname != "hermes-browser" or parsed.port != 3000 or parsed.path != "/chromium":
+    raise SystemExit(1)
+if set(query) != {"token"} or len(query["token"]) != 1 or not token or query["token"][0] != token:
+    raise SystemExit(1)
+if re.fullmatch(r"[A-Za-z0-9._:/=@-]+", token) is None:
+    raise SystemExit(1)
+token_revision = token_item.get("metadata", {}).get("resourceVersion", "")
+cdp_revision = cdp_item.get("metadata", {}).get("resourceVersion", "")
+if not all(isinstance(value, str) and value for value in (token_revision, cdp_revision, encoded_url)):
+    raise SystemExit(1)
+print(f"{token_revision}\t{cdp_revision}\t{encoded_url}", end="")
+')" || fail 'Browserless token and CDP Secrets are malformed or disagree'
+    IFS=$'\t' read -r token_revision cdp_revision encoded_url <<<"$snapshot"
+    unset snapshot
+    [[ "$token_revision" =~ ^[A-Za-z0-9._:-]+$ && "$cdp_revision" =~ ^[A-Za-z0-9._:-]+$ ]] \
+      || fail 'Browserless Secret revision is empty or unsafe'
+    printf '%s' "$encoded_url" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i "$helper_pod" -- \
+      sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data validate-only \
+      || fail 'Browserless CDP Secret is unsafe; refusing to replace persistent data'
+    printf '%s' "$encoded_url" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i "$helper_pod" -- \
+      sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data write \
+      || fail 'Unable to synchronize Browserless CDP URL into persistent runtime/profile environment'
+    unset encoded_url
+    current_token_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-token -o jsonpath='{.metadata.resourceVersion}')" \
+      || fail 'Unable to recheck Browserless token Secret revision'
+    current_cdp_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-cdp -o jsonpath='{.metadata.resourceVersion}')" \
+      || fail 'Unable to recheck Browserless CDP Secret revision'
+    if [[ "$current_token_revision" == "$token_revision" && "$current_cdp_revision" == "$cdp_revision" ]]; then
+      stable=true
+      break
+    fi
+    warn "Browserless Secrets changed during reconciliation attempt $attempt; retrying from the new Secret snapshot"
+  done
+  [[ "$stable" == true ]] || fail 'Browserless Secrets kept changing during reconciliation; no workloads were restarted'
+  reconcile_request="$(openssl rand -hex 16)" || fail 'Unable to generate a Browserless reconciliation request ID'
+  [[ "$reconcile_request" =~ ^[a-f0-9]{32}$ ]] || fail 'Generated Browserless reconciliation request ID is invalid'
+  patch="$(printf '{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kube-hermes-setup.example.com/browser-token-revision\":\"%s\",\"kube-hermes-setup.example.com/browser-cdp-revision\":\"%s\",\"kube-hermes-setup.example.com/browser-token-reconcile-request\":\"%s\"}}}}}' "$token_revision" "$cdp_revision" "$reconcile_request")"
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" patch deployment "$app" --type=merge -p "$patch" >/dev/null
+  done
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$app" --timeout=600s
+  done
+
+  for app in "${deployments[@]}"; do
+    pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o json | \
+      BROWSER_TOKEN_REVISION="$token_revision" BROWSER_CDP_REVISION="$cdp_revision" BROWSER_RECONCILE_REQUEST="$reconcile_request" python3 -c '
+import json
+import os
+import sys
+expected = {
+    "kube-hermes-setup.example.com/browser-token-revision": os.environ["BROWSER_TOKEN_REVISION"],
+    "kube-hermes-setup.example.com/browser-cdp-revision": os.environ["BROWSER_CDP_REVISION"],
+    "kube-hermes-setup.example.com/browser-token-reconcile-request": os.environ["BROWSER_RECONCILE_REQUEST"],
+}
+for item in json.load(sys.stdin).get("items", []):
+    metadata = item.get("metadata", {})
+    status = item.get("status", {})
+    statuses = status.get("containerStatuses", [])
+    ready = any(condition.get("type") == "Ready" and condition.get("status") == "True" for condition in status.get("conditions", []))
+    if ready and statuses and all(entry.get("ready") for entry in statuses) and all(metadata.get("annotations", {}).get(key) == value for key, value in expected.items()):
+        print(metadata.get("name", ""), end="")
+        break
+')"
+    [[ -n "$pod" ]] || fail "no Ready $app Pod carrying the current Browserless reconciliation annotations"
+    [[ "$app" != hermes-browser ]] || continue
+    runtime_result="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
+      PY=""
+      for candidate in /app/venv/bin/python /opt/hermes/.venv/bin/python "$(command -v python3 || true)" "$(command -v python || true)"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then PY="$candidate"; break; fi
+      done
+      [ -n "$PY" ] || exit 1
+      "$PY" - <<'\''PY'\''
+import asyncio
+import json
+import os
+import websockets
+
+async def main():
+    async with websockets.connect(os.environ["BROWSER_CDP_URL"], open_timeout=20, close_timeout=2, max_size=1048576) as websocket:
+        await websocket.send(json.dumps({"id": 1, "method": "Browser.getVersion"}))
+        for _ in range(20):
+            payload = json.loads(await asyncio.wait_for(websocket.recv(), 5))
+            if payload.get("id") == 1 and payload.get("result", {}).get("product"):
+                print("ok")
+                return
+        raise SystemExit(1)
+
+asyncio.run(main())
+PY
+    ' 2>/dev/null || true)"
+    [[ "$runtime_result" == ok ]] || fail "$app Browserless CDP Browser.getVersion verification failed"
+  done
+
+  current_token_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-token -o jsonpath='{.metadata.resourceVersion}')" \
+    || fail 'Unable to perform final Browserless token Secret revision check'
+  current_cdp_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-browser-cdp -o jsonpath='{.metadata.resourceVersion}')" \
+    || fail 'Unable to perform final Browserless CDP Secret revision check'
+  [[ "$current_token_revision" == "$token_revision" && "$current_cdp_revision" == "$cdp_revision" ]] \
+    || fail 'Browserless Secrets changed during rollout verification; rerun reconciliation'
+
+  trap - EXIT
+  reconcile_browser_token_cleanup
+  unset token_revision cdp_revision current_token_revision current_cdp_revision reconcile_request patch
+  log 'Browserless token reconciled from Kubernetes Secrets; persistent profile state and enabled consumers are healthy.'
 }
 
 restore() {
@@ -1050,8 +1320,24 @@ EOF
 }
 rotate_browser_token() {
   is_truthy "$HERMES_BROWSER_ENABLED" || fail "Browser component is disabled"
-  local token="${BROWSER_TOKEN:-$(rand_hex 32)}" deployments=() d tmpdir
-  mapfile -t deployments < <(enabled_deployments)
+  local input_mode=generate token='' tmpdir
+  while (($#)); do
+    case "$1" in
+      --generate) input_mode=generate ;;
+      --from-env) input_mode=env ;;
+      *) fail "unknown rotate-browser-token option: $1" ;;
+    esac
+    shift
+  done
+  case "$input_mode" in
+    generate) token="$(rand_hex 32)" ;;
+    env)
+      [[ -n "$PROCESS_BROWSER_TOKEN_SET" && -n "$PROCESS_BROWSER_TOKEN" ]] \
+        || fail 'rotate-browser-token --from-env requires BROWSER_TOKEN in the process environment'
+      token="$PROCESS_BROWSER_TOKEN"
+      ;;
+  esac
+  validate_browser_token_value "$token"
   local cdp="ws://hermes-browser:3000/chromium?token=${token}"
   tmpdir="$(mktemp -d -t hermes-browser-token.XXXXXX)"
   chmod 700 "$tmpdir"
@@ -1067,10 +1353,7 @@ rotate_browser_token() {
     --dry-run=client -o yaml | kubectl apply -f -
   trap - ERR
   rm -rf -- "$tmpdir"
-  kubectl -n "$HERMES_NAMESPACE" rollout restart "${deployments[@]/#/deploy/}"
-  for d in "${deployments[@]}"; do
-    kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$d" --timeout=600s
-  done
+  reconcile_browser_token --source secret --restart-browser
   echo "Rotated Browserless token. CDP endpoint: ws://hermes-browser:3000/chromium?token=<redacted>"
 }
 
@@ -1085,6 +1368,7 @@ if [[ "${HERMES_MAINTAIN_LIB_ONLY:-false}" != true ]]; then
     backup) backup "$@" ;;
     extract) extract_backup "$@" ;;
     reconcile-api-key) reconcile_api_key "$@" ;;
+    reconcile-browser-token) reconcile_browser_token "$@" ;;
     restore) restore "$@" ;;
     rotate-passwords) rotate_passwords "$@" ;;
     rotate-browser-token) rotate_browser_token "$@" ;;
