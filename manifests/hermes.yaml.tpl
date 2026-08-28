@@ -331,6 +331,49 @@ spec:
           }
           upsert_runtime_env API_SERVER_KEY "$API_SERVER_KEY"
           upsert_runtime_env BROWSER_CDP_URL "$BROWSER_CDP_URL"
+          sync_profile_runtime_env() {
+            env_name="$1"
+            env_value="$2"
+            profiles_root=/opt/data/profiles
+            if [ -e "$profiles_root" ] || [ -L "$profiles_root" ]; then
+              [ -d "$profiles_root" ] && [ ! -L "$profiles_root" ] || exit 1
+              for profile_dir in "$profiles_root"/*; do
+                if [ ! -e "$profile_dir" ] && [ ! -L "$profile_dir" ]; then
+                  continue
+                fi
+                [ -d "$profile_dir" ] && [ ! -L "$profile_dir" ] || exit 1
+                [ ! -L "$profile_dir/.env" ] || exit 1
+              done
+            fi
+            [ -d "$profiles_root" ] || return 0
+            for profile_dir in "$profiles_root"/*; do
+              [ -d "$profile_dir" ] || continue
+              env_file="$profile_dir/.env"
+              [ -f "$env_file" ] || continue
+              grep -q "^$env_name=" "$env_file" || continue
+              tmp_env="$(mktemp "$env_file.XXXXXX")"
+              trap 'rm -f "$tmp_env"' 0 1 2 15
+              found=false
+              while IFS= read -r line || [ -n "$line" ]; do
+                case "$line" in
+                  "$env_name"=*)
+                    if [ "$found" = false ]; then
+                      printf '%s=%s\n' "$env_name" "$env_value"
+                      found=true
+                    fi
+                    ;;
+                  *) printf '%s\n' "$line" ;;
+                esac
+              done < "$env_file" > "$tmp_env"
+              chmod 600 "$tmp_env"
+              chown ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} "$tmp_env"
+              mv -f "$tmp_env" "$env_file"
+              trap - 0 1 2 15
+            done
+          }
+          if [ -n "$BROWSER_CDP_URL" ]; then
+            sync_profile_runtime_env BROWSER_CDP_URL "$BROWSER_CDP_URL"
+          fi
           chmod 600 /opt/data/.env
           if [ ! -f /opt/data/SOUL.md ]; then
             write_installer_default_soul /opt/data/SOUL.md

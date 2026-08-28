@@ -151,6 +151,13 @@ validate_api_server_key() {
   [[ "$API_SERVER_KEY" =~ ^[A-Za-z0-9._:/+=@%-]+$ ]] || fail "API_SERVER_KEY contains characters that cannot be safely persisted in the runtime environment file"
 }
 
+validate_browser_token() {
+  is_truthy "${HERMES_BROWSER_ENABLED:-true}" || return 0
+  [[ "$BROWSER_TOKEN" != *$'\n'* && "$BROWSER_TOKEN" != *$'\r'* ]] || fail "BROWSER_TOKEN must be a single-line value"
+  [[ -n "$BROWSER_TOKEN" ]] || fail "BROWSER_TOKEN must not be empty when Browserless is enabled"
+  [[ "$BROWSER_TOKEN" =~ ^[A-Za-z0-9._:/=@-]+$ ]] || fail "BROWSER_TOKEN contains characters that cannot be safely persisted in the runtime environment file"
+}
+
 resolve_runtime_credentials() {
   local namespace_exists existing status need_lookup=false
   local dashboard_enabled="${HERMES_DASHBOARD_ENABLED:-true}"
@@ -174,6 +181,7 @@ resolve_runtime_credentials() {
 
   if [[ "$need_lookup" == false ]]; then
     validate_api_server_key
+    validate_browser_token
     if is_truthy "$browser_enabled"; then
       BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
     else
@@ -244,6 +252,7 @@ resolve_runtime_credentials() {
   fi
 
   validate_api_server_key
+  validate_browser_token
   if is_truthy "$browser_enabled"; then
     BROWSER_CDP_URL="ws://hermes-browser:3000/chromium?token=${BROWSER_TOKEN}"
   else

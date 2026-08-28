@@ -138,6 +138,19 @@ PY'
 
 Expected: path under `/opt/data/node_modules/.bin/agent-browser`, CDP endpoint `ws://hermes-browser:3000/chromium`, and a successful navigation result with `stealth_features: ["cdp_override"]`.
 
+## CDP WebSocket handshake returns HTTP 401 after migration
+
+Cause: Kubernetes can inject the current `hermes-browser-cdp` Secret into the Pod while `/opt/data/.env` or `/opt/data/profiles/<name>/.env` still contains the source installation's token. Hermes profile loading gives the persistent file precedence, so checking only `kubectl exec ... env` can miss the drift.
+
+Create the normal protected backup required by your production change procedure, then reconcile from the existing destination Secrets:
+
+```bash
+./maintain.sh reconcile-browser-token --source secret
+./doctor.sh
+```
+
+Do not print or manually copy the URL. The maintenance command checks that both Browserless Secrets agree, updates only persistent `BROWSER_CDP_URL` assignments, performs a verified consumer rollout, and runs `Browser.getVersion`. `doctor.sh` additionally compares the token and CDP Secrets, checks root/profile persistence, and reports only sanitized PASS/FAIL status. Deliberately rotating the token uses a protected temporary snapshot and restores the previous pair if either Secret update fails.
+
 
 ## `CDP call timed out ... opening handshake`
 
