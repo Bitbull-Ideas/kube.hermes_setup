@@ -136,6 +136,7 @@ Usage:
   ./maintain.sh restart
   ./maintain.sh upgrade
   ./maintain.sh backup <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
+  ./maintain.sh reconcile-api-key --source secret
   ./maintain.sh restore <backup.age> [--full] [--dry-run] [--force]
       [--password-prompt|--password-file PATH|--password-stdin]
   ./maintain.sh extract <backup.age> --output-dir PATH [--component data|config|bootstrap|full]
@@ -240,6 +241,7 @@ metadata:
   namespace: ${HERMES_NAMESPACE}
 spec:
   restartPolicy: Never
+  automountServiceAccountToken: false
   containers:
   - name: ${container}
     image: busybox:1.36
@@ -559,28 +561,44 @@ carriage_return="$(printf '\rX')"
 carriage_return="${carriage_return%X}"
 case "$api_key" in *"$newline"*|*"$carriage_return"*) exit 1 ;; esac
 case "$api_key" in *[!A-Za-z0-9._:/+=@%-]*) exit 1 ;; esac
-[ "$mode" = validate-only ] && exit 0
+source_env="$(mktemp "${env_file}.source.XXXXXX")"
+tmp_env=''
+trap 'rm -f "${tmp_env:-}" "$source_env"' 0 1 2 15
+rm -f "$source_env"
+have_source=false
+if ln "$env_file" "$source_env" 2>/dev/null; then
+  [ -f "$source_env" ] && [ ! -L "$source_env" ] || { rm -f "$source_env"; exit 1; }
+  have_source=true
+elif [ -e "$env_file" ] || [ -L "$env_file" ]; then
+  exit 1
+fi
+if [ "$mode" = validate-only ]; then
+  rm -f "$source_env"
+  trap - 0 1 2 15
+  exit 0
+fi
 tmp_env="$(mktemp "${env_file}.XXXXXX")"
-trap 'rm -f "$tmp_env"' 0 1 2 15
-touch "$env_file"
 found=false
-while IFS= read -r line || [ -n "$line" ]; do
-  case "$line" in
-    API_SERVER_KEY=*)
-      if [ "$found" = false ]; then
-        printf 'API_SERVER_KEY=%s\n' "$api_key"
-        found=true
-      fi
-      ;;
-    *) printf '%s\n' "$line" ;;
-  esac
-done < "$env_file" > "$tmp_env"
+if [ "$have_source" = true ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      API_SERVER_KEY=*)
+        if [ "$found" = false ]; then
+          printf 'API_SERVER_KEY=%s\n' "$api_key"
+          found=true
+        fi
+        ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done < "$source_env" > "$tmp_env"
+fi
 if [ "$found" = false ]; then
   printf 'API_SERVER_KEY=%s\n' "$api_key" >> "$tmp_env"
 fi
 chmod 600 "$tmp_env"
 chown "$uid:$gid" "$tmp_env"
 mv -f "$tmp_env" "$env_file"
+rm -f "$source_env"
 trap - 0 1 2 15
 SH
 }
@@ -621,6 +639,114 @@ sync_restored_api_key() {
   printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-restore -- sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" \
     || fail 'Unable to synchronize restored API server key into persistent runtime environment'
   unset RESTORED_API_KEY_ENCODED
+}
+
+reconcile_api_key() {
+  local source='' encoded script revision current_revision secret_snapshot patch app pod runtime_health attempt stable=false
+  local helper_pod=hermes-api-key-reconcile
+  local -a deployments=()
+  while (($#)); do
+    case "$1" in
+      --source)
+        [[ $# -ge 2 ]] || fail '--source requires secret'
+        source="$2"; shift 2 ;;
+      --source=*) source="${1#*=}"; shift ;;
+      *) fail "unknown reconcile-api-key option: $1" ;;
+    esac
+  done
+  [[ "$source" == secret ]] || fail 'reconcile-api-key requires --source secret'
+  require_cmd kubectl
+  require_cmd python3
+  require_cmd base64
+  mapfile -t deployments < <(enabled_write_deployments)
+  ((${#deployments[@]} > 0)) || fail 'no internal API-key consumers are enabled'
+  [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_UID must be numeric'
+  [[ "$HERMES_RUNTIME_GID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_GID must be numeric'
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" get deployment "$app" >/dev/null \
+      || fail "required internal API consumer Deployment is missing: $app"
+  done
+  script="$(restored_api_key_sync_script)"
+
+  reconcile_api_key_cleanup() {
+    kubectl -n "$HERMES_NAMESPACE" delete pod hermes-api-key-reconcile --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+    unset encoded
+  }
+  trap reconcile_api_key_cleanup EXIT
+  kubectl -n "$HERMES_NAMESPACE" delete pod "$helper_pod" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  create_storage_helper_pod "$helper_pod" reconcile
+  kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready "pod/$helper_pod" --timeout=120s >/dev/null
+
+  for attempt in 1 2 3; do
+    secret_snapshot="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o json | python3 -c '
+import json
+import sys
+
+document = json.load(sys.stdin)
+revision = document.get("metadata", {}).get("resourceVersion", "")
+encoded = document.get("data", {}).get("api-key", "")
+if not isinstance(revision, str) or not isinstance(encoded, str):
+    raise SystemExit(1)
+print(f"{revision}\t{encoded}", end="")
+')" || fail 'Unable to read one consistent API server key Secret snapshot'
+    IFS=$'\t' read -r revision encoded <<<"$secret_snapshot"
+    unset secret_snapshot
+    [[ "$revision" =~ ^[A-Za-z0-9._:-]+$ ]] || fail 'API server key Secret revision is empty or unsafe'
+    [[ -n "$encoded" ]] || fail 'API server key Secret is empty'
+    validate_encoded_api_key "$encoded" || fail 'API server key Secret is invalid; refusing to replace persistent data'
+    printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i "$helper_pod" -- \
+      sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data/.env validate-only \
+      || fail 'API server key Secret is invalid; refusing to replace persistent data'
+    printf '%s' "$encoded" | base64 -d | kubectl -n "$HERMES_NAMESPACE" exec -i "$helper_pod" -- \
+      sh -c "$script" sh "$HERMES_RUNTIME_UID" "$HERMES_RUNTIME_GID" /opt/data/.env \
+      || fail 'Unable to synchronize API server key into persistent runtime environment'
+    unset encoded
+    current_revision="$(kubectl -n "$HERMES_NAMESPACE" get secret hermes-api-server -o jsonpath='{.metadata.resourceVersion}')" \
+      || fail 'Unable to recheck API server key Secret revision'
+    if [[ "$current_revision" == "$revision" ]]; then
+      stable=true
+      break
+    fi
+    warn "API server key Secret changed during reconciliation attempt $attempt; retrying from the new Secret snapshot"
+  done
+  [[ "$stable" == true ]] || fail 'API server key Secret kept changing during reconciliation; no workloads were restarted'
+  patch="$(printf '{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kube-hermes-setup.example.com/api-key-revision\":\"%s\"}}}}}' "$revision")"
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" patch deployment "$app" --type=merge -p "$patch" >/dev/null
+  done
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" rollout restart "deploy/$app"
+  done
+  for app in "${deployments[@]}"; do
+    kubectl -n "$HERMES_NAMESPACE" rollout status "deploy/$app" --timeout=600s
+  done
+
+  for app in "${deployments[@]}"; do
+    pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
+    [[ -n "$pod" ]] || fail "no running $app Pod for internal API authentication verification"
+    runtime_health="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
+      PY="$(command -v python3 || command -v python || true)"
+      [ -n "$PY" ] || PY=/opt/hermes/.venv/bin/python
+      [ -x "$PY" ] || PY=/app/venv/bin/python
+      "$PY" -c '\''
+import os
+from urllib.request import Request, urlopen
+value = os.environ.get("API_SERVER_KEY", os.environ.get("HERMES_API_KEY", ""))
+url = os.environ.get("HERMES_API_URL", os.environ.get("GATEWAY_HEALTH_URL", "http://hermes-agent:8642")).rstrip("/") + "/health/detailed"
+request = Request(url, headers={"Authorization": f"Bearer {value}"})
+with urlopen(request, timeout=10) as response:
+    if response.status != 200:
+        raise SystemExit(f"health endpoint returned HTTP {response.status}")
+print("ok")
+'\''
+    ' 2>/dev/null || true)"
+    [[ "$runtime_health" == ok ]] || fail "$app internal API bearer authentication failed after reconciliation"
+  done
+
+  trap - EXIT
+  reconcile_api_key_cleanup
+  unset revision current_revision patch
+  log 'Internal API key reconciled from Kubernetes Secret; all enabled consumers authenticate successfully.'
 }
 
 restore() {
@@ -936,6 +1062,7 @@ if [[ "${HERMES_MAINTAIN_LIB_ONLY:-false}" != true ]]; then
     upgrade) upgrade "$@" ;;
     backup) backup "$@" ;;
     extract) extract_backup "$@" ;;
+    reconcile-api-key) reconcile_api_key "$@" ;;
     restore) restore "$@" ;;
     rotate-passwords) rotate_passwords "$@" ;;
     rotate-browser-token) rotate_browser_token "$@" ;;

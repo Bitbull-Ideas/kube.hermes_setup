@@ -116,6 +116,7 @@ python3 -m py_compile scripts/render_template.py scripts/prepare_requirements.py
 ./tests/matrix.sh
 ./tests/ssh-identity.sh
 ./tests/credentials.sh
+./tests/reconcile-api-key.sh
 ./tests/backup.sh
 rm -rf scripts/__pycache__
 ```

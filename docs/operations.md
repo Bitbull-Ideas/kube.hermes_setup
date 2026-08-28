@@ -127,6 +127,31 @@ Full mode requires a readable Kubernetes API server, but `--force` overrides all
 
 The helper Pod is removed on success or failure, and restored write-capable Deployments return to their snapshot replica counts. Local `hermes.env`, answers, and bootstrap metadata are not silently written into the host checkout; review them through `extract --component config|bootstrap`.
 
+## Reconcile the internal API key after an external PVC migration
+
+Normal installs and `maintain.sh restore` synchronize `Secret/hermes-api-server` into persistent `/opt/data/.env`. A manual or external PVC migration can copy an older `.env` **after** that synchronization step. Hermes intentionally loads the persistent file with user configuration precedence, so the Agent may accept the migrated key while Agent, Dashboard, and WebUI Pods still receive the current Kubernetes Secret. External OIDC does not replace this internal Bearer credential.
+
+After copying PVC data by any path other than `maintain.sh restore`, make the Kubernetes Secret authoritative with:
+
+```bash
+./maintain.sh reconcile-api-key --source secret
+./doctor.sh
+```
+
+The explicit source is required; the command never guesses between two valid credentials and never generates a new key. It validates the Secret without printing it, atomically replaces only `API_SERVER_KEY` in `/opt/data/.env`, preserves unrelated entries with mode `0600`, refreshes the non-secret Secret-revision annotation, rolls out Agent/Dashboard/WebUI together, verifies each consumer against `/health/detailed`, and removes its helper Pod on success or failure. Expect a brief interruption while those Deployments roll out.
+
+Before a production reconciliation, create an encrypted application backup. The archive preserves both the Kubernetes Secret snapshot and the pre-change persistent `.env` without writing either credential source to a separate plaintext host file:
+
+```bash
+umask 077
+rollback_dir="./backups/api-key-reconcile-$(date -u +%Y%m%dT%H%M%SZ)"
+install -d -m 0700 "$rollback_dir"
+
+./maintain.sh backup "$rollback_dir/hermes.age"
+```
+
+Keep the passphrase outside the checkout. The encrypted archive belongs in the ignored `backups/` directory and must not be committed. A normal restore intentionally normalizes the saved Secret into persistent `.env`; prefer rerunning `reconcile-api-key --source secret` when the goal is service recovery. If forensic reproduction of the deliberately inconsistent pre-change state is required, use `maintain.sh extract --full` only in a temporary mode-`0700` recovery directory, restore the Secret snapshot and `opt/data/.env` separately under an approved incident procedure, then securely remove the decrypted recovery directory.
+
 ## Bootstrap agent configuration
 
 The recommended configuration lifecycle is:
