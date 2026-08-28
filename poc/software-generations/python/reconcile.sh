@@ -82,7 +82,7 @@ validate_generation(){
   actual_lock_sha="$(sha256sum "$root/requirements.lock" | cut -d' ' -f1)" || return 1
   [[ "$actual_lock_sha" == "$lock_sha" ]] || return 1
   "$root/bin/python" - "$root" "$SOFTWARE_ROOT" "$component" "$final" "$generation" "$BUILDER_IMAGE_DIGEST" "$lock_sha" "$reconciler_sha" "$RECONCILER_VERSION" "$runtime_json" "$expected_json" <<'PY' || return 1
-import importlib.metadata as md,json,pathlib,sys
+import importlib.metadata as md,json,pathlib,sys,sysconfig
 root,sroot,croot,gpath,gh,digest,lsha,rsha,version,runtime_json,expected_json=sys.argv[1:]
 d=json.loads(pathlib.Path(root,'metadata.json').read_text()); runtime=json.loads(runtime_json); expected=json.loads(expected_json)
 assert d['component']=='python' and d['software_root']==sroot and d['component_root']==croot and d['generation_path']==gpath==root
@@ -90,7 +90,7 @@ assert d['generation_hash']==gh and d['source_digest']==digest and d['lockfile_s
 assert d['reconciler_sha256']==rsha and d['reconciler_version']==version
 for k,v in runtime.items(): assert d[k]==v
 ignored={'pip','setuptools','wheel'}
-actual=sorted((x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version for x in md.distributions() if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored)
+actual=sorted((x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version for x in md.distributions(path=[sysconfig.get_paths()['purelib']]) if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored)
 assert actual==expected==d['installed']
 bin_dir=pathlib.Path(root,'bin')
 for p in list(bin_dir.iterdir())+[pathlib.Path(root,'pyvenv.cfg')]:
@@ -139,9 +139,9 @@ mkdir "$final";owned_generation=true
 "$final/bin/python" -m pip install --disable-pip-version-check --require-hashes --no-deps -r "$LOCKFILE" >&2
 cp "$LOCKFILE" "$final/requirements.lock"
 installed_json="$($final/bin/python - <<'PY'
-import importlib.metadata as md,json
+import importlib.metadata as md,json,sysconfig
 ignored={'pip','setuptools','wheel'}
-print(json.dumps(sorted((x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version for x in md.distributions() if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored),separators=(',',':')))
+print(json.dumps(sorted((x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version for x in md.distributions(path=[sysconfig.get_paths()['purelib']]) if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored),separators=(',',':')))
 PY
 )"
 if [[ "$installed_json" != "$expected_json" ]]; then

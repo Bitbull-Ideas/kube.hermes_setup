@@ -48,9 +48,9 @@ assert_python_inventory() {
   local python="$1" expected="$2"
   local actual
   actual="$($python - <<'PY'
-import importlib.metadata as md
+import importlib.metadata as md,sysconfig
 ignored={"pip","setuptools","wheel"}
-print(",".join(sorted({(d.metadata.get("Name") or d.name).lower().replace("_","-") for d in md.distributions()}-ignored)))
+print(",".join(sorted({(d.metadata.get("Name") or d.name).lower().replace("_","-") for d in md.distributions(path=[sysconfig.get_paths()["purelib"]])}-ignored)))
 PY
 )"
   [[ "$actual" == "$expected" ]]

@@ -71,10 +71,10 @@ for name, generation in (("current", py["current"]), ("previous", py["previous"]
     assert meta["generation_hash"] == generation.name
     assert meta["source_digest"] == expected_digest
     code = (
-        "import importlib.metadata as m,json;"
+        "import importlib.metadata as m,json,sysconfig;"
         "i={'pip','setuptools','wheel'};"
         "print(json.dumps(sorted((d.metadata.get('Name') or d.name).lower().replace('_','-')+'=='+d.version "
-        "for d in m.distributions() if (d.metadata.get('Name') or d.name).lower().replace('_','-') not in i)))"
+        "for d in m.distributions(path=[sysconfig.get_paths()['purelib']]) if (d.metadata.get('Name') or d.name).lower().replace('_','-') not in i)))"
     )
     actual = json.loads(subprocess.check_output([str(generation / "bin/python"), "-c", code], text=True))
     assert actual == meta["installed"]

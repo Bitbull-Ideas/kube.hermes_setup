@@ -46,14 +46,14 @@ PY
     [[ -f "$path/requirements.lock" && -x "$path/bin/python" && ! -L "$path/bin/python" ]] || return 1
     lock_sha="$(sha256sum "$path/requirements.lock" | cut -d' ' -f1)" || return 1
     "$path/bin/python" - "$path" "$lock_sha" <<'PY' || return 1
-import importlib.metadata as md,json,pathlib,sys
+import importlib.metadata as md,json,pathlib,sys,sysconfig
 root=pathlib.Path(sys.argv[1]); lock_sha=sys.argv[2]
 d=json.loads((root/'metadata.json').read_text())
 assert d['lockfile_sha256']==lock_sha
 ignored={'pip','setuptools','wheel'}
 actual=sorted(
  (x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version
- for x in md.distributions()
+ for x in md.distributions(path=[sysconfig.get_paths()['purelib']])
  if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored
 )
 assert actual==d['installed']
