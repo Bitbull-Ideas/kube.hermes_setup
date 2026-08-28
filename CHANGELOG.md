@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.7.1] - 2026-08-28
+
+### Security
+
+- Disables terminal input echo in the `age` pseudo-terminal used by `--password-file` backup, extract, and restore automation, preventing the supplied passphrase from being copied into captured stdout, logs, or automation transcripts.
+- Refuses to forward a pseudo-terminal transcript if it contains the supplied passphrase as an echoed line, providing a second fail-closed disclosure boundary even if terminal behavior regresses.
+
+### Fixed
+
+- Propagates the real `age` child exit status through util-linux `script --return` instead of allowing a failed encryption or decryption command to appear successful.
+
+### Verification
+
+- Extends `tests/backup.sh` with passphrase non-disclosure, forced child-output disclosure, and child exit-status regression cases.
+
 ## [v2.7.0] - 2026-08-28
 
 ### Added

@@ -3,7 +3,7 @@
 
 Purpose: Support non-interactive, password-file-based age encryption/decryption
 without putting the passphrase in process arguments, shell history, or ordinary stdin.
-Uses the `script -q -c` utility to create a proper PTY session for `age`.
+Uses util-linux `script` with input echo disabled to create a proper PTY for `age`.
 
 Usage: python3 scripts/age_passphrase.py PASSWORD_FILE -- age arguments...
 Requirements: Python 3, `script` (util-linux), a local age executable, and a regular password file.
@@ -57,9 +57,19 @@ def main() -> int:
     else:
         stdin_data = f"{password}\n"
 
-    # Use script -q -c to create a proper PTY for age
+    # Allocate a PTY without echoing the supplied passphrase into the captured
+    # transcript. --return propagates age's exit status instead of script's.
     age_cmd = "age " + " ".join(shlex_quote(a) for a in argv)
-    script_cmd = ["script", "-q", "-c", age_cmd, "/dev/null"]
+    script_cmd = [
+        "script",
+        "--quiet",
+        "--return",
+        "--echo",
+        "never",
+        "--command",
+        age_cmd,
+        "/dev/null",
+    ]
 
     result = subprocess.run(
         script_cmd,
@@ -69,7 +79,14 @@ def main() -> int:
         timeout=300,
         env={k: v for k, v in os.environ.items() if k not in {"AGE_PASSPHRASE"}},
     )
-    # Forward age's stdout and stderr
+    transcript_lines = [
+        line
+        for stream in (result.stdout, result.stderr)
+        for line in stream.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    ]
+    if password in transcript_lines:
+        raise SystemExit("age PTY output contained the passphrase; refusing to forward it")
+    # Forward only output that passed the passphrase disclosure guard.
     if result.stdout:
         sys.stdout.write(result.stdout)
     if result.stderr:

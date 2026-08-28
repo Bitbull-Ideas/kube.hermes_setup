@@ -18,15 +18,24 @@ chmod 600 "$TMP_DIR/password"
 
 cat > "$TMP_DIR/bin/age" <<'AGE'
 #!/usr/bin/env bash
+set -euo pipefail
 # Fake age for test: reads passphrase from PTY (twice for encrypt, once for decrypt)
 if [[ " $* " == *' --passphrase '* ]] && [[ " $* " != *' --decrypt '* ]]; then
   read -r prompt1
   read -r prompt2
   [[ "$prompt1" == "$prompt2" ]]
+  prompt="$prompt1"
 else
   read -r prompt
 fi
 [[ "$prompt" == 'correct horse battery staple' ]]
+case "${FAKE_AGE_EMIT_PASSPHRASE:-false}" in
+  stdout) printf '%s\n' "$prompt" ;;
+  stderr) printf '%s\n' "$prompt" >&2 ;;
+esac
+if [[ -n "${FAKE_AGE_EXIT_CODE:-}" ]]; then
+  exit "$FAKE_AGE_EXIT_CODE"
+fi
 if [[ " $* " == *' --decrypt '* ]]; then
   while (($#)); do
     [[ "$1" == --output ]] && { output="$2"; shift 2; continue; }
@@ -40,6 +49,30 @@ AGE
 chmod 700 "$TMP_DIR/bin/age"
 PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- age --passphrase "$TMP_DIR/input/plain.txt" > "$TMP_DIR/age.out"
 grep -Fq 'fake age completed' "$TMP_DIR/age.out"
+if grep -Fq 'correct horse battery staple' "$TMP_DIR/age.out"; then
+  printf 'age helper exposed the backup passphrase through PTY echo\n' >&2
+  exit 1
+fi
+
+for disclosure_stream in stdout stderr; do
+  set +e
+  FAKE_AGE_EMIT_PASSPHRASE="$disclosure_stream" PATH="$TMP_DIR/bin:$PATH" \
+    python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- \
+    age --passphrase "$TMP_DIR/input/plain.txt" > "$TMP_DIR/disclosure-guard-$disclosure_stream.out" 2>&1
+  disclosure_rc=$?
+  set -e
+  [[ "$disclosure_rc" != 0 ]]
+  ! grep -Fq 'correct horse battery staple' "$TMP_DIR/disclosure-guard-$disclosure_stream.out"
+  grep -Fq 'refusing to forward it' "$TMP_DIR/disclosure-guard-$disclosure_stream.out"
+done
+
+set +e
+FAKE_AGE_EXIT_CODE=23 PATH="$TMP_DIR/bin:$PATH" \
+  python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- \
+  age --passphrase "$TMP_DIR/input/plain.txt" >/dev/null 2>&1
+child_rc=$?
+set -e
+[[ "$child_rc" == 23 ]]
 
 if chmod 644 "$TMP_DIR/password"; then
   if PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- age --passphrase "$TMP_DIR/input/plain.txt" >/dev/null 2>&1; then
