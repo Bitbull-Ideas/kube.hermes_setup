@@ -7,6 +7,14 @@ TMP_DIR="$(mktemp -d -t hermes-api-key-reconcile.XXXXXX)"
 trap 'rm -rf -- "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/bin"
 
+cat > "$TMP_DIR/bin/openssl" <<'OPENSSL'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == 'rand -hex 16' ]] || exit 2
+printf '%s' '00112233445566778899aabbccddeeff'
+OPENSSL
+chmod 0755 "$TMP_DIR/bin/openssl"
+
 secret_key='secret-authoritative-api-key'
 printf '%s\n' 'UNRELATED_SETTING=keep-me' 'API_SERVER_KEY=stale-one' 'API_SERVER_KEY=stale-two' > "$TMP_DIR/runtime.env"
 chmod 640 "$TMP_DIR/runtime.env"
@@ -69,7 +77,7 @@ case "${1:-} ${2:-}" in
   'get pods')
     app="${4#app=}"
     [[ "${7:-}" == json ]] || exit 2
-    printf '{"items":[{"metadata":{"name":"%s-pod","annotations":{"kube-hermes-setup.example.com/api-key-revision":"rv-secret-current"}},"status":{"conditions":[{"type":"Ready","status":"True"}],"containerStatuses":[{"ready":true}]}}]}\n' "$app"
+    printf '{"items":[{"metadata":{"name":"%s-pod","annotations":{"kube-hermes-setup.example.com/api-key-revision":"rv-secret-current","kube-hermes-setup.example.com/api-key-reconcile-request":"00112233445566778899aabbccddeeff"}},"status":{"conditions":[{"type":"Ready","status":"True"}],"containerStatuses":[{"ready":true}]}}]}\n' "$app"
     ;;
   'get deployment')
     case "${3:-}" in hermes-agent|hermes-dashboard|hermes-webui) ;; *) exit 2 ;; esac
@@ -87,6 +95,7 @@ case "${1:-} ${2:-}" in
     app="$3"
     case "$app" in hermes-agent|hermes-dashboard|hermes-webui) ;; *) exit 2 ;; esac
     [[ "$*" == *'api-key-revision'* && "$*" == *'rv-secret-current'* ]] || exit 2
+    [[ "$*" == *'api-key-reconcile-request'* && "$*" == *'00112233445566778899aabbccddeeff'* ]] || exit 2
     [[ "$app" != "${FAKE_PATCH_FAIL_APP:-}" ]] || exit 1
     ;;
   'rollout status')

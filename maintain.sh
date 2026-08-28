@@ -642,7 +642,7 @@ sync_restored_api_key() {
 }
 
 reconcile_api_key() {
-  local source='' encoded script revision current_revision secret_snapshot patch app pod runtime_health attempt stable=false
+  local source='' encoded script revision current_revision reconcile_request secret_snapshot patch app pod runtime_health attempt stable=false
   local helper_pod=hermes-api-key-reconcile
   local -a deployments=()
   while (($#)); do
@@ -658,6 +658,7 @@ reconcile_api_key() {
   require_cmd kubectl
   require_cmd python3
   require_cmd base64
+  require_cmd openssl
   mapfile -t deployments < <(enabled_write_deployments)
   ((${#deployments[@]} > 0)) || fail 'no internal API-key consumers are enabled'
   [[ "$HERMES_RUNTIME_UID" =~ ^[0-9]+$ ]] || fail 'HERMES_RUNTIME_UID must be numeric'
@@ -710,7 +711,9 @@ print(f"{revision}\t{encoded}", end="")
     warn "API server key Secret changed during reconciliation attempt $attempt; retrying from the new Secret snapshot"
   done
   [[ "$stable" == true ]] || fail 'API server key Secret kept changing during reconciliation; no workloads were restarted'
-  patch="$(printf '{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kube-hermes-setup.example.com/api-key-revision\":\"%s\"}}}}}' "$revision")"
+  reconcile_request="$(openssl rand -hex 16)" || fail 'Unable to generate an API key reconciliation request ID'
+  [[ "$reconcile_request" =~ ^[a-f0-9]{32}$ ]] || fail 'Generated API key reconciliation request ID is invalid'
+  patch="$(printf '{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kube-hermes-setup.example.com/api-key-revision\":\"%s\",\"kube-hermes-setup.example.com/api-key-reconcile-request\":\"%s\"}}}}}' "$revision" "$reconcile_request")"
   for app in "${deployments[@]}"; do
     kubectl -n "$HERMES_NAMESPACE" patch deployment "$app" --type=merge -p "$patch" >/dev/null
   done
@@ -720,23 +723,24 @@ print(f"{revision}\t{encoded}", end="")
 
   for app in "${deployments[@]}"; do
     pod="$(kubectl -n "$HERMES_NAMESPACE" get pods -l app="$app" --field-selector=status.phase=Running -o json | \
-      API_KEY_REVISION="$revision" python3 -c '
+      API_KEY_REVISION="$revision" API_KEY_RECONCILE_REQUEST="$reconcile_request" python3 -c '
 import json
 import os
 import sys
 
 revision = os.environ["API_KEY_REVISION"]
+reconcile_request = os.environ["API_KEY_RECONCILE_REQUEST"]
 for pod in json.load(sys.stdin).get("items", []):
     metadata = pod.get("metadata", {})
     annotations = metadata.get("annotations", {})
     status = pod.get("status", {})
     statuses = status.get("containerStatuses", [])
     pod_ready = any(item.get("type") == "Ready" and item.get("status") == "True" for item in status.get("conditions", []))
-    if annotations.get("kube-hermes-setup.example.com/api-key-revision") == revision and pod_ready and statuses and all(item.get("ready") for item in statuses):
+    if annotations.get("kube-hermes-setup.example.com/api-key-revision") == revision and annotations.get("kube-hermes-setup.example.com/api-key-reconcile-request") == reconcile_request and pod_ready and statuses and all(item.get("ready") for item in statuses):
         print(metadata.get("name", ""), end="")
         break
 ')"
-    [[ -n "$pod" ]] || fail "no Ready $app Pod carrying API key revision $revision for authentication verification"
+    [[ -n "$pod" ]] || fail "no Ready $app Pod carrying the current API key revision and reconciliation request for authentication verification"
     runtime_health="$(kubectl -n "$HERMES_NAMESPACE" exec "$pod" -- sh -c '
       PY="$(command -v python3 || command -v python || true)"
       [ -n "$PY" ] || PY=/opt/hermes/.venv/bin/python
@@ -763,7 +767,7 @@ print("ok")
 
   trap - EXIT
   reconcile_api_key_cleanup
-  unset revision current_revision patch
+  unset revision current_revision reconcile_request patch
   log 'Internal API key reconciled from Kubernetes Secret; all enabled consumers authenticate successfully.'
 }
 
