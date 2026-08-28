@@ -80,17 +80,26 @@ PY
 )"
 atomic_sha=none; [[ -z "$atomic_path" ]] || atomic_sha="$(sha256sum "$atomic_path" | cut -d' ' -f1)"
 generation="$(printf '%s\n' "$RECONCILER_VERSION" "reconciler=$reconciler_sha" "root=$SOFTWARE_ROOT" "source=$SOURCE_IMAGE_DIGEST" "node=$node_sha" "npm=$npm_sha" "loader=$loader_json" "atomic=$atomic_sha" | sha256sum | cut -d' ' -f1)"
-final="$component/generations/$generation"; stage="$component/staging/$generation.$$"; created_final=false; success=false
+final="$component/generations/$generation"; stage="$component/staging/$generation.$$"; owned_generation=false; published=false
 remove_stage(){ case "$stage" in "$component"/staging/"$generation".*) rm -rf -- "$stage";; *) return 1;; esac; }
 remove_final(){ case "$final" in "$component"/generations/"$generation") rm -rf -- "$final";; *) return 1;; esac; }
-cleanup(){ rc=$?; trap - EXIT HUP INT TERM; set +e; [[ ! -e "$stage" ]]||remove_stage; if [[ "$success" != true && "$created_final" == true && -d "$final" && ! -f "$final/.complete" ]];then remove_final;fi; exit "$rc"; }
+cleanup(){
+ rc=$?; trap - EXIT HUP INT TERM; set +e; [[ ! -e "$stage" ]]||remove_stage
+ current_target="$(readlink "$component/current" 2>/dev/null || true)"
+ if [[ "$owned_generation" == true && "$published" != true && "$current_target" != "generations/$generation" && -d "$final" ]];then remove_final;fi
+ exit "$rc"
+}
 trap cleanup EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 validate_generation(){
- root="$1"
- [[ -f "$root/.complete" && -x "$root/bin/node" && -x "$root/bin/npm" && -x "$root/bin/npx" && -x "$root/libexec/node" && -f "$root/metadata.json" ]]||return 1
- [[ "$(sha256sum "$root/libexec/node"|cut -d' ' -f1)" == "$node_sha" ]]||return 1
- [[ "$(python3 - "$root/lib/node_modules/npm" <<'PY'
+ local root="$1"
+ local require_complete="${2:-true}"
+ local actual_node_sha actual_npm_sha node_wrapper_sha npm_wrapper_sha npx_wrapper_sha
+ [[ -x "$root/bin/node" && -x "$root/bin/npm" && -x "$root/bin/npx" && -x "$root/libexec/node" && -f "$root/metadata.json" ]]||return 1
+ [[ "$require_complete" != true || -f "$root/.complete" ]]||return 1
+ actual_node_sha="$(sha256sum "$root/libexec/node" | cut -d' ' -f1)" || return 1
+ [[ "$actual_node_sha" == "$node_sha" ]] || return 1
+ actual_npm_sha="$(python3 - "$root/lib/node_modules/npm" <<'PY'
 import hashlib,os,pathlib,stat,sys
 root=pathlib.Path(sys.argv[1]);h=hashlib.sha256()
 for p in sorted(root.rglob('*'),key=lambda x:x.relative_to(root).as_posix()):
@@ -102,11 +111,12 @@ for p in sorted(root.rglob('*'),key=lambda x:x.relative_to(root).as_posix()):
  h.update(f'{rel}\0{typ}\0{mode:o}\0'.encode());h.update(payload);h.update(b'\0')
 print(h.hexdigest())
 PY
-)" == "$npm_sha" ]]||return 1
- node_wrapper_sha="$(sha256sum "$root/bin/node"|cut -d' ' -f1)"
- npm_wrapper_sha="$(sha256sum "$root/bin/npm"|cut -d' ' -f1)"
- npx_wrapper_sha="$(sha256sum "$root/bin/npx"|cut -d' ' -f1)"
- python3 - "$root/metadata.json" "$SOFTWARE_ROOT" "$component" "$final" "$generation" "$SOURCE_IMAGE_DIGEST" "$reconciler_sha" "$npm_sha" "$node_sha" "$atomic_sha" "$node_wrapper_sha" "$npm_wrapper_sha" "$npx_wrapper_sha" <<'PY'
+)" || return 1
+ [[ "$actual_npm_sha" == "$npm_sha" ]] || return 1
+ node_wrapper_sha="$(sha256sum "$root/bin/node"|cut -d' ' -f1)" || return 1
+ npm_wrapper_sha="$(sha256sum "$root/bin/npm"|cut -d' ' -f1)" || return 1
+ npx_wrapper_sha="$(sha256sum "$root/bin/npx"|cut -d' ' -f1)" || return 1
+ python3 - "$root/metadata.json" "$SOFTWARE_ROOT" "$component" "$final" "$generation" "$SOURCE_IMAGE_DIGEST" "$reconciler_sha" "$npm_sha" "$node_sha" "$atomic_sha" "$node_wrapper_sha" "$npm_wrapper_sha" "$npx_wrapper_sha" <<'PY' || return 1
 import json,pathlib,sys
 p,sroot,croot,gpath,gh,digest,rsha,nsha,node_sha,asha,nodew,npmw,npxw=sys.argv[1:];d=json.loads(pathlib.Path(p).read_text())
 assert d['component']=='node' and d['software_root']==sroot and d['component_root']==croot and d['generation_path']==gpath
@@ -119,14 +129,16 @@ PY
  else
    [[ -f "$root/lib/libatomic.so.1" && ! -L "$root/lib/libatomic.so.1" && "$(sha256sum "$root/lib/libatomic.so.1"|cut -d' ' -f1)" == "$atomic_sha" ]] || return 1
  fi
- PATH=/usr/bin:/bin "$root/bin/node" --version >/dev/null && PATH=/usr/bin:/bin "$root/bin/npm" --version >/dev/null && PATH=/usr/bin:/bin "$root/bin/npx" --version >/dev/null
+ PATH=/usr/bin:/bin "$root/bin/node" --version >/dev/null || return 1
+ PATH=/usr/bin:/bin "$root/bin/npm" --version >/dev/null || return 1
+ PATH=/usr/bin:/bin "$root/bin/npx" --version >/dev/null || return 1
 }
 activate(){
  target="generations/$generation"; old="$(readlink "$component/current" 2>/dev/null||true)"; [[ "$old" != "$target" ]]||return 0
  if [[ -n "$old" ]];then [[ "$old" =~ ^generations/[0-9a-f]{64}$ && -f "$component/$old/.complete" ]]||return 1; prev="$(readlink "$component/previous" 2>/dev/null||true)"; had_prev=false;[[ -z "$prev" ]]||had_prev=true;ln -s "$old" "$component/.previous.$$";mv -Tf "$component/.previous.$$" "$component/previous";fi
  ln -s "$target" "$component/.current.$$";if ! mv -Tf "$component/.current.$$" "$component/current";then rm -f "$component/.current.$$";if [[ -n "${old:-}" ]];then if [[ "$had_prev" == true ]];then ln -s "$prev" "$component/.restore.$$";mv -Tf "$component/.restore.$$" "$component/previous";else rm -f "$component/previous";fi;fi;return 1;fi
 }
-if [[ -d "$final" ]];then if [[ ! -f "$final/.complete" ]];then remove_final;else validate_generation "$final"||{ printf '%s\n' 'existing complete Node generation is corrupt' >&2;exit 1;};activate;success=true;printf '%s\n' "$generation";exit 0;fi;fi
+if [[ -d "$final" ]];then if [[ ! -f "$final/.complete" ]];then printf '%s\n' 'existing incomplete Node generation requires manual recovery' >&2;exit 1;else validate_generation "$final" true||{ printf '%s\n' 'existing complete Node generation is corrupt' >&2;exit 1;};activate;published=true;printf '%s\n' "$generation";exit 0;fi;fi
 
 mkdir -p "$stage/bin" "$stage/libexec" "$stage/lib/node_modules"
 cp "$NODE_SRC" "$stage/libexec/node";chmod 755 "$stage/libexec/node";cp -a "$NPM_SRC" "$stage/lib/node_modules/npm"
@@ -158,5 +170,15 @@ p,sroot,croot,gpath,gh,digest,rsha,version,nsha,node_sha,asha,loader,nodew,npmw,
 d={'schema':1,'component':'node','software_root':sroot,'component_root':croot,'generation_path':gpath,'generation_hash':gh,'source_digest':digest,'reconciler_sha256':rsha,'reconciler_version':version,'npm_tree_sha256':nsha,'node_sha256':node_sha,'libatomic_sha256':asha,'wrapper_sha256':{'node':nodew,'npm':npmw,'npx':npxw},**json.loads(loader)}
 pathlib.Path(p).write_text(json.dumps(d,sort_keys=True,indent=2)+'\n')
 PY
-printf '%s\n' complete >"$stage/.complete";mv "$stage" "$final";created_final=true;stage="$component/staging/$generation.$$"
-validate_generation "$final";created_final=false;activate;success=true;printf '%s\n' "$generation"
+# Stage validation exercises the relocatable payload before publication.
+LD_LIBRARY_PATH="$stage/lib" "$stage/libexec/node" --version >/dev/null
+PATH=/usr/bin:/bin "$stage/bin/node" --version >/dev/null
+PATH=/usr/bin:/bin "$stage/bin/npm" --version >/dev/null
+PATH=/usr/bin:/bin "$stage/bin/npx" --version >/dev/null
+mv "$stage" "$final";owned_generation=true;stage="$component/staging/$generation.$$"
+validate_generation "$final" false
+printf '%s\n' complete >"$final/.complete"
+validate_generation "$final" true
+activate
+published=true
+printf '%s\n' "$generation"

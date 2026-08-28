@@ -25,14 +25,14 @@ exec 9>"$component/.lock"
 flock 9
 
 validate_link() {
-  link="$1"
+  local link="$1" target hash path lock_sha node_sha npm_sha nodew npmw npxw
   [[ -L "$link" ]] || return 1
-  target="$(readlink "$link")"
+  target="$(readlink "$link")" || return 1
   [[ "$target" =~ ^generations/[0-9a-f]{64}$ ]] || return 1
   hash="${target#generations/}"
   path="$component/$target"
   [[ -d "$path" && -f "$path/.complete" && -f "$path/metadata.json" ]] || return 1
-  python3 - "$path/metadata.json" "$component_name" "$SOFTWARE_ROOT" "$component" "$path" "$hash" <<'PY'
+  python3 - "$path/metadata.json" "$component_name" "$SOFTWARE_ROOT" "$component" "$path" "$hash" <<'PY' || return 1
 import json,pathlib,sys
 meta,component,software_root,component_root,generation_path,generation_hash=sys.argv[1:]
 d=json.loads(pathlib.Path(meta).read_text())
@@ -44,14 +44,18 @@ assert d['generation_hash']==generation_hash
 PY
   if [[ "$component_name" == python ]]; then
     [[ -f "$path/requirements.lock" && -x "$path/bin/python" && ! -L "$path/bin/python" ]] || return 1
-    lock_sha="$(sha256sum "$path/requirements.lock" | cut -d' ' -f1)"
-    "$path/bin/python" - "$path" "$lock_sha" <<'PY'
+    lock_sha="$(sha256sum "$path/requirements.lock" | cut -d' ' -f1)" || return 1
+    "$path/bin/python" - "$path" "$lock_sha" <<'PY' || return 1
 import importlib.metadata as md,json,pathlib,sys
 root=pathlib.Path(sys.argv[1]); lock_sha=sys.argv[2]
 d=json.loads((root/'metadata.json').read_text())
 assert d['lockfile_sha256']==lock_sha
 ignored={'pip','setuptools','wheel'}
-actual=sorted({(x.metadata.get('Name') or x.name).lower().replace('_','-') for x in md.distributions()}-ignored)
+actual=sorted(
+ (x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version
+ for x in md.distributions()
+ if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored
+)
 assert actual==d['installed']
 for p in list((root/'bin').iterdir())+[root/'pyvenv.cfg']:
  if not p.is_file() or p.is_symlink(): continue
@@ -59,10 +63,12 @@ for p in list((root/'bin').iterdir())+[root/'pyvenv.cfg']:
  if data.startswith(b'#!') or p.name in {'activate','activate.csh','activate.fish','pyvenv.cfg'}:
   assert b'/staging/' not in data
 PY
+    "$path/bin/python" -m pip --version >/dev/null || return 1
+    "$path/bin/python" -m pip check >/dev/null || return 1
   else
     for exe in node npm npx; do [[ -x "$path/bin/$exe" && ! -L "$path/bin/$exe" ]] || return 1; done
     [[ -x "$path/libexec/node" && ! -L "$path/libexec/node" && -d "$path/lib/node_modules/npm" ]] || return 1
-    node_sha="$(sha256sum "$path/libexec/node" | cut -d' ' -f1)"
+    node_sha="$(sha256sum "$path/libexec/node" | cut -d' ' -f1)" || return 1
     npm_sha="$(python3 - "$path/lib/node_modules/npm" <<'PY'
 import hashlib,os,pathlib,stat,sys
 root=pathlib.Path(sys.argv[1]);h=hashlib.sha256()
@@ -75,9 +81,11 @@ for p in sorted(root.rglob('*'),key=lambda x:x.relative_to(root).as_posix()):
  h.update(f'{rel}\0{typ}\0{mode:o}\0'.encode());h.update(payload);h.update(b'\0')
 print(h.hexdigest())
 PY
-)"
-    nodew="$(sha256sum "$path/bin/node"|cut -d' ' -f1)"; npmw="$(sha256sum "$path/bin/npm"|cut -d' ' -f1)"; npxw="$(sha256sum "$path/bin/npx"|cut -d' ' -f1)"
-    python3 - "$path/metadata.json" "$node_sha" "$npm_sha" "$nodew" "$npmw" "$npxw" "$path" <<'PY'
+)" || return 1
+    nodew="$(sha256sum "$path/bin/node"|cut -d' ' -f1)" || return 1
+    npmw="$(sha256sum "$path/bin/npm"|cut -d' ' -f1)" || return 1
+    npxw="$(sha256sum "$path/bin/npx"|cut -d' ' -f1)" || return 1
+    python3 - "$path/metadata.json" "$node_sha" "$npm_sha" "$nodew" "$npmw" "$npxw" "$path" <<'PY' || return 1
 import json,pathlib,sys
 meta,node_sha,npm_sha,nodew,npmw,npxw,root=sys.argv[1:]
 d=json.loads(pathlib.Path(meta).read_text())

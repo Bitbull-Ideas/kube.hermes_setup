@@ -57,20 +57,31 @@ PY
 )"
 generation="$(printf '%s\n' "$RECONCILER_VERSION" "reconciler=$reconciler_sha" "root=$SOFTWARE_ROOT" "source=$BUILDER_IMAGE_DIGEST" "lock=$lock_sha" "runtime=$runtime_json" "inventory=$expected_json" | sha256sum | cut -d' ' -f1)"
 final="$component/generations/$generation"
-created_final=false
-success=false
+owned_generation=false
+validated=false
+complete=false
+published=false
 remove_final(){ case "$final" in "$component"/generations/"$generation") rm -rf -- "$final" ;; *) return 1 ;; esac; }
-cleanup(){ rc=$?; trap - EXIT HUP INT TERM; set +e; if [[ "$success" != true && "$created_final" == true && -d "$final" && ! -f "$final/.complete" ]];then remove_final;fi; exit "$rc"; }
+cleanup(){
+ rc=$?; trap - EXIT HUP INT TERM; set +e
+ current_target="$(readlink "$component/current" 2>/dev/null || true)"
+ if [[ "$owned_generation" == true && "$published" != true && "$current_target" != "generations/$generation" && -d "$final" ]];then remove_final;fi
+ exit "$rc"
+}
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 validate_generation(){
-  root="$1"
-  [[ -d "$root" && -f "$root/.complete" && -f "$root/metadata.json" && -f "$root/requirements.lock" && -x "$root/bin/python" ]] || return 1
-  [[ "$(sha256sum "$root/requirements.lock"|cut -d' ' -f1)" == "$lock_sha" ]] || return 1
-  "$root/bin/python" - "$root" "$SOFTWARE_ROOT" "$component" "$final" "$generation" "$BUILDER_IMAGE_DIGEST" "$lock_sha" "$reconciler_sha" "$RECONCILER_VERSION" "$runtime_json" "$expected_json" <<'PY'
+  local root="$1"
+  local require_complete="${2:-true}"
+  local actual_lock_sha
+  [[ -d "$root" && -f "$root/metadata.json" && -f "$root/requirements.lock" && -x "$root/bin/python" ]] || return 1
+  [[ "$require_complete" != true || -f "$root/.complete" ]] || return 1
+  actual_lock_sha="$(sha256sum "$root/requirements.lock" | cut -d' ' -f1)" || return 1
+  [[ "$actual_lock_sha" == "$lock_sha" ]] || return 1
+  "$root/bin/python" - "$root" "$SOFTWARE_ROOT" "$component" "$final" "$generation" "$BUILDER_IMAGE_DIGEST" "$lock_sha" "$reconciler_sha" "$RECONCILER_VERSION" "$runtime_json" "$expected_json" <<'PY' || return 1
 import importlib.metadata as md,json,pathlib,sys
 root,sroot,croot,gpath,gh,digest,lsha,rsha,version,runtime_json,expected_json=sys.argv[1:]
 d=json.loads(pathlib.Path(root,'metadata.json').read_text()); runtime=json.loads(runtime_json); expected=json.loads(expected_json)
@@ -81,14 +92,27 @@ for k,v in runtime.items(): assert d[k]==v
 ignored={'pip','setuptools','wheel'}
 actual=sorted((x.metadata.get('Name') or x.name).lower().replace('_','-')+'=='+x.version for x in md.distributions() if (x.metadata.get('Name') or x.name).lower().replace('_','-') not in ignored)
 assert actual==expected==d['installed']
-for p in list(pathlib.Path(root,'bin').iterdir())+[pathlib.Path(root,'pyvenv.cfg')]:
+bin_dir=pathlib.Path(root,'bin')
+for p in list(bin_dir.iterdir())+[pathlib.Path(root,'pyvenv.cfg')]:
  if not p.is_file() or p.is_symlink(): continue
  data=p.read_bytes()
- if data.startswith(b'#!'):
-  assert str(pathlib.Path(root,'bin')).encode() in data.split(b'\n',1)[0]
-  assert b'/staging/' not in data.split(b'\n',1)[0]
- if p.name in {'activate','activate.csh','activate.fish','pyvenv.cfg'}: assert b'/staging/' not in data
+ if data.startswith(b'\x7fELF'): continue
+ if data.startswith(b'#!') or p.name in {'activate','activate.csh','activate.fish','pyvenv.cfg'}:
+  assert b'/staging/' not in data
+ if data.startswith(b'#!') and p.stat().st_mode & 0o111:
+  lines=data.splitlines()[:3]
+  allowed={str(bin_dir/'python').encode(),str(bin_dir/'python3').encode()}
+  allowed.update(str(x).encode() for x in bin_dir.glob('python3.[0-9]*'))
+  direct=lines[0][2:] in allowed
+  trampoline=False
+  if lines[0]==b'#!/bin/sh' and len(lines)>=3 and lines[2]==b"' '''":
+   prefix=b"'''exec' "; suffix=b' "$0" "$@"'
+   if lines[1].startswith(prefix) and lines[1].endswith(suffix):
+    trampoline=lines[1][len(prefix):-len(suffix)] in allowed
+  assert direct or trampoline, (p, lines[:2])
 PY
+  "$root/bin/python" -m pip --version >/dev/null || return 1
+  "$root/bin/python" -m pip check >/dev/null || return 1
 }
 activate(){
  target="generations/$generation"; old="$(readlink "$component/current" 2>/dev/null||true)"; [[ "$old" != "$target" ]]||return 0
@@ -106,13 +130,13 @@ activate(){
 }
 
 if [[ -d "$final" ]];then
- if [[ ! -f "$final/.complete" ]];then remove_final
- else validate_generation "$final"||{ printf '%s\n' 'existing complete Python generation is corrupt' >&2;exit 1;};activate;success=true;printf '%s\n' "$generation";exit 0
+ if [[ ! -f "$final/.complete" ]];then printf '%s\n' 'existing incomplete Python generation requires manual recovery' >&2;exit 1
+ else validate_generation "$final" true||{ printf '%s\n' 'existing complete Python generation is corrupt' >&2;exit 1;};activate;published=true;printf '%s\n' "$generation";exit 0
  fi
 fi
-mkdir "$final";created_final=true
-"$PYTHON_BIN" -m venv --copies "$final"
-"$final/bin/python" -m pip install --disable-pip-version-check --require-hashes --no-deps -r "$LOCKFILE"
+mkdir "$final";owned_generation=true
+"$PYTHON_BIN" -m venv --copies "$final" >&2
+"$final/bin/python" -m pip install --disable-pip-version-check --require-hashes --no-deps -r "$LOCKFILE" >&2
 cp "$LOCKFILE" "$final/requirements.lock"
 installed_json="$($final/bin/python - <<'PY'
 import importlib.metadata as md,json
@@ -128,10 +152,11 @@ d={'schema':1,'component':'python','software_root':sroot,'component_root':croot,
 pathlib.Path(p).write_text(json.dumps(d,sort_keys=True,indent=2)+'\n')
 PY
 # Validate final-path venv before publishing completeness.
-"$final/bin/python" -c 'import importlib.metadata; list(importlib.metadata.distributions())'
+validate_generation "$final" false
+validated=true
 printf '%s\n' complete >"$final/.complete"
-validate_generation "$final"
-created_final=false
+complete=true
+validate_generation "$final" true
 activate
-success=true
+published=true
 printf '%s\n' "$generation"
