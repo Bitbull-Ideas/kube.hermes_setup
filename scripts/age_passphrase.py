@@ -84,7 +84,7 @@ def main() -> int:
         for stream in (result.stdout, result.stderr)
         for line in stream.replace("\r\n", "\n").replace("\r", "\n").splitlines()
     ]
-    if password in transcript_lines:
+    if any(password in line for line in transcript_lines):
         raise SystemExit("age PTY output contained the passphrase; refusing to forward it")
     # Forward only output that passed the passphrase disclosure guard.
     if result.stdout:

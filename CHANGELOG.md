@@ -15,7 +15,8 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Extends `tests/backup.sh` with passphrase non-disclosure, forced child-output disclosure, and child exit-status regression cases.
+- Extends `tests/backup.sh` with bare and prompt-prefixed passphrase disclosure through both stdout and stderr, child exit-status propagation, and normal non-disclosure regression cases.
+- **Blocked release gate:** the required isolated live K3s encrypted backup, extraction, and `restore --full --dry-run` preflight has not been completed. Do not tag or publish v2.7.1 until that exact follow-up commit is validated and the result is recorded here.
 
 ## [v2.7.0] - 2026-08-28
 

@@ -32,6 +32,8 @@ fi
 case "${FAKE_AGE_EMIT_PASSPHRASE:-false}" in
   stdout) printf '%s\n' "$prompt" ;;
   stderr) printf '%s\n' "$prompt" >&2 ;;
+  prefix-stdout) printf 'Enter passphrase: %s\n' "$prompt" ;;
+  prefix-stderr) printf 'Enter passphrase: %s\n' "$prompt" >&2 ;;
 esac
 if [[ -n "${FAKE_AGE_EXIT_CODE:-}" ]]; then
   exit "$FAKE_AGE_EXIT_CODE"
@@ -54,7 +56,7 @@ if grep -Fq 'correct horse battery staple' "$TMP_DIR/age.out"; then
   exit 1
 fi
 
-for disclosure_stream in stdout stderr; do
+for disclosure_stream in stdout stderr prefix-stdout prefix-stderr; do
   set +e
   FAKE_AGE_EMIT_PASSPHRASE="$disclosure_stream" PATH="$TMP_DIR/bin:$PATH" \
     python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- \
