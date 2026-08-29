@@ -5,7 +5,7 @@ Purpose: Support non-interactive, password-file-based age encryption/decryption
 without putting the passphrase in process arguments, shell history, or ordinary stdin.
 Uses util-linux `script` with input echo disabled to create a proper PTY for `age`.
 
-Usage: python3 scripts/age_passphrase.py PASSWORD_FILE -- age arguments...
+Usage: python3 scripts/age_passphrase.py PASSWORD_FILE -- age ... --output PATH ...
 Requirements: Python 3, `script` (util-linux), a local age executable, and a regular password file.
 Exit status: Mirrors age's exit status; non-zero identifies validation or age failure.
 """
@@ -48,6 +48,13 @@ def main() -> int:
     argv = sys.argv[separator + 1 :]
     if argv and argv[0] == "age":
         argv = argv[1:]
+    has_output = any(
+        arg in {"-o", "--output"} and index + 1 < len(argv)
+        or arg.startswith("--output=") and len(arg) > len("--output=")
+        for index, arg in enumerate(argv)
+    )
+    if not has_output:
+        raise SystemExit("age passphrase helper requires --output PATH")
 
     # For --passphrase (encryption), age prompts twice: password + confirmation.
     # For --decrypt, age prompts once.
@@ -79,18 +86,11 @@ def main() -> int:
         timeout=300,
         env={k: v for k, v in os.environ.items() if k not in {"AGE_PASSPHRASE"}},
     )
-    transcript_lines = [
-        line
-        for stream in (result.stdout, result.stderr)
-        for line in stream.replace("\r\n", "\n").replace("\r", "\n").splitlines()
-    ]
-    if password in transcript_lines:
-        raise SystemExit("age PTY output contained the passphrase; refusing to forward it")
-    # Forward only output that passed the passphrase disclosure guard.
-    if result.stdout:
-        sys.stdout.write(result.stdout)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
+    # Every supported caller writes data to a file. Never forward the captured
+    # PTY transcript: it is diagnostic-only and could contain echoed input,
+    # including values split across terminal formatting or output streams.
+    if result.returncode:
+        sys.stderr.write(f"age command failed with exit status {result.returncode}\n")
     return result.returncode
 
 

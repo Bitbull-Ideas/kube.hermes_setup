@@ -7,7 +7,7 @@ All notable changes to this project are documented in this file.
 ### Security
 
 - Disables terminal input echo in the `age` pseudo-terminal used by `--password-file` backup, extract, and restore automation, preventing the supplied passphrase from being copied into captured stdout, logs, or automation transcripts.
-- Refuses to forward a pseudo-terminal transcript if it contains the supplied passphrase as an echoed line, providing a second fail-closed disclosure boundary even if terminal behavior regresses.
+- Requires the internal `age` invocation to write payload data through `--output` and never forwards the captured pseudo-terminal transcript. This removes echoed-input, terminal-formatting, cross-stream reconstruction, benign substring-collision, and stdout-corruption failure classes; nonzero child status is preserved with a generic credential-free diagnostic.
 
 ### Fixed
 
@@ -15,7 +15,8 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Extends `tests/backup.sh` with passphrase non-disclosure, forced child-output disclosure, and child exit-status regression cases.
+- Extends `tests/backup.sh` with bare, prompt-prefixed, pre-colon, trailing-text, ANSI-wrapped, and arbitrary-inline passphrase disclosure through stdout or stderr; benign short-passphrase prompt/status collisions; missing-output refusal; child exit-status propagation; and normal non-disclosure cases. Successful operations remain successful while all captured transcript output stays private.
+- Passes isolated live K3s acceptance on `v1.36.3+k3s1` for output-file-only behavior commit `86748f7`: real password-file encrypted backup, checksum validation, full extraction, and `restore --full --dry-run`; preserves resource, Secret, PVC, marker, Pod identity, and zero-restart state; reports zero passphrase disclosures; removes helper Pods, the disposable Namespace, and both local-path PVs; and leaves unrelated workloads unchanged.
 
 ## [v2.7.0] - 2026-08-28
 
