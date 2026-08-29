@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Enforce the supported v2.7.2 release shape and reject experimental PoC artifacts.
+# Enforce the supported v2.7.3 release shape and reject experimental PoC artifacts.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-[[ "$(<VERSION)" == 2.7.2 ]]
+[[ "$(<VERSION)" == 2.7.3 ]]
+grep -Fq '## [v2.7.3] - 2026-08-29' CHANGELOG.md
 grep -Fq '## [v2.7.2] - 2026-08-29' CHANGELOG.md
 grep -Fq '## [v2.7.1] - 2026-08-28' CHANGELOG.md
 grep -Fq '## [v2.7.0] - 2026-08-28' CHANGELOG.md
@@ -48,4 +49,9 @@ grep -Fq 'docs/persistent-software.md' README.md
 grep -Fq 'persistent-software.md' docs/operations.md
 grep -Fq 'persistent-software.md' docs/pvc-and-containers.md
 
-printf 'v2.7.2 final-state contract passed\n'
+# v2.7.3 data-only backup/restore must exist and stay documented.
+grep -Fq 'DATA_ONLY_PATHS' maintain.sh
+grep -Fq -- '--data-only' maintain.sh
+grep -Fq -- '--data-only' docs/operations.md
+
+printf 'v2.7.3 final-state contract passed\n'

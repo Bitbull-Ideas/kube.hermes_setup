@@ -436,3 +436,83 @@ fi
 grep -qx 'DO_NOT_REPLACE=target' "$symlink_target"
 
 printf 'encrypted backup helper tests passed\n'
+
+# ---------------------------------------------------------------------------
+# --data-only backup/restore contract: curated Hermes-state paths only, no
+# reproducible runtime software, no destructive PVC wipe on restore, no
+# Kubernetes resource snapshot, and no API-key Secret sync (the archive never
+# carries /opt/data/.env or a Secret, so there is nothing valid to sync from).
+# ---------------------------------------------------------------------------
+
+# DATA_ONLY_PATHS must exist, must include curated Hermes state, and must
+# exclude reproducible runtime software that a fresh install.sh rebuilds.
+HERMES_MAINTAIN_LIB_ONLY=true bash -c '
+  source "$1/maintain.sh"
+  printf "%s\n" "${DATA_ONLY_PATHS[@]}" > "$2/data-only-paths.txt"
+' _ "$ROOT_DIR" "$TMP_DIR"
+for expected in 'opt/data/webui/sessions' 'opt/data/profiles' 'opt/data/skills' 'opt/data/memories' 'opt/data/cron' 'opt/data/state.db' 'opt/data/home' 'workspace'; do
+  grep -qxF "$expected" "$TMP_DIR/data-only-paths.txt" || { printf 'DATA_ONLY_PATHS missing expected entry: %s\n' "$expected" >&2; exit 1; }
+done
+for excluded in 'opt/data/addon-venv' 'opt/data/node' 'opt/data/uv' 'opt/data/lsp' 'opt/data/node_modules' 'opt/data/cache' 'opt/data/hermes-managed' 'opt/data/lazy-packages'; do
+  grep -qxF "$excluded" "$TMP_DIR/data-only-paths.txt" && { printf 'DATA_ONLY_PATHS unexpectedly includes reproducible software path: %s\n' "$excluded" >&2; exit 1; }
+done
+# The archive never carries a runtime .env or Secret-derived credential; a
+# data-only restore must not silently reintroduce a stale API key from a
+# different instance's Secret onto the destination.
+grep -qxF 'opt/data/.env' "$TMP_DIR/data-only-paths.txt" && { printf 'DATA_ONLY_PATHS unexpectedly includes opt/data/.env (credential convergence hazard)\n' >&2; exit 1; }
+
+# --full and --data-only are mutually exclusive on restore.
+set +e
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob ./maintain.sh restore "$TMP_DIR/full.tgz" --full --data-only --password-file "$TMP_DIR/password" > "$TMP_DIR/mutex.out" 2>&1
+mutex_rc=$?
+set -e
+[[ "$mutex_rc" != 0 ]]
+grep -Fq 'mutually exclusive' "$TMP_DIR/mutex.out"
+
+# Fake helper-pod kubectl: backs create_storage_helper_pod/wait/exec/cp/delete
+# for the restore --data-only dry-run and mutex checks above. A full
+# end-to-end backup --data-only run against a real cluster is covered by live
+# K3s acceptance (AGENTS.md live validation protocol), not this hermetic
+# contract suite, matching how --full backup/restore's cluster-mutating steps
+# are exercised here only through static assertions plus the fake-kubectl
+# restore path already covered above.
+python3 - "$ROOT_DIR/maintain.sh" <<'PY'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text()
+backup_body = text.split('backup() {', 1)[1].split('\nextract_backup() {', 1)[0]
+assert 'data_only' in backup_body
+assert 'DATA_ONLY_PATHS' in backup_body
+# Full snapshot/metadata-kubernetes staging must be skipped for data-only.
+assert 'if [[ "$data_only" != true ]]; then' in backup_body
+restore_body = text.split('\nrestore() {', 1)[1].split('\nprompt_secret() {', 1)[0]
+assert '--data-only' in restore_body
+# The destructive full-namespace wipe must never run in the data-only branch:
+# it must be gated behind an explicit non-data-only else-branch.
+assert 'find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf' in restore_body
+wipe_index = restore_body.index('find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf')
+data_only_branch = restore_body.index('if [[ "$data_only" == true ]]; then')
+else_branch = restore_body.index('else', data_only_branch)
+assert data_only_branch < else_branch < wipe_index, 'destructive wipe must sit in the non-data-only else branch'
+# API-key Secret sync must be skipped entirely for data-only restores.
+prepare_guard = restore_body.index('if [[ "$data_only" != true ]]; then\n    prepare_restored_api_key_sync')
+sync_guard = restore_body.index('if [[ "$data_only" != true ]]; then\n    sync_restored_api_key')
+assert prepare_guard >= 0 and sync_guard >= 0
+PY
+
+# restore --data-only --dry-run must not require kubectl at all (no cluster
+# mutation, no cluster read) and must list archive contents. The fake `age`
+# fixture only implements --decrypt by copying bytes through (see the shared
+# fixture above), so the "encrypted" input can be the plaintext tarball itself.
+mkdir -p "$TMP_DIR/data-only-archive-root/opt/data/skills" "$TMP_DIR/data-only-archive-root/workspace" "$TMP_DIR/data-only-archive-root/metadata"
+printf skill > "$TMP_DIR/data-only-archive-root/opt/data/skills/example.md"
+printf ws > "$TMP_DIR/data-only-archive-root/workspace/file.txt"
+printf 'namespace=bob\ncreated_at=2026-01-01T00:00:00Z\nscope=data-only\n' > "$TMP_DIR/data-only-archive-root/metadata/backup-info.txt"
+tar -czf "$TMP_DIR/data-only.tgz" -C "$TMP_DIR/data-only-archive-root" opt/data workspace metadata
+PATH="$TMP_DIR/bin:$PATH" HERMES_NAMESPACE=bob \
+  ./maintain.sh restore "$TMP_DIR/data-only.tgz" --data-only --dry-run --password-file "$TMP_DIR/password" \
+  > "$TMP_DIR/data-only-dry-run.out" 2>&1
+grep -Fq 'Dry run' "$TMP_DIR/data-only-dry-run.out"
+grep -Fq 'opt/data/skills/example.md' "$TMP_DIR/data-only-dry-run.out"
+
+printf 'data-only backup/restore contract tests passed\n'

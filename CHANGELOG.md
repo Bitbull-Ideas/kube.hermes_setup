@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.7.3] - 2026-08-29
+
+### Added
+
+- Adds `maintain.sh backup --data-only`, which archives only Hermes-specific state — WebUI sessions, `config.yaml`, `SOUL.md`, `auth.json`, profiles, skills, memories, cron jobs, plugin data, kanban/state/projects/response-store databases, `/opt/data/home`, and `/workspace` — while excluding reproducible runtime software (`addon-venv`, Node/npm/npx, `uv`, LSP servers) and disposable caches/logs that a fresh `install.sh` rebuilds on its own. The archive also omits the Kubernetes resource snapshot and `/opt/data/.env`, making it namespace-agnostic.
+- Adds `maintain.sh restore --data-only`, a non-destructive overlay counterpart: unlike normal and `--full` restore, it does not wipe `/opt/data`/`workspace` before extracting, so it can run safely against an already-installed target. It skips the Kubernetes API-key Secret-sync step entirely, since a data-only archive never carries `/opt/data/.env` or a Secret snapshot to sync from. `--data-only --dry-run` lists archive contents without requiring `kubectl` or touching the cluster. `--full` and `--data-only` are mutually exclusive.
+- Documents the `backup --data-only` / `restore --data-only` migration workflow in `docs/operations.md`: take a data-only backup on the source, run a fresh `install.sh` on the destination (new namespace, new PVCs, or a newer release), then overlay the data-only archive — giving fresh runtime software with restored sessions/workspace/config/skills/memories, and doubling as a namespace/instance migration path independent of the Kubernetes resource snapshot used by `--full` restore.
+
+### Verification
+
+- Extends `tests/backup.sh` with a hermetic contract suite for `--data-only`: asserts `DATA_ONLY_PATHS` includes curated Hermes state and excludes reproducible runtime software and `/opt/data/.env`; asserts `--full`/`--data-only` mutual exclusion on restore; statically verifies the destructive full-namespace wipe is gated behind the non-data-only restore branch and that API-key Secret sync is skipped for data-only restores; exercises `restore --data-only --dry-run` end to end against a real (unencrypted, via the existing fake-`age` fixture) archive and confirms it lists archive contents without invoking `kubectl`.
+- Confirmed via sabotage runs that the new destructive-wipe-guard and `DATA_ONLY_PATHS` exclusion assertions fail when the corresponding code is reverted, then pass again on the fix.
+- Passes `bash -n` on all shell entrypoints and the full local test suite (`profile-composition`, `bootstrap-soul`, `agent-instructions-safety`, `configure`, `matrix`, `ssh-identity`, `credentials`, `reconcile-api-key`, `backup`). Render-validates `manifests/hermes.yaml.tpl` (unchanged by this PR) as well-formed YAML.
+- Passes live K3s acceptance on `v1.36.3+k3s1` against a real running WebUI/Dashboard/Agent/Browserless stack: `backup --data-only` completed against live Pods via the helper-pod/`kubectl exec`/`cp` path, produced a checksum-verified encrypted archive, and left zero leftover helper Pods or restart-count drift. `restore --data-only` (non-dry-run) was exercised end to end with a deliberately deleted curated file (a skill's `SKILL.md`) and a canary file planted inside the excluded `/opt/data/node` runtime directory: the restore correctly recovered the deleted curated file while leaving the canary — and the entire Node runtime, including its `current` symlink and `runtimes/` generation directory — completely untouched, proving the overlay semantics (no destructive wipe) hold against a real PVC. `doctor.sh` reported all mandatory checks passing after the restore, confirming API-key/Browserless Secret convergence was undisturbed as designed.
+
 ## [v2.7.2] - 2026-08-29
 
 ### Documentation

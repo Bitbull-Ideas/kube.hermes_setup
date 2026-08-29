@@ -45,6 +45,16 @@ dnf install age
 
 By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`. Password-file mode supplies the value through a no-echo pseudo-terminal, requires the internal `age` command to write payload data through `--output`, and never forwards the captured terminal transcript. Nonzero `age` status is preserved with a generic credential-free diagnostic. This mode requires a util-linux `script` implementation with `--echo` support; older implementations reject the operation before `age` is invoked.
 
+### Data-only backup (sessions, workspace, config, skills — no runtime software)
+
+`--data-only` backs up only Hermes-specific state: WebUI sessions, `config.yaml`, `SOUL.md`, `auth.json`, profiles, skills, memories, cron jobs, plugin data, kanban/state/projects/response-store databases, `/opt/data/home`, and the full `/workspace`. It deliberately excludes reproducible runtime software that a fresh `install.sh` rebuilds on its own: the `addon-venv` Python environment, `node`/`npm`/`npx`, `uv`, LSP servers, and disposable caches/logs. It also omits the Kubernetes resource snapshot and `/opt/data/.env`, so it is namespace-agnostic and safe to restore into a different instance (see [Migrating instance/namespace data with `--data-only`](#migrating-instancenamespace-data-with---data-only) below).
+
+```bash
+./maintain.sh backup ./backups/hermes-data-$(date -u +%Y%m%dT%H%M%SZ).age --data-only
+```
+
+A data-only archive is typically a small fraction of a full backup's size, since it skips gigabytes of installed packages and virtual environments.
+
 ## Extracting backup components
 
 `extract` writes selected backup content to a new or empty local directory. It never changes Kubernetes resources or PVCs:
@@ -126,6 +136,34 @@ Full mode requires a readable Kubernetes API server, but `--force` overrides all
 ```
 
 The helper Pod is removed on success or failure, and restored write-capable Deployments return to their snapshot replica counts. Local `hermes.env`, answers, and bootstrap metadata are not silently written into the host checkout; review them through `extract --component config|bootstrap`.
+
+### Migrating instance/namespace data with `--data-only`
+
+`restore --data-only` overlays the curated Hermes-specific paths from a `backup --data-only` archive onto an **already-installed** target — it does not wipe `/opt/data`/`workspace` first (unlike normal and `--full` restore), and it does not touch Kubernetes resources, Secrets, or `/opt/data/.env`. This makes it the right tool for moving sessions, workspace, profiles, skills, and memories into a fresh instance, a different namespace, or a newer release, while letting `install.sh` provide the runtime software (Node/npm/npx, the addon Python venv, `uv`, LSP servers) fresh:
+
+```bash
+# 1. On the source instance, stop writers and take a data-only backup.
+./maintain.sh backup ./backups/hermes-data-source.age --data-only
+
+# 2. Install the destination fresh (new namespace, new PVCs, or a newer release).
+HERMES_NAMESPACE=new-namespace ./install.sh
+
+# 3. Overlay the data-only archive onto the freshly installed destination.
+HERMES_NAMESPACE=new-namespace ./maintain.sh restore ./backups/hermes-data-source.age --data-only
+
+# 4. The destination's own API key/Browserless token are already correct
+#    (install.sh generated them); no reconcile step is needed unless you
+#    separately copied /opt/data by hand outside restore --data-only.
+./doctor.sh
+```
+
+Preview an archive's contents without extracting or scaling anything:
+
+```bash
+./maintain.sh restore ./backups/hermes-data-source.age --data-only --dry-run --password-file /secure/hermes-backup.pass
+```
+
+`--data-only` and `--full` are mutually exclusive. Because a data-only archive never carries `/opt/data/.env` or a Kubernetes Secret snapshot, `restore --data-only` skips the API-key Secret-sync step entirely — it neither reads nor writes `Secret/hermes-api-server`. If you separately copy other files onto `/opt/data` outside of `restore --data-only` (for example, restoring a data-only archive gathered by hand rather than through `backup --data-only`), converge the API key afterward with [`reconcile-api-key --source secret`](#reconcile-the-internal-api-key-after-an-external-pvc-migration).
 
 ## Reconcile the internal API key after an external PVC migration
 
