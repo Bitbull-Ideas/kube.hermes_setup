@@ -16,7 +16,7 @@ All notable changes to this project are documented in this file.
 ### Verification
 
 - Extends `tests/qa-contract.sh` with grep-based assertions that `docs/persistent-software.md` retains the exact implementation-boundary language above (pip-upgrade exception, corrupt-venv detection scope, Node/npm source paths, and relative-in-tree vs. absolute/out-of-tree npm symlink rules), so future edits cannot silently drift from installer behavior.
-- Passes `bash -n` on all shell entrypoints, `python3 -m py_compile` on renderer scripts, and the full local test suite (`profile-composition`, `bootstrap-soul`, `agent-instructions-safety`, `configure`, `matrix`, `ssh-identity`, `credentials`, `reconcile-api-key`, `backup`, `qa-contract`). Documentation-only change with no executable installer behavior modified; no live K3s re-validation required beyond the render/schema checks already covered by `qa-contract.sh`.
+- Passes `bash -n` on all shell entrypoints, `python3 -m py_compile` on renderer scripts, and the full local test suite (`profile-composition`, `bootstrap-soul`, `agent-instructions-safety`, `configure`, `matrix`, `ssh-identity`, `credentials`, `reconcile-api-key`, `backup`, `qa-contract`, `release-final-state`). Separately renders `manifests/hermes.yaml.tpl` with `examples/hermes.env.example` and placeholder secrets via `scripts/render_template.py` and validates the output as well-formed multi-document YAML; `kubectl` is unavailable in this sandbox, so client-side dry-run was skipped. Documentation-only change with no executable installer behavior modified.
 
 ## [v2.7.1] - 2026-08-28
 
@@ -28,10 +28,6 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Propagates the real `age` child exit status through util-linux `script --return` instead of allowing a failed encryption or decryption command to appear successful.
-
-### Documentation
-
-- Adds a README-level persistent-software overview and a dedicated architecture guide for Python addons, the always-on Node/npm/npx runtime, cache and project boundaries, custom images, upgrade/rebuild behavior, verification, backup, and recovery. Removes the stale README reference to an NPX profile preset that no longer exists.
 
 ### Verification
 
