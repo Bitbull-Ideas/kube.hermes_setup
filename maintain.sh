@@ -141,10 +141,10 @@ Usage:
   ./maintain.sh status
   ./maintain.sh restart
   ./maintain.sh upgrade
-  ./maintain.sh backup <backup.age> [--password-prompt|--password-file PATH|--password-stdin]
+  ./maintain.sh backup <backup.age> [--data-only] [--password-prompt|--password-file PATH|--password-stdin]
   ./maintain.sh reconcile-api-key --source secret
   ./maintain.sh reconcile-browser-token --source secret
-  ./maintain.sh restore <backup.age> [--full] [--dry-run] [--force]
+  ./maintain.sh restore <backup.age> [--full|--data-only] [--dry-run] [--force]
       [--password-prompt|--password-file PATH|--password-stdin]
   ./maintain.sh extract <backup.age> --output-dir PATH [--component data|config|bootstrap|full]
       [--password-prompt|--password-file PATH|--password-stdin] [--dry-run]
@@ -294,11 +294,51 @@ PY
   validate_snapshot_api_key "$snapshot" || fail 'Backup snapshot API server key validation failed'
 }
 
+# Hermes-specific state included by `backup --data-only` / `restore --data-only`.
+# Deliberately excludes reproducible runtime software that a fresh install.sh
+# rebuilds on its own: addon-venv, node/npm/npx, uv, LSP servers, hermes-managed
+# wrapper bin, and disposable caches/logs. Paths are relative to the PVC roots
+# (opt/data, workspace) exactly like the full-backup archive layout.
+readonly DATA_ONLY_PATHS=(
+  "opt/data/config.yaml"
+  "opt/data/SOUL.md"
+  "opt/data/auth.json"
+  "opt/data/install_id"
+  "opt/data/webui/sessions"
+  "opt/data/webui/settings.json"
+  "opt/data/webui/shares"
+  "opt/data/webui/workspaces.json"
+  "opt/data/webui/extensions"
+  "opt/data/webui/extension-overrides.json"
+  "opt/data/webui/extension-install-manifest.json"
+  "opt/data/webui/last_workspace.txt"
+  "opt/data/webui/media_snapshots"
+  "opt/data/profiles"
+  "opt/data/skills"
+  "opt/data/memories"
+  "opt/data/cron"
+  "opt/data/plugin-data"
+  "opt/data/hooks"
+  "opt/data/plans"
+  "opt/data/kanban"
+  "opt/data/kanban.db"
+  "opt/data/state.db"
+  "opt/data/projects.db"
+  "opt/data/response_store.db"
+  "opt/data/verification_evidence.db"
+  "opt/data/home"
+  "opt/data/pairing"
+  "opt/data/channel_directory.json"
+  "opt/data/.ssh"
+  "workspace"
+)
+
 backup() {
-  local out='' plain checksum tmpdir snapshot
+  local out='' plain checksum tmpdir snapshot data_only=false
   local -a password_args=()
   while (($#)); do
     case "$1" in
+      --data-only) data_only=true; shift ;;
       --password-prompt|--password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
       -*) fail "unknown backup option: $1" ;;
       *) [[ -z "$out" ]] || fail 'backup path specified more than once'; out="$1"; shift ;;
@@ -328,14 +368,21 @@ backup() {
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-backup --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   create_storage_helper_pod hermes-backup backup
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-backup --timeout=120s >/dev/null
-  kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; rm -rf /tmp/hermes-backup-stage; mkdir -p /tmp/hermes-backup-stage; cd /; find opt/data workspace -type f -exec sh -c '\''source="$1"; target="/tmp/hermes-backup-stage/$source"; mkdir -p "$(dirname "$target")"; cat "$source" > "$target"'\'' sh {} \;; cd /tmp/hermes-backup-stage; find . -type f -print | tar -T - -czf /tmp/hermes-backup.tgz; chmod 600 /tmp/hermes-backup.tgz'
+  if [[ "$data_only" == true ]]; then
+    printf '%s\n' "${DATA_ONLY_PATHS[@]}" | kubectl -n "$HERMES_NAMESPACE" exec -i hermes-backup -- sh -c 'umask 077; rm -rf /tmp/hermes-backup-stage; mkdir -p /tmp/hermes-backup-stage; cd /; while IFS= read -r p; do [ -e "$p" ] || continue; mkdir -p "/tmp/hermes-backup-stage/$(dirname "$p")"; cp -a "$p" "/tmp/hermes-backup-stage/$p"; done; cd /tmp/hermes-backup-stage; find . -mindepth 1 -print | sed "s#^\./##" | tar -T - -czf /tmp/hermes-backup.tgz; chmod 600 /tmp/hermes-backup.tgz'
+  else
+    kubectl -n "$HERMES_NAMESPACE" exec hermes-backup -- sh -c 'umask 077; rm -rf /tmp/hermes-backup-stage; mkdir -p /tmp/hermes-backup-stage; cd /; find opt/data workspace -type f -exec sh -c '\''source="$1"; target="/tmp/hermes-backup-stage/$source"; mkdir -p "$(dirname "$target")"; cat "$source" > "$target"'\'' sh {} \;; cd /tmp/hermes-backup-stage; find . -type f -print | tar -T - -czf /tmp/hermes-backup.tgz; chmod 600 /tmp/hermes-backup.tgz'
+  fi
   kubectl -n "$HERMES_NAMESPACE" cp hermes-backup:/tmp/hermes-backup.tgz "$tmpdir/cluster.tgz" -c backup >/dev/null
   chmod 600 "$tmpdir/cluster.tgz"
-  mkdir -p "$tmpdir/stage/metadata/kubernetes"
+  mkdir -p "$tmpdir/stage/metadata"
   tar -xzf "$tmpdir/cluster.tgz" -C "$tmpdir/stage"
-  snapshot="$tmpdir/stage/metadata/kubernetes/resources.json"
-  snapshot_kubernetes_state "$tmpdir/raw" "$snapshot" "$tmpdir/version.json"
-  cp "$tmpdir/raw/cluster-version.txt" "$tmpdir/stage/metadata/kubernetes/cluster-version.txt"
+  if [[ "$data_only" != true ]]; then
+    mkdir -p "$tmpdir/stage/metadata/kubernetes"
+    snapshot="$tmpdir/stage/metadata/kubernetes/resources.json"
+    snapshot_kubernetes_state "$tmpdir/raw" "$snapshot" "$tmpdir/version.json"
+    cp "$tmpdir/raw/cluster-version.txt" "$tmpdir/stage/metadata/kubernetes/cluster-version.txt"
+  fi
   if [[ -f "$ROOT_DIR/current_config/hermes.env" ]]; then
     cp -a "$ROOT_DIR/current_config/hermes.env" "$tmpdir/stage/metadata/hermes.env"
   elif [[ -f "$ROOT_DIR/hermes.env" ]]; then
@@ -343,7 +390,7 @@ backup() {
   fi
   [[ -f "$ROOT_DIR/configuration_answers" ]] && cp -a "$ROOT_DIR/configuration_answers" "$tmpdir/stage/metadata/configuration_answers"
   [[ -d "$ROOT_DIR/current_config/bootstrap" ]] && cp -a "$ROOT_DIR/current_config/bootstrap" "$tmpdir/stage/metadata/bootstrap"
-  printf 'namespace=%s\ncreated_at=%s\n' "$HERMES_NAMESPACE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmpdir/stage/metadata/backup-info.txt"
+  printf 'namespace=%s\ncreated_at=%s\nscope=%s\n' "$HERMES_NAMESPACE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$([[ "$data_only" == true ]] && echo data-only || echo full)" > "$tmpdir/stage/metadata/backup-info.txt"
   chmod -R go-rwx "$tmpdir/stage/metadata"
   tar -czf "$plain" -C "$tmpdir/stage" opt/data workspace metadata
   chmod 600 "$plain"
@@ -1040,11 +1087,12 @@ PY
 }
 
 restore() {
-  local in='' plain='' tmpdir='' arg full=false dry_run=false force=false
+  local in='' plain='' tmpdir='' arg full=false dry_run=false force=false data_only=false
   local -a password_args=()
   while (($#)); do
     case "$1" in
       --full) full=true; shift ;;
+      --data-only) data_only=true; shift ;;
       --dry-run) dry_run=true; shift ;;
       --force) force=true; shift ;;
       --password-prompt|--password-stdin|--password-file|--password-file=*) password_args+=("$1"); [[ "$1" == '--password-file' ]] && { [[ $# -ge 2 ]] || fail '--password-file requires a path'; password_args+=("$2"); shift; }; shift ;;
@@ -1053,13 +1101,14 @@ restore() {
     esac
   done
   [[ -f "$in" ]] || fail "backup file required"
+  [[ "$full" == true && "$data_only" == true ]] && fail '--full and --data-only are mutually exclusive'
   require_cmd age
   require_cmd python3
   require_cmd base64
-  if [[ "$full" == true || "$dry_run" == true ]]; then
+  if [[ "$full" == true || "$dry_run" == true ]] && ! [[ "$data_only" == true && "$dry_run" == true ]]; then
     require_cmd kubectl
   fi
-  [[ "$dry_run" == false || "$full" == true ]] || fail '--dry-run for restore requires --full'
+  [[ "$dry_run" == false || "$full" == true || "$data_only" == true ]] || fail '--dry-run for restore requires --full or --data-only'
   tmpdir="$(mktemp -d -t hermes-restore.XXXXXX)"
   plain="$tmpdir/hermes-backup.tgz"
   prepare_backup_password "${password_args[@]}"
@@ -1086,6 +1135,13 @@ restore() {
       restore_local_cleanup
       return 0
     fi
+  elif [[ "$data_only" == true && "$dry_run" == true ]]; then
+    log 'Dry run: not extracting or scaling anything. Archive contents:'
+    tar -tzf "$plain" -- opt/data workspace 2>/dev/null | head -50
+    printf '... (truncated)\n'
+    trap - EXIT
+    restore_local_cleanup
+    return 0
   else
     tar -xzf "$plain" -C "$tmpdir/payload" opt/data workspace
   fi
@@ -1138,11 +1194,29 @@ restore() {
   kubectl -n "$HERMES_NAMESPACE" delete pod hermes-restore --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   create_storage_helper_pod hermes-restore restore
   kubectl -n "$HERMES_NAMESPACE" wait --for=condition=Ready pod/hermes-restore --timeout=120s >/dev/null
-  prepare_restored_api_key_sync
+  # data-only restores never touch /opt/data/.env or Kubernetes Secrets, so the
+  # API-key convergence dance is neither needed nor safe to skip validating for:
+  # it would read a Secret this restore mode never wrote. After restoring data
+  # onto a *different* instance's Secret, run `reconcile-api-key --source
+  # secret` (and reconcile-browser-token, if applicable) to converge explicitly.
+  if [[ "$data_only" != true ]]; then
+    prepare_restored_api_key_sync
+  fi
   kubectl -n "$HERMES_NAMESPACE" cp "$plain" hermes-restore:/tmp/hermes-backup.tgz -c restore >/dev/null
   RESTORE_SCALE_UP_ON_CLEANUP=false
-  kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
-  sync_restored_api_key
+  if [[ "$data_only" == true ]]; then
+    # Overlay only: unlike the full/non-full paths, do not wipe /opt/data and
+    # /workspace first. A data-only archive intentionally omits reproducible
+    # runtime software (addon-venv, node/npm/npx, uv, LSP servers); wiping the
+    # PVC first would delete that software with nothing in the archive to
+    # replace it, breaking the Pod until the init Job reruns from scratch.
+    kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
+  else
+    kubectl -n "$HERMES_NAMESPACE" exec hermes-restore -- sh -c "find /opt/data /workspace -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar xzf /tmp/hermes-backup.tgz -C /; chown -R ${HERMES_RUNTIME_UID}:${HERMES_RUNTIME_GID} /opt/data /workspace"
+  fi
+  if [[ "$data_only" != true ]]; then
+    sync_restored_api_key
+  fi
   RESTORE_SCALE_UP_ON_CLEANUP=true
   log "Scaling deployments up"
   for d in "${deployments[@]}"; do
