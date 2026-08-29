@@ -122,8 +122,10 @@ For example, installing a PDF library makes imports possible; a Markdown-to-PDF 
 Each bundled profile can select a `requirements.txt`. An operator can override it:
 
 ```bash
+cat >> hermes.env <<'EOF'
 HERMES_ADDON_REQUIREMENTS=./requirements.txt
 HERMES_ADDON_PYTHON_VERSION=3.13
+EOF
 ENV_FILE=./hermes.env ./install.sh
 ```
 
@@ -135,10 +137,11 @@ The init Job:
 4. installs the declared requirements; and
 5. makes its `bin` directory available to Agent, Dashboard, WebUI, and terminal subprocesses.
 
-Pin versions and hashes according to your supply-chain policy. Rerunning `install.sh` installs or upgrades the current requirements, but the operation is not an exact environment synchronization:
+Pin versions and hashes according to your supply-chain policy. Rerunning `install.sh` invokes `uv pip install -r` without `--upgrade`: it installs missing packages and changes installed versions only as needed to satisfy the current constraints; it does not otherwise seek newer releases. The operation is not an exact environment synchronization:
 
 - packages removed from requirements are not automatically uninstalled;
 - `HERMES_ADDON_REQUIREMENTS=` skips addon installation but leaves an existing venv and its packages on the PVC and `PATH`;
+- when profile-provided requirements are active and `HERMES_ANSIBLE_SETUP=false`, the installer removes the Ansible declaration from the generated requirements and explicitly uninstalls `ansible` and `ansible-core`; this is the supported pruning exception;
 - changing `HERMES_ADDON_PYTHON_VERSION` installs that managed Python but does not rebuild a healthy venv that already carries the installer marker; and
 - manual `pip install` changes persist until explicitly removed or the venv is rebuilt.
 
@@ -159,7 +162,7 @@ Agent and Dashboard use the Node runtime shipped in `HERMES_AGENT_IMAGE`. Upgrad
 The WebUI image does not carry the complete Agent Node toolchain. Before WebUI starts, `prepare-browser-cli`:
 
 1. reads Node and npm from `HERMES_AGENT_IMAGE`;
-2. computes content hashes for Node, npm, and any required private library;
+2. computes content hashes for Node, npm, and only `libatomic.so.1` when Node resolves it;
 3. builds a candidate under `/opt/data/node/runtimes/<hash>`;
 4. validates Node, npm, and npx before publication;
 5. atomically points `/opt/data/node/current` at the complete runtime;
@@ -167,6 +170,8 @@ The WebUI image does not carry the complete Agent Node toolchain. Before WebUI s
 7. keeps at most the active and previous validated generations for repair or rollback.
 
 Persistence here means the validated generation survives Pod replacement. It does **not** make that generation permanently immutable: an image change, missing execute bit, corrupt payload, invalid pointer, or failed integrity check causes controlled repair or replacement.
+
+The installer does not copy arbitrary Node shared-library dependencies. Apart from an optional resolved `libatomic.so.1`, required runtime libraries must already exist in the custom WebUI image. Candidate validation runs in the Agent-image init container, so custom Agent and WebUI images must also be tested together in the final WebUI runtime.
 
 ### npm/npx cache is not a package declaration
 
@@ -211,12 +216,12 @@ ENV_FILE=./hermes.env ./doctor.sh
 | Event | Python addon layer | WebUI Node layer | Cache/project layer |
 |---|---|---|---|
 | Pod recreation | Reused from PVC | Reuses and validates active generation | Remains on PVC |
-| Unchanged installer rerun | Declared packages are installed/upgraded additively | Runtime is validated; no new generation when content is unchanged | Remains |
-| Requirements change | Added/changed declarations are installed; removed declarations are not pruned | Unchanged | Remains |
+| Unchanged installer rerun | Missing packages are installed; satisfying versions are retained rather than proactively upgraded | Runtime is validated; no new generation when content is unchanged | Remains |
+| Requirements change | Packages change only as needed to satisfy declarations; removed declarations are not generally pruned | Unchanged | Remains |
 | Addon Python version change | Managed Python is installed; an existing healthy marked venv is not automatically migrated | Unchanged | Remains |
 | Agent image changes Node/npm | Unchanged unless requirements also changed | New candidate is validated and atomically activated | npm cache remains |
 | Corrupt managed runtime | Recreated when installer detects an invalid managed venv | Rebuilt from trusted Agent image; incomplete candidate never becomes current | Operator-owned data is not automatically repaired |
-| Backup/restore | Regular files are included; venv links may need reconciliation | Runtime files are included; `current`, `previous`, and `node_modules` symlinks are recreated | Regular files are included; project symlinks and empty directories must be recreated |
+| Backup/restore | Regular files are included; venv links may need reconciliation | Runtime files are included; `current` and `node_modules` links are recreated, while prior rollback history is discarded until a later runtime transition creates a new `previous` | Regular files are included; project symlinks and empty directories must be recreated |
 
 A backup is recovery data, not a dependency lock. After restoring onto different images, rerun `install.sh` and `doctor.sh` so managed layers are repaired or provisioned from the intended source images and requirements. Remember that Python package installation remains additive unless the addon venv is deliberately rebuilt.
 
@@ -258,7 +263,7 @@ Do not print environment files, package-registry credentials, Kubernetes Secrets
 
 The storage helper copies regular-file contents through a restrictive staging area. It does not archive symbolic links, special files, empty directories, or original file modes. This matters for software layers:
 
-- `/opt/data/node/current`, `/opt/data/node/previous`, and `/opt/data/node_modules` are symlinks and are recreated by the WebUI init containers;
+- `/opt/data/node/current`, `/opt/data/node/previous`, and `/opt/data/node_modules` are symlinks and are not backed up. WebUI initialization recreates `current` and `node_modules`; without a restored valid `current`, `previous` is not recreated, unreferenced generations are cleaned up, and previous rollback history is discarded until a later runtime transition creates a new `previous` link;
 - a Python virtual environment can contain interpreter or entry-point symlinks and can require a controlled rebuild by the init Job after restore;
 - installer-managed ownership and executable modes are restored only where the initialization logic explicitly repairs them;
 - project dependency trees can contain symlinks or executable files and should be reinstalled from their lock files or project setup procedure; and

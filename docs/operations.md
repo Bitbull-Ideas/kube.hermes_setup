@@ -377,8 +377,10 @@ For the complete software-layer model—including what is installer-managed, cac
 The selected profile activates its own `requirements.txt` by default. Set `HERMES_ADDON_REQUIREMENTS` to override it, or set `HERMES_ADDON_REQUIREMENTS=` explicitly to disable addon packages. The requirements file is packaged into the same init Secret mechanism as bootstrap data and installed into a uv-managed Python runtime under `/opt/data`.
 
 ```bash
+cat >> hermes.env <<'EOF'
 HERMES_ADDON_REQUIREMENTS=./requirements.txt
 HERMES_ADDON_PYTHON_VERSION=3.13
+EOF
 ENV_FILE=./hermes.env ./install.sh
 ```
 
@@ -386,7 +388,8 @@ Operational properties:
 
 - Persistent: the uv runtime and addon venv live on the `/opt/data` PVC and survive Pod recreation.
 - Cross-container: the same Python, `ansible`, and other addon CLIs are usable from `hermes-agent`, `hermes-dashboard`, and `hermes-webui` even if the WebUI image has no system Python.
-- Re-runnable but additive: rerunning `install.sh` installs or upgrades declared packages. Packages removed from requirements are not automatically pruned, and empty requirements do not remove an existing venv.
+- Re-runnable but additive: rerunning `install.sh` installs missing packages and changes versions only as needed to satisfy current requirements; it does not otherwise seek newer releases. Packages removed from requirements are not automatically pruned, and empty requirements do not remove an existing venv.
+- Ansible exception: with profile-provided requirements and `HERMES_ANSIBLE_SETUP=false`, the generated requirements omit Ansible and the init Job explicitly uninstalls `ansible` and `ansible-core` from an existing addon venv.
 - Isolated: Hermes' own `/opt/hermes/.venv` remains first in the Agent `PATH`; do not install ad-hoc packages there.
 - Migrating: if an older non-uv addon venv exists, the init job replaces it with a uv-managed venv.
 - Python-version changes: changing `HERMES_ADDON_PYTHON_VERSION` installs that managed Python, but a healthy marked addon venv is not automatically rebuilt onto the new interpreter.

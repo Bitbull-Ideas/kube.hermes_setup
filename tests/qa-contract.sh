@@ -11,6 +11,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENTS="$ROOT_DIR/AGENTS.md"
 QA_DOC="$ROOT_DIR/docs/qa.md"
 MANIFEST="$ROOT_DIR/manifests/hermes.yaml.tpl"
+SOFTWARE_DOC="$ROOT_DIR/docs/persistent-software.md"
 
 # The WebUI image must receive a complete, runnable Node/npm/npx toolchain
 # from the Agent image without replacing the WebUI image's own loader path.
@@ -27,6 +28,17 @@ grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
 ! grep -Fq '        - name: LD_LIBRARY_PATH' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
 ! grep -Fq 'HERMES_NPX_SETUP' "$MANIFEST"
+
+# Persistent-software documentation must retain implementation boundaries that
+# are easy to overstate when installer behavior evolves.
+for needle in \
+  'does not otherwise seek newer releases' \
+  'explicitly uninstalls `ansible` and `ansible-core`' \
+  'only `libatomic.so.1`' \
+  'previous rollback history is discarded' \
+  "cat >> hermes.env <<'EOF'"; do
+  grep -Fq -- "$needle" "$SOFTWARE_DOC"
+done
 
 # Agent and Dashboard use startup probes to gate prompt readiness without
 # exposing traffic early or starting liveness before slow startup completes.
