@@ -28,12 +28,17 @@ if [[ " $* " == *' --passphrase '* ]] && [[ " $* " != *' --decrypt '* ]]; then
 else
   read -r prompt
 fi
-[[ "$prompt" == 'correct horse battery staple' ]]
+[[ "$prompt" == "${FAKE_AGE_EXPECTED_PASSPHRASE:-correct horse battery staple}" ]]
 case "${FAKE_AGE_EMIT_PASSPHRASE:-false}" in
   stdout) printf '%s\n' "$prompt" ;;
   stderr) printf '%s\n' "$prompt" >&2 ;;
   prefix-stdout) printf 'Enter passphrase: %s\n' "$prompt" ;;
   prefix-stderr) printf 'Enter passphrase: %s\n' "$prompt" >&2 ;;
+  prefix-trailing) printf 'Enter passphrase: %s [authentication failed]\n' "$prompt" ;;
+  prefix-ansi) printf 'Enter passphrase: \033[31m%s\033[0m\n' "$prompt" ;;
+  benign-prompt) printf 'Enter passphrase:\n' ;;
+  benign-long-prompt) printf 'Enter passphrase (leave empty to autogenerate a secure one):\n' ;;
+  benign-status) printf 'age: routine diagnostic output\n' ;;
 esac
 if [[ -n "${FAKE_AGE_EXIT_CODE:-}" ]]; then
   exit "$FAKE_AGE_EXIT_CODE"
@@ -56,7 +61,7 @@ if grep -Fq 'correct horse battery staple' "$TMP_DIR/age.out"; then
   exit 1
 fi
 
-for disclosure_stream in stdout stderr prefix-stdout prefix-stderr; do
+for disclosure_stream in stdout stderr prefix-stdout prefix-stderr prefix-trailing prefix-ansi; do
   set +e
   FAKE_AGE_EMIT_PASSPHRASE="$disclosure_stream" PATH="$TMP_DIR/bin:$PATH" \
     python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- \
@@ -67,6 +72,30 @@ for disclosure_stream in stdout stderr prefix-stdout prefix-stderr; do
   ! grep -Fq 'correct horse battery staple' "$TMP_DIR/disclosure-guard-$disclosure_stream.out"
   grep -Fq 'refusing to forward it' "$TMP_DIR/disclosure-guard-$disclosure_stream.out"
 done
+
+printf 'passphrase\n' > "$TMP_DIR/password-benign-prompt"
+chmod 600 "$TMP_DIR/password-benign-prompt"
+FAKE_AGE_EXPECTED_PASSPHRASE=passphrase FAKE_AGE_EMIT_PASSPHRASE=benign-prompt \
+  PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
+  "$TMP_DIR/password-benign-prompt" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  > "$TMP_DIR/benign-prompt.out"
+grep -Fq 'Enter passphrase:' "$TMP_DIR/benign-prompt.out"
+
+printf 'secure\n' > "$TMP_DIR/password-benign-long-prompt"
+chmod 600 "$TMP_DIR/password-benign-long-prompt"
+FAKE_AGE_EXPECTED_PASSPHRASE=secure FAKE_AGE_EMIT_PASSPHRASE=benign-long-prompt \
+  PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
+  "$TMP_DIR/password-benign-long-prompt" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  > "$TMP_DIR/benign-long-prompt.out"
+grep -Fq 'autogenerate a secure one' "$TMP_DIR/benign-long-prompt.out"
+
+printf 'age\n' > "$TMP_DIR/password-benign-status"
+chmod 600 "$TMP_DIR/password-benign-status"
+FAKE_AGE_EXPECTED_PASSPHRASE=age FAKE_AGE_EMIT_PASSPHRASE=benign-status \
+  PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
+  "$TMP_DIR/password-benign-status" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  > "$TMP_DIR/benign-status.out"
+grep -Fq 'age: routine diagnostic output' "$TMP_DIR/benign-status.out"
 
 set +e
 FAKE_AGE_EXIT_CODE=23 PATH="$TMP_DIR/bin:$PATH" \

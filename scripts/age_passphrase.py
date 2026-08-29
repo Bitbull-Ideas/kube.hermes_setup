@@ -12,9 +12,25 @@ Exit status: Mirrors age's exit status; non-zero identifies validation or age fa
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+
+PASSWORD_PROMPT = re.compile(r"(?i)\b(?:passphrase|password)\b[^:\r\n]*:")
+
+
+def transcript_line_echoes_password(line: str, password: str) -> bool:
+    if line == password:
+        return True
+    for prompt in PASSWORD_PROMPT.finditer(line):
+        echoed = line[prompt.end() :]
+        if echoed.startswith(" "):
+            echoed = echoed[1:]
+        if password in echoed:
+            return True
+    return False
 
 
 def main() -> int:
@@ -84,7 +100,7 @@ def main() -> int:
         for stream in (result.stdout, result.stderr)
         for line in stream.replace("\r\n", "\n").replace("\r", "\n").splitlines()
     ]
-    if any(password in line for line in transcript_lines):
+    if any(transcript_line_echoes_password(line, password) for line in transcript_lines):
         raise SystemExit("age PTY output contained the passphrase; refusing to forward it")
     # Forward only output that passed the passphrase disclosure guard.
     if result.stdout:
