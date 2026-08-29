@@ -47,7 +47,7 @@ flowchart LR
 |---|---|---|---|---|
 | Agent application runtime | `/opt/hermes`, `/opt/hermes/.venv`, image filesystem | Agent container image | Agent and Dashboard processes | Image-owned and replaced with the image. Do not install addons into this environment. |
 | Persistent Python toolchain | `/opt/data/uv` | Installer init Job | Installer and all Hermes application containers through `PATH` | PVC-backed and rebuildable. The configured Python version is installed by `uv`. |
-| Persistent Python addons | `/opt/data/addon-venv` | Installer from profile or operator requirements | Agent, Dashboard, WebUI, skills, and scripts | PVC-backed and shared. `install.sh` additively installs or upgrades declarations; it does not prune undeclared packages or remove the venv when requirements are disabled. |
+| Persistent Python addons | `/opt/data/addon-venv` | Installer from profile or operator requirements | Agent, Dashboard, WebUI, skills, and scripts | PVC-backed and shared. `install.sh` installs missing packages and changes versions only when required by current constraints; it does not proactively upgrade satisfying requirements-managed versions, prune undeclared packages, or remove the venv when requirements are disabled. `pip` itself is upgraded on every addon-enabled run. |
 | Agent/Dashboard Node runtime | Agent image paths such as `/usr/local/bin` | Agent image | Agent and Dashboard | Image-owned. Its version follows `HERMES_AGENT_IMAGE`. |
 | Managed WebUI Node/npm/npx runtime | `/opt/data/node/runtimes/<hash>`, `/opt/data/node/current`, `/opt/data/node/bin` | WebUI `prepare-browser-cli` init container | WebUI tool execution, including the browser controller | PVC-backed but rebuildable. A complete candidate is validated before atomic activation; corrupt or incomplete generations are repaired from the Agent image. |
 | WebUI Agent dependency link | `/opt/data/node_modules` | WebUI `prepare-browser-cli` | WebUI Node-based Hermes tooling | The PVC stores a symlink; its target is recreated in the Pod-local Agent-source `emptyDir` on every WebUI Pod creation. It is not a persistent third-party package installation. |
@@ -139,6 +139,7 @@ The init Job:
 
 Pin versions and hashes according to your supply-chain policy. Rerunning `install.sh` invokes `uv pip install -r` without `--upgrade`: it installs missing packages and changes installed versions only as needed to satisfy the current constraints; it does not otherwise seek newer releases. The operation is not an exact environment synchronization:
 
+- before requirements are installed, `python -m pip install --upgrade pip` runs unconditionally, so pip itself is upgraded on every addon-enabled run;
 - packages removed from requirements are not automatically uninstalled;
 - `HERMES_ADDON_REQUIREMENTS=` skips addon installation but leaves an existing venv and its packages on the PVC and `PATH`;
 - when profile-provided requirements are active and `HERMES_ANSIBLE_SETUP=false`, the installer removes the Ansible declaration from the generated requirements and explicitly uninstalls `ansible` and `ansible-core`; this is the supported pruning exception;
@@ -161,7 +162,7 @@ Agent and Dashboard use the Node runtime shipped in `HERMES_AGENT_IMAGE`. Upgrad
 
 The WebUI image does not carry the complete Agent Node toolchain. Before WebUI starts, `prepare-browser-cli`:
 
-1. reads Node and npm from `HERMES_AGENT_IMAGE`;
+1. reads Node from `/usr/local/bin/node` and npm from `/usr/local/lib/node_modules/npm` in `HERMES_AGENT_IMAGE`;
 2. computes content hashes for Node, npm, and only `libatomic.so.1` when Node resolves it;
 3. builds a candidate under `/opt/data/node/runtimes/<hash>`;
 4. validates Node, npm, and npx before publication;
@@ -172,6 +173,10 @@ The WebUI image does not carry the complete Agent Node toolchain. Before WebUI s
 Persistence here means the validated generation survives Pod replacement. It does **not** make that generation permanently immutable: an image change, missing execute bit, corrupt payload, invalid pointer, or failed integrity check causes controlled repair or replacement.
 
 The installer does not copy arbitrary Node shared-library dependencies. Apart from an optional resolved `libatomic.so.1`, required runtime libraries must already exist in the custom WebUI image. Candidate validation runs in the Agent-image init container, so custom Agent and WebUI images must also be tested together in the final WebUI runtime.
+
+Those source paths are a hard compatibility contract for a custom Agent image intended to support WebUI. A working Node installation elsewhere in the Agent image can serve Agent or Dashboard while still causing `prepare-browser-cli` to fail before WebUI starts.
+
+`/usr/local/lib/node_modules/npm` must be a self-contained real directory tree. Because the installer copies it with `cp -a`, each retained symlink must be relative and resolve to a target inside the npm tree. Absolute symlinks are unsupported even when their source target is inside that tree: `cp -a` preserves the absolute `/usr/local/...` pathname, so validation can pass in the Agent-image init container while the copied runtime fails in WebUI. Relative or absolute links to targets outside the npm tree are also unsupported. Custom Agent images must therefore forbid absolute and out-of-tree npm symlinks.
 
 ### npm/npx cache is not a package declaration
 
@@ -216,11 +221,11 @@ ENV_FILE=./hermes.env ./doctor.sh
 | Event | Python addon layer | WebUI Node layer | Cache/project layer |
 |---|---|---|---|
 | Pod recreation | Reused from PVC | Reuses and validates active generation | Remains on PVC |
-| Unchanged installer rerun | Missing packages are installed; satisfying versions are retained rather than proactively upgraded | Runtime is validated; no new generation when content is unchanged | Remains |
+| Unchanged installer rerun | Missing requirements-managed packages are installed and satisfying versions are retained; pip itself is upgraded | Runtime is validated; no new generation when content is unchanged | Remains |
 | Requirements change | Packages change only as needed to satisfy declarations; removed declarations are not generally pruned | Unchanged | Remains |
 | Addon Python version change | Managed Python is installed; an existing healthy marked venv is not automatically migrated | Unchanged | Remains |
 | Agent image changes Node/npm | Unchanged unless requirements also changed | New candidate is validated and atomically activated | npm cache remains |
-| Corrupt managed runtime | Recreated when installer detects an invalid managed venv | Rebuilt from trusted Agent image; incomplete candidate never becomes current | Operator-owned data is not automatically repaired |
+| Corrupt managed runtime | Automatic recreation checks only whether `bin/python` is executable and the `.hermes-uv-managed` marker exists; other corruption can fail later package operations and requires a controlled manual rebuild | Rebuilt from trusted Agent image; incomplete candidate never becomes current | Operator-owned data is not automatically repaired |
 | Backup/restore | Regular files are included; venv links may need reconciliation | Runtime files are included; `current` and `node_modules` links are recreated, while prior rollback history is discarded until a later runtime transition creates a new `previous` | Regular files are included; project symlinks and empty directories must be recreated |
 
 A backup is recovery data, not a dependency lock. After restoring onto different images, rerun `install.sh` and `doctor.sh` so managed layers are repaired or provisioned from the intended source images and requirements. Remember that Python package installation remains additive unless the addon venv is deliberately rebuilt.
