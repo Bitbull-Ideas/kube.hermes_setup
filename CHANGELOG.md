@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.7.2] - 2026-08-29
+
+### Documentation
+
+- Adds `docs/persistent-software.md`, a dedicated architecture guide covering every persistent/managed software layer: Python addons under `/opt/data/addon-venv`, the always-on Node/npm/npx runtime under `/opt/data/node`, npm/npx cache, user-local executables, project dependencies, native OS packages, and skills/plugins — with location, ownership, consumers, and persistence/lifecycle for each. [PR #111]
+- Adds a README "Persistent software and addons" section summarizing the layer model and linking to the new guide from the documentation table; cross-links `docs/operations.md` and `docs/pvc-and-containers.md` to the same guide for the addon-package, NPX/Node, and PVC/container sections.
+- Documents the exact `install.sh` reinstall contract for Python addons: reruns install missing packages and change versions only as needed to satisfy current requirements-managed declarations; they do not proactively upgrade already-satisfying versions; `pip` itself is upgraded unconditionally on every addon-enabled run via `pip install --upgrade pip`, which is called out as an explicit exception to the no-proactive-upgrade guarantee. Documents the `HERMES_ANSIBLE_SETUP=false` pruning exception (Ansible packages are explicitly uninstalled) as the only supported pruning behavior.
+- Documents the exact automatic-recreation trigger for a corrupt managed Python venv (checks only that `bin/python` is executable and the `.hermes-uv-managed` marker exists) instead of implying general corruption is self-healing; other corruption requires a controlled manual rebuild.
+- Documents the `prepare-browser-cli` Node/npm source contract precisely: Node is read from `/usr/local/bin/node` and npm from `/usr/local/lib/node_modules/npm` in `HERMES_AGENT_IMAGE`, which is a hard compatibility contract for custom Agent images. Because the copy uses `cp -a`, any retained symlink inside the npm tree must be relative and resolve to a target inside the tree; absolute symlinks are unsupported even when their target is inside the tree (the absolute source pathname is preserved and is unavailable in the WebUI container), and links to any target outside the tree are unsupported in either form.
+- Corrects the corrupt-managed-runtime and unchanged-reinstall rows in the upgrade/repair/rollback behavior table to match the above precise contracts. [PR #112, follow-up to PR #111]
+
+### Verification
+
+- Extends `tests/qa-contract.sh` with grep-based assertions that `docs/persistent-software.md` retains the exact implementation-boundary language above (pip-upgrade exception, corrupt-venv detection scope, Node/npm source paths, and relative-in-tree vs. absolute/out-of-tree npm symlink rules), so future edits cannot silently drift from installer behavior.
+- Passes `bash -n` on all shell entrypoints, `python3 -m py_compile` on renderer scripts, and the full local test suite (`profile-composition`, `bootstrap-soul`, `agent-instructions-safety`, `configure`, `matrix`, `ssh-identity`, `credentials`, `reconcile-api-key`, `backup`, `qa-contract`, `release-final-state`). Separately renders `manifests/hermes.yaml.tpl` with `examples/hermes.env.example` and placeholder secrets via `scripts/render_template.py` and validates the output as well-formed multi-document YAML; `kubectl` is unavailable in this sandbox, so client-side dry-run was skipped. Documentation-only change with no executable installer behavior modified.
+
 ## [v2.7.1] - 2026-08-28
 
 ### Security
@@ -12,10 +28,6 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Propagates the real `age` child exit status through util-linux `script --return` instead of allowing a failed encryption or decryption command to appear successful.
-
-### Documentation
-
-- Adds a README-level persistent-software overview and a dedicated architecture guide for Python addons, the always-on Node/npm/npx runtime, cache and project boundaries, custom images, upgrade/rebuild behavior, verification, backup, and recovery. Removes the stale README reference to an NPX profile preset that no longer exists.
 
 ### Verification
 
