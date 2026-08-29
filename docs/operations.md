@@ -43,7 +43,7 @@ The archive is encrypted with `age`. Install it on Fedora/RHEL hosts with:
 dnf install age
 ```
 
-By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`. Password-file mode supplies the value through a no-echo pseudo-terminal and fails closed rather than forwarding a transcript that contains the passphrase. It requires a util-linux `script` implementation with `--echo` support; older implementations reject the operation before `age` is invoked.
+By default, backup and restore prompt for the passphrase without echoing it. For automation use `--password-stdin` or `--password-file PATH`; the latter requires mode `0600` or `0640`. Password-file mode supplies the value through a no-echo pseudo-terminal, requires the internal `age` command to write payload data through `--output`, and never forwards the captured terminal transcript. Nonzero `age` status is preserved with a generic credential-free diagnostic. This mode requires a util-linux `script` implementation with `--echo` support; older implementations reject the operation before `age` is invoked.
 
 ## Extracting backup components
 

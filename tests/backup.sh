@@ -36,6 +36,8 @@ case "${FAKE_AGE_EMIT_PASSPHRASE:-false}" in
   prefix-stderr) printf 'Enter passphrase: %s\n' "$prompt" >&2 ;;
   prefix-trailing) printf 'Enter passphrase: %s [authentication failed]\n' "$prompt" ;;
   prefix-ansi) printf 'Enter passphrase: \033[31m%s\033[0m\n' "$prompt" ;;
+  prefix-before-colon) printf 'Enter password %s:\n' "$prompt" ;;
+  arbitrary-inline) printf 'diagnostic value=%s unavailable\n' "$prompt" ;;
   benign-prompt) printf 'Enter passphrase:\n' ;;
   benign-long-prompt) printf 'Enter passphrase (leave empty to autogenerate a secure one):\n' ;;
   benign-status) printf 'age: routine diagnostic output\n' ;;
@@ -54,56 +56,62 @@ fi
 echo 'fake age completed'
 AGE
 chmod 700 "$TMP_DIR/bin/age"
-PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- age --passphrase "$TMP_DIR/input/plain.txt" > "$TMP_DIR/age.out"
-grep -Fq 'fake age completed' "$TMP_DIR/age.out"
-if grep -Fq 'correct horse battery staple' "$TMP_DIR/age.out"; then
-  printf 'age helper exposed the backup passphrase through PTY echo\n' >&2
-  exit 1
-fi
+PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- age --passphrase --output "$TMP_DIR/fake.age" "$TMP_DIR/input/plain.txt" > "$TMP_DIR/age.out"
+[[ ! -s "$TMP_DIR/age.out" ]]
 
-for disclosure_stream in stdout stderr prefix-stdout prefix-stderr prefix-trailing prefix-ansi; do
+for disclosure_stream in stdout stderr prefix-stdout prefix-stderr prefix-trailing prefix-ansi prefix-before-colon arbitrary-inline; do
   set +e
   FAKE_AGE_EMIT_PASSPHRASE="$disclosure_stream" PATH="$TMP_DIR/bin:$PATH" \
     python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- \
-    age --passphrase "$TMP_DIR/input/plain.txt" > "$TMP_DIR/disclosure-guard-$disclosure_stream.out" 2>&1
+    age --passphrase --output "$TMP_DIR/disclosure-$disclosure_stream.age" "$TMP_DIR/input/plain.txt" > "$TMP_DIR/disclosure-guard-$disclosure_stream.out" 2>&1
   disclosure_rc=$?
   set -e
-  [[ "$disclosure_rc" != 0 ]]
-  ! grep -Fq 'correct horse battery staple' "$TMP_DIR/disclosure-guard-$disclosure_stream.out"
-  grep -Fq 'refusing to forward it' "$TMP_DIR/disclosure-guard-$disclosure_stream.out"
+  [[ "$disclosure_rc" == 0 ]]
+  [[ ! -s "$TMP_DIR/disclosure-guard-$disclosure_stream.out" ]]
 done
 
 printf 'passphrase\n' > "$TMP_DIR/password-benign-prompt"
 chmod 600 "$TMP_DIR/password-benign-prompt"
 FAKE_AGE_EXPECTED_PASSPHRASE=passphrase FAKE_AGE_EMIT_PASSPHRASE=benign-prompt \
   PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
-  "$TMP_DIR/password-benign-prompt" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  "$TMP_DIR/password-benign-prompt" -- age --passphrase --output "$TMP_DIR/benign-prompt.age" "$TMP_DIR/input/plain.txt" \
   > "$TMP_DIR/benign-prompt.out"
-grep -Fq 'Enter passphrase:' "$TMP_DIR/benign-prompt.out"
+[[ ! -s "$TMP_DIR/benign-prompt.out" ]]
 
 printf 'secure\n' > "$TMP_DIR/password-benign-long-prompt"
 chmod 600 "$TMP_DIR/password-benign-long-prompt"
 FAKE_AGE_EXPECTED_PASSPHRASE=secure FAKE_AGE_EMIT_PASSPHRASE=benign-long-prompt \
   PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
-  "$TMP_DIR/password-benign-long-prompt" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  "$TMP_DIR/password-benign-long-prompt" -- age --passphrase --output "$TMP_DIR/benign-long-prompt.age" "$TMP_DIR/input/plain.txt" \
   > "$TMP_DIR/benign-long-prompt.out"
-grep -Fq 'autogenerate a secure one' "$TMP_DIR/benign-long-prompt.out"
+[[ ! -s "$TMP_DIR/benign-long-prompt.out" ]]
 
 printf 'age\n' > "$TMP_DIR/password-benign-status"
 chmod 600 "$TMP_DIR/password-benign-status"
 FAKE_AGE_EXPECTED_PASSPHRASE=age FAKE_AGE_EMIT_PASSPHRASE=benign-status \
   PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
-  "$TMP_DIR/password-benign-status" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  "$TMP_DIR/password-benign-status" -- age --passphrase --output "$TMP_DIR/benign-status.age" "$TMP_DIR/input/plain.txt" \
   > "$TMP_DIR/benign-status.out"
-grep -Fq 'age: routine diagnostic output' "$TMP_DIR/benign-status.out"
+[[ ! -s "$TMP_DIR/benign-status.out" ]]
+
+set +e
+PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" \
+  "$TMP_DIR/password" -- age --passphrase "$TMP_DIR/input/plain.txt" \
+  > "$TMP_DIR/missing-output.out" 2>&1
+missing_output_rc=$?
+set -e
+[[ "$missing_output_rc" != 0 ]]
+grep -Fq 'requires --output' "$TMP_DIR/missing-output.out"
 
 set +e
 FAKE_AGE_EXIT_CODE=23 PATH="$TMP_DIR/bin:$PATH" \
   python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- \
-  age --passphrase "$TMP_DIR/input/plain.txt" >/dev/null 2>&1
+  age --passphrase --output "$TMP_DIR/child-failure.age" "$TMP_DIR/input/plain.txt" > "$TMP_DIR/child-failure.out" 2>&1
 child_rc=$?
 set -e
 [[ "$child_rc" == 23 ]]
+grep -Fq 'age command failed with exit status 23' "$TMP_DIR/child-failure.out"
+! grep -Fq 'correct horse battery staple' "$TMP_DIR/child-failure.out"
 
 if chmod 644 "$TMP_DIR/password"; then
   if PATH="$TMP_DIR/bin:$PATH" python3 "$ROOT_DIR/scripts/age_passphrase.py" "$TMP_DIR/password" -- age --passphrase "$TMP_DIR/input/plain.txt" >/dev/null 2>&1; then

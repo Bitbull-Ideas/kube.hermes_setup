@@ -35,6 +35,8 @@ grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' manifests/h
 # Password-file automation must never echo the passphrase through the PTY.
 grep -Fq '"--echo",' scripts/age_passphrase.py
 grep -Fq '"never",' scripts/age_passphrase.py
-grep -Fq 'refusing to forward it' scripts/age_passphrase.py
+grep -Fq 'age passphrase helper requires --output PATH' scripts/age_passphrase.py
+grep -Fq 'Never forward the captured' scripts/age_passphrase.py
+grep -Fq 'age command failed with exit status' scripts/age_passphrase.py
 
 printf 'v2.7.1 final-state contract passed\n'

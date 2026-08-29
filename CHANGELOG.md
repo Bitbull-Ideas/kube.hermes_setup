@@ -7,7 +7,7 @@ All notable changes to this project are documented in this file.
 ### Security
 
 - Disables terminal input echo in the `age` pseudo-terminal used by `--password-file` backup, extract, and restore automation, preventing the supplied passphrase from being copied into captured stdout, logs, or automation transcripts.
-- Refuses to forward a pseudo-terminal transcript if it contains the supplied passphrase as an echoed line, providing a second fail-closed disclosure boundary even if terminal behavior regresses.
+- Requires the internal `age` invocation to write payload data through `--output` and never forwards the captured pseudo-terminal transcript. This removes echoed-input, terminal-formatting, cross-stream reconstruction, benign substring-collision, and stdout-corruption failure classes; nonzero child status is preserved with a generic credential-free diagnostic.
 
 ### Fixed
 
@@ -15,8 +15,8 @@ All notable changes to this project are documented in this file.
 
 ### Verification
 
-- Extends `tests/backup.sh` with bare and prompt-prefixed passphrase disclosure through both stdout and stderr, benign short-passphrase prompt/status collisions, child exit-status propagation, and normal non-disclosure regression cases.
-- Passes isolated live K3s acceptance on `v1.36.3+k3s1` for revised prompt-aware behavior commit `7d96173`: real password-file encrypted backup, checksum validation, full extraction, and `restore --full --dry-run`; preserves resource, Secret, PVC, marker, Pod identity, and zero-restart state; reports zero passphrase disclosures; removes helper Pods, the disposable Namespace, and both local-path PVs; and leaves unrelated workloads unchanged.
+- Extends `tests/backup.sh` with bare, prompt-prefixed, pre-colon, trailing-text, ANSI-wrapped, and arbitrary-inline passphrase disclosure through stdout or stderr; benign short-passphrase prompt/status collisions; missing-output refusal; child exit-status propagation; and normal non-disclosure cases. Successful operations remain successful while all captured transcript output stays private.
+- **Blocked release gate:** isolated live K3s acceptance passed for the earlier prompt-aware guard at `7d96173`, but the output-file-only transcript-suppression implementation has not yet repeated the real encrypted backup, full extraction, and `restore --full --dry-run` matrix. Do not tag or publish v2.7.1 until the revised behavior commit passes and the result is recorded here.
 
 ## [v2.7.0] - 2026-08-28
 
