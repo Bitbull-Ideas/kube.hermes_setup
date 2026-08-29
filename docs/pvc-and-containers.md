@@ -4,6 +4,8 @@ This document explains how the rendered Kubernetes resources share persistent st
 
 The examples describe a full installation with Agent, Dashboard, WebUI, and Browserless enabled. The renderer omits disabled Dashboard, WebUI, and Browserless resources. Ansible and SSH are feature gates inside retained workloads, so related variables or conditional initialization logic can remain in the manifest even when those features are disabled; Node.js, npm, and npx are always installed and are not gated. Always inspect the exact output in `current_config/artifacts/hermes.yaml` for a specific installation.
 
+For the supported software-installation model and the distinction between managed runtimes, caches, project-local dependencies, and image-owned packages, see [`persistent-software.md`](persistent-software.md).
+
 ## Application wiring
 
 ```mermaid
