@@ -29,6 +29,18 @@ grep -Fq 'current="$(printenv LD_LIBRARY_PATH 2>/dev/null || true)"' "$MANIFEST"
 grep -Fq 'name: npm_config_yes' "$MANIFEST"
 ! grep -Fq 'HERMES_NPX_SETUP' "$MANIFEST"
 
+# Persistent-software docs must retain exact implementation boundaries.
+for needle in \
+  'changes versions only when required by current constraints' \
+  'does not proactively upgrade satisfying versions' \
+  'checks only whether `bin/python` is executable and the `.hermes-uv-managed` marker exists' \
+  'other corruption can fail later package operations and requires a controlled manual rebuild' \
+  '`/usr/local/bin/node`' \
+  '`/usr/local/lib/node_modules/npm`' \
+  'hard compatibility contract for a custom Agent image'; do
+  grep -Fq -- "$needle" "$SOFTWARE_DOC"
+done
+
 # Persistent-software documentation must retain implementation boundaries that
 # are easy to overstate when installer behavior evolves.
 for needle in \
