@@ -40,7 +40,9 @@ for needle in \
   '`/usr/local/lib/node_modules/npm`' \
   'hard compatibility contract for a custom Agent image' \
   'must be a self-contained real directory tree' \
-  'must not depend on symlink targets outside that tree'; do
+  'must be relative and resolve to a target inside the npm tree' \
+  'Absolute symlinks are unsupported even when their source target is inside that tree' \
+  'forbid absolute and out-of-tree npm symlinks'; do
   grep -Fq -- "$needle" "$SOFTWARE_DOC"
 done
 

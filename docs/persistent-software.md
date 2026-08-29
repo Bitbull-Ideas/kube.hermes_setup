@@ -176,7 +176,7 @@ The installer does not copy arbitrary Node shared-library dependencies. Apart fr
 
 Those source paths are a hard compatibility contract for a custom Agent image intended to support WebUI. A working Node installation elsewhere in the Agent image can serve Agent or Dashboard while still causing `prepare-browser-cli` to fail before WebUI starts.
 
-`/usr/local/lib/node_modules/npm` must be a self-contained real directory tree. Because the installer copies it with `cp -a`, it must not depend on symlink targets outside that tree: relative external links break in the staged runtime, while absolute external links can validate in the Agent-image init container but remain unavailable in the WebUI container.
+`/usr/local/lib/node_modules/npm` must be a self-contained real directory tree. Because the installer copies it with `cp -a`, each retained symlink must be relative and resolve to a target inside the npm tree. Absolute symlinks are unsupported even when their source target is inside that tree: `cp -a` preserves the absolute `/usr/local/...` pathname, so validation can pass in the Agent-image init container while the copied runtime fails in WebUI. Relative or absolute links to targets outside the npm tree are also unsupported. Custom Agent images must therefore forbid absolute and out-of-tree npm symlinks.
 
 ### npm/npx cache is not a package declaration
 
