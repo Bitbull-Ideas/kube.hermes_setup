@@ -13,6 +13,10 @@ All notable changes to this project are documented in this file.
 
 - Propagates the real `age` child exit status through util-linux `script --return` instead of allowing a failed encryption or decryption command to appear successful.
 
+### Documentation
+
+- Adds a README-level persistent-software overview and a dedicated architecture guide for Python addons, the always-on Node/npm/npx runtime, cache and project boundaries, custom images, upgrade/rebuild behavior, verification, backup, and recovery. Removes the stale README reference to an NPX profile preset that no longer exists.
+
 ### Verification
 
 - Extends `tests/backup.sh` with bare, prompt-prefixed, pre-colon, trailing-text, ANSI-wrapped, and arbitrary-inline passphrase disclosure through stdout or stderr; benign short-passphrase prompt/status collisions; missing-output refusal; child exit-status propagation; and normal non-disclosure cases. Successful operations remain successful while all captured transcript output stays private.

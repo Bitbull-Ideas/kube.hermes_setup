@@ -41,13 +41,27 @@ For production use, read the security, operations, and QA guides before continui
 - `universal-system-architect`
 - `universal-system-administrator`
 
-Profiles seed the persistent Hermes home and workspace with a curated identity, configuration, skills, and optional tooling. The configuration wizard resolves profile-controlled settings through one typed model with this precedence: the operator's interactive choice, a reused or replayed saved answer, an explicit process/environment value, the selected profile's `defaults.conf`, then the setting's global fallback. Enabling Ansible still implies SSH. After profile selection, the wizard displays the effective Ansible, SSH, and NPX presets with their source. The final summary reports the resolved values and whether each came from an explicit answer, reused answers, the current environment, the selected profile, a dependency, or the global fallback. Secret values are never included in provenance output.
+Profiles seed the persistent Hermes home and workspace with a curated identity, configuration, skills, and optional tooling. The configuration wizard resolves profile-controlled settings through one typed model with this precedence: the operator's interactive choice, a reused or replayed saved answer, an explicit process/environment value, the selected profile's `defaults.conf`, then the setting's global fallback. Enabling Ansible still implies SSH. After profile selection, the wizard displays the effective Ansible and SSH presets with their source. The final summary reports provenance for those boolean settings and whether addon packages are enabled; it does not currently display the addon requirements path or its origin. Secret values are never included in provenance output.
+
+## Persistent software and addons
+
+The containers are replaceable; durable software and tool state use the `hermes-home` or `hermes-workspace` PVC according to ownership. The supported model has explicit layers:
+
+- **Python addons** are declared by the selected profile's `requirements.txt` or `HERMES_ADDON_REQUIREMENTS` and installed into a uv-managed environment under `/opt/data/addon-venv`.
+- **Node.js, npm, and npx** are baseline infrastructure in every profile. WebUI receives an installer-managed, content-addressed Node/npm/npx runtime under `/opt/data/node`; `/opt/data/.npm` persists npm/npx cache data.
+- **Project dependencies** may live under `/workspace`, but the installer does not treat a project `node_modules` or virtual environment as a shared managed runtime.
+- **Native OS packages and libraries** belong in a custom container image. Installing them interactively inside a running container is not persistent.
+
+Installing software does not automatically make it an Agent capability. Reusable CLI or library workflows normally also need a skill, native Hermes tool, MCP server, or plugin that defines when and how Hermes should invoke the software. A bootstrap profile composes the dependency layer and the selected skills.
+
+Persistence does not mean every path is immutable: installer-managed runtimes are validated, repaired, updated, or rebuilt from declarative inputs and trusted images. See [Persistent software and addon architecture](docs/persistent-software.md) for ownership, paths, consumers, skill/tool integration, upgrade behavior, backup boundaries, and supported installation methods.
 
 ## Documentation
 
 | Guide | Purpose |
 |---|---|
 | [`docs/operations.md`](docs/operations.md) | Installation lifecycle, maintenance, upgrades, backup/restore, credentials, bootstrap behavior, and persistent tooling |
+| [`docs/persistent-software.md`](docs/persistent-software.md) | Persistent Python addons, Node/npm/npx runtime, caches, project dependencies, custom-image boundary, upgrades, and backup behavior |
 | [`docs/security.md`](docs/security.md) | Secrets, authentication, TLS, container security, Browserless/CDP controls, and backup protection |
 | [`docs/authelia-freeipa-sso-overview.md`](docs/authelia-freeipa-sso-overview.md) | Authelia + FreeIPA SSO architecture, authentication modes, maintenance, upgrades, and backup boundaries |
 | [`docs/authelia-freeipa-sso-setup-guide.md`](docs/authelia-freeipa-sso-setup-guide.md) | Step-by-step Hermes, Authelia, FreeIPA LDAP bind, OIDC, QA, and cleanup procedure |

@@ -372,11 +372,15 @@ Keep `HERMES_WRITE_SAFE_ROOT` on Agent, Dashboard, and WebUI so file tools use t
 
 ## Persistent Python addon packages
 
+For the complete software-layer model—including what is installer-managed, cache-only, project-local, or image-owned—see [`persistent-software.md`](persistent-software.md).
+
 The selected profile activates its own `requirements.txt` by default. Set `HERMES_ADDON_REQUIREMENTS` to override it, or set `HERMES_ADDON_REQUIREMENTS=` explicitly to disable addon packages. The requirements file is packaged into the same init Secret mechanism as bootstrap data and installed into a uv-managed Python runtime under `/opt/data`.
 
 ```bash
+cat >> hermes.env <<'EOF'
 HERMES_ADDON_REQUIREMENTS=./requirements.txt
 HERMES_ADDON_PYTHON_VERSION=3.13
+EOF
 ENV_FILE=./hermes.env ./install.sh
 ```
 
@@ -384,10 +388,12 @@ Operational properties:
 
 - Persistent: the uv runtime and addon venv live on the `/opt/data` PVC and survive Pod recreation.
 - Cross-container: the same Python, `ansible`, and other addon CLIs are usable from `hermes-agent`, `hermes-dashboard`, and `hermes-webui` even if the WebUI image has no system Python.
-- Re-runnable: changing the requirements file and rerunning `install.sh` updates the venv.
+- Re-runnable but additive: rerunning `install.sh` installs missing packages and changes versions only as needed to satisfy current requirements; it does not otherwise seek newer releases. Packages removed from requirements are not automatically pruned, and empty requirements do not remove an existing venv.
+- Ansible exception: with profile-provided requirements and `HERMES_ANSIBLE_SETUP=false`, the generated requirements omit Ansible and the init Job explicitly uninstalls `ansible` and `ansible-core` from an existing addon venv.
 - Isolated: Hermes' own `/opt/hermes/.venv` remains first in the Agent `PATH`; do not install ad-hoc packages there.
 - Migrating: if an older non-uv addon venv exists, the init job replaces it with a uv-managed venv.
-- Manual installs are supported after the runtime exists:
+- Python-version changes: changing `HERMES_ADDON_PYTHON_VERSION` installs that managed Python, but a healthy marked addon venv is not automatically rebuilt onto the new interpreter.
+- Manual installs are possible after the runtime exists, but they are unmanaged and non-reproducible. Use them for investigation only; put required packages in the requirements file:
 
 ```bash
 kubectl -n <namespace> exec -it deploy/hermes-agent -- /bin/bash
@@ -447,6 +453,8 @@ The SSH key is for SSH access to managed target systems. GitHub access is separa
 Keep host key checking enabled. Prefer maintaining `/opt/data/.ssh/known_hosts` or using reviewed per-host `accept-new` entries in `/opt/data/.ssh/config`; do not use global `StrictHostKeyChecking=no` as a default.
 
 ## NPX / Node.js package support
+
+Node/npm/npx persistence and lifecycle boundaries are described in [`persistent-software.md`](persistent-software.md). In particular, the managed WebUI runtime, npm cache, project-local packages, and global npm installs have different guarantees.
 
 Node.js, npm, and npx are always available in every profile: the init job creates the npm cache directory at `/opt/data/.npm` with correct `hermes:hermes` ownership, and the agent container receives `npm_config_yes=true` in its environment. This allows `npx`-based MCP servers and skill installers to run without blocking on interactive prompts or failing with `EACCES` on the cache directory.
 
