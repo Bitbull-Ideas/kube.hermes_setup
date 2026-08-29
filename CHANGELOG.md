@@ -16,7 +16,7 @@ All notable changes to this project are documented in this file.
 ### Verification
 
 - Extends `tests/backup.sh` with bare and prompt-prefixed passphrase disclosure through both stdout and stderr, child exit-status propagation, and normal non-disclosure regression cases.
-- **Blocked release gate:** the required isolated live K3s encrypted backup, extraction, and `restore --full --dry-run` preflight has not been completed. Do not tag or publish v2.7.1 until that exact follow-up commit is validated and the result is recorded here.
+- Passes isolated live K3s acceptance on `v1.36.3+k3s1` for follow-up behavior commit `925b600`: real password-file encrypted backup, checksum validation, full extraction, and `restore --full --dry-run`; preserves resource, Secret, PVC, marker, Pod identity, and zero-restart state; reports zero passphrase disclosures; removes helper Pods, the disposable Namespace, and both local-path PVs; and leaves unrelated workloads unchanged.
 
 ## [v2.7.0] - 2026-08-28
 
