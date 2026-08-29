@@ -32,12 +32,15 @@ grep -Fq 'name: npm_config_yes' "$MANIFEST"
 # Persistent-software docs must retain exact implementation boundaries.
 for needle in \
   'changes versions only when required by current constraints' \
-  'does not proactively upgrade satisfying versions' \
+  'does not proactively upgrade satisfying requirements-managed versions' \
+  'pip itself is upgraded on every addon-enabled run' \
   'checks only whether `bin/python` is executable and the `.hermes-uv-managed` marker exists' \
   'other corruption can fail later package operations and requires a controlled manual rebuild' \
   '`/usr/local/bin/node`' \
   '`/usr/local/lib/node_modules/npm`' \
-  'hard compatibility contract for a custom Agent image'; do
+  'hard compatibility contract for a custom Agent image' \
+  'must be a self-contained real directory tree' \
+  'must not depend on symlink targets outside that tree'; do
   grep -Fq -- "$needle" "$SOFTWARE_DOC"
 done
 
