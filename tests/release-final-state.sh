@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Enforce the supported v2.7.1 release shape and reject experimental PoC artifacts.
+# Enforce the supported v2.7.2 release shape and reject experimental PoC artifacts.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-[[ "$(<VERSION)" == 2.7.1 ]]
+[[ "$(<VERSION)" == 2.7.2 ]]
+grep -Fq '## [v2.7.2] - 2026-08-29' CHANGELOG.md
 grep -Fq '## [v2.7.1] - 2026-08-28' CHANGELOG.md
 grep -Fq '## [v2.7.0] - 2026-08-28' CHANGELOG.md
 grep -Fq '[Issue #98]' CHANGELOG.md
+grep -Fq '[PR #111]' CHANGELOG.md
+grep -Fq '[PR #112, follow-up to PR #111]' CHANGELOG.md
 
 # A release branch must not ship disconnected proof-of-concept source or docs.
 if git ls-files | grep -Eq '(^|/)poc(/|$)|software-generations-poc'; then
@@ -39,4 +42,10 @@ grep -Fq 'age passphrase helper requires --output PATH' scripts/age_passphrase.p
 grep -Fq 'Never forward the captured' scripts/age_passphrase.py
 grep -Fq 'age command failed with exit status' scripts/age_passphrase.py
 
-printf 'v2.7.1 final-state contract passed\n'
+# v2.7.2 persistent-software architecture guide must exist and stay linked.
+[[ -f docs/persistent-software.md ]]
+grep -Fq 'docs/persistent-software.md' README.md
+grep -Fq 'persistent-software.md' docs/operations.md
+grep -Fq 'persistent-software.md' docs/pvc-and-containers.md
+
+printf 'v2.7.2 final-state contract passed\n'
