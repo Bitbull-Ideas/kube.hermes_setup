@@ -69,6 +69,7 @@ Persistence does not mean every path is immutable: installer-managed runtimes ar
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common deployment, PVC, ingress, WebUI, Browserless, Dashboard, and authentication failures |
 | [`docs/pvc-and-containers.md`](docs/pvc-and-containers.md) | PVC layout, container mounts, environment variables, and persistence boundaries |
 | [`docs/codex-auth.md`](docs/codex-auth.md) | OpenAI Codex OAuth pairing and persistence |
+| [`docs/mcp.md`](docs/mcp.md) | MCP server configurations and setup instructions shared with Hermes users and agents |
 | [`docs/ansible.md`](docs/ansible.md) | Persistent Ansible environment, SSH integration, roles, and collections |
 
 Additional references:
