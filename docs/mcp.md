@@ -54,8 +54,8 @@ Useful to separate "package works" from "Hermes wiring works":
 ```bash
 export PATH="$HERMES_HOME/node/bin:/usr/local/bin:/usr/bin:/bin"
 export LD_LIBRARY_PATH="$HERMES_HOME/node/lib"
-# for @cablate/mcp-google-map:
-GOOGLE_MAPS_API_KEY="<key>" npx -y '@cablate/mcp-google-map' --stdio
+# for @cablate/mcp-google-map (tested version pinned):
+GOOGLE_MAPS_API_KEY="CHANGE_ME" npx -y '@cablate/mcp-google-map@0.0.55' --stdio
 ```
 
 A valid MCP handshake over stdio is:
@@ -103,7 +103,7 @@ Store the key in the profile's `.env` (or a Kubernetes-backed env var for
 pod deployments) under a private name; do not commit it:
 
 ```dotenv
-GOOGLE_MAPS=<your Google Maps API key>
+GOOGLE_MAPS=CHANGE_ME
 ```
 
 The MCP server itself expects `GOOGLE_MAPS_API_KEY`; the block below maps the
@@ -113,7 +113,14 @@ two. For a manual test outside Hermes, export the mapping explicitly:
 export GOOGLE_MAPS_API_KEY="$GOOGLE_MAPS"
 ```
 
-### Config block (verified)
+### Config entry (verified)
+
+Add a `google-maps` entry under the profile's **existing** `mcp_servers`
+mapping. Do not append a second top-level `mcp_servers:` key — duplicate
+top-level keys are rejected by strict YAML loaders and, with lenient loaders,
+the later block silently replaces the earlier one, discarding any already
+configured servers. Add the full block only if the profile has no
+`mcp_servers` key at all:
 
 ```yaml
 mcp_servers:
@@ -121,7 +128,7 @@ mcp_servers:
     command: npx
     args:
       - -y
-      - '@cablate/mcp-google-map'
+      - '@cablate/mcp-google-map@0.0.55'
       - --stdio
     env:
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS}
@@ -131,7 +138,13 @@ mcp_servers:
     enabled: true
 ```
 
-Append it to the profile's `config.yaml`, then reload/rollout the agent:
+The package spec is **pinned to the tested version** `0.0.55`. An unpinned
+spec (`@cablate/mcp-google-map`) makes `npx` resolve the current npm dist-tag,
+so a newer release — or any machine with a different npm cache — can run
+different code than what was verified. Re-verify with `hermes mcp test`
+before updating the pin.
+
+Then reload/rollout the agent so the running process picks up the change:
 
 ```bash
 # Kubernetes (this stack)
@@ -157,6 +170,7 @@ kubectl -n <namespace> rollout status deploy/hermes-agent --timeout=240s
    match the new config. A process showing `npx -y google-maps-mcp-server`
    (old package) or `npm exec @cablate/mcp-google-map` (missing `--stdio`)
    means the reload did not happen or the flag was not propagated.
+   The expected pinned form is `npm exec @cablate/mcp-google-map@0.0.55 --stdio`.
 5. **Transit times are live data.** Do not reuse departure times from a
    previous answer; re-run `maps_directions` with `mode: "transit"` for each
    new trip.
@@ -164,7 +178,7 @@ kubectl -n <namespace> rollout status deploy/hermes-agent --timeout=240s
 ### Verification result on QA
 
 - `hermes mcp test google-maps` → `✓ Connected`, `✓ Tools discovered: 18`
-- Process tree: `npx -y @cablate/mcp-google-map --stdio` →
+- Process tree: `npx -y @cablate/mcp-google-map@0.0.55 --stdio` →
   `node .../mcp-google-map --stdio`
 - Manual stdio smoke test: `initialize` / `tools/list` /
   `tools/call maps_geocode ("Flawil, Switzerland")` all succeeded
