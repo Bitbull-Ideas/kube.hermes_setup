@@ -49,12 +49,28 @@ This follows Browserless' documented direct CDP connection path. The endpoint is
 
 `./maintain.sh show-passwords` retrieves and decodes the three credential Secrets for an authorized administrator. It prints the values to the terminal and therefore must only be used from a trusted terminal; never capture, paste, log, or share its output. The command does not write credentials to local files.
 
-The setup has two application auth layers:
+The setup supports mutually exclusive local-password and external-OIDC application authentication:
 
 | Layer | Scope | Controlled by | Notes |
 |---|---|---|---|
 | Hermes Dashboard BasicAuth | Dashboard application login | `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASSWORD` | Configured when Dashboard is enabled |
 | Hermes WebUI password auth | WebUI application login | `HERMES_WEBUI_PASSWORD` from `secret/hermes-dashboard-auth:password` | Configured when WebUI is enabled |
+| External OIDC | Dashboard and WebUI human login | External IdP plus `HERMES_*_OIDC_*` | Omits local application password variables |
+
+### Session lifetime policy
+
+`HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200` defines the shared 12-hour
+absolute maximum. The installer enforces it directly for WebUI through
+`HERMES_WEBUI_SESSION_TTL`. In `external-oidc` mode, the separately managed
+Authelia deployment must use the same 12-hour cookie expiration and Dashboard
+OIDC ID-token lifespan.
+
+`HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200` is the Authelia-only two-hour
+sliding inactivity policy. Dashboard and WebUI do not currently expose
+equivalent sliding-idle settings. Configure Authelia with `remember_me: -1`;
+otherwise remember-me can override the normal cookie expiration. The installer
+validates that both values are numeric, at least 60 seconds, and that idle does
+not exceed the absolute maximum.
 
 ## TLS
 

@@ -100,6 +100,32 @@ OIDC authorization-code + PKCE
 
 Hermes Dashboard documents self-hosted OIDC. WebUI's native OIDC implementation requires an issuer, client ID, callback configuration, and explicit allow claim/values.[5][6]
 
+### Session lifetime policy
+
+The repository defaults define two different controls:
+
+```dotenv
+HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200
+HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200
+```
+
+| Layer | Idle timeout | Absolute maximum | Enforcement |
+|---|---:|---:|---|
+| Authelia SSO cookie | 2h | 12h | External Authelia configuration; `remember_me` disabled |
+| Hermes WebUI application cookie | Not supported | 12h | Installer maps maximum to `HERMES_WEBUI_SESSION_TTL` |
+| Hermes Dashboard OIDC session | Not supported | 12h | External Authelia client ID-token lifespan |
+
+The maximum variable is one shared policy value, but this installer directly
+controls only WebUI. Operators must apply the same duration to the separately
+managed Authelia cookie expiration and Dashboard OIDC-client lifespan. The idle
+variable applies only to Authelia because current WebUI and Dashboard sessions
+do not extend a sliding expiry based on activity.
+
+When an application session expires while the Authelia SSO cookie remains
+valid, an OIDC redirect may silently issue a new application session without a
+credential prompt. A credential prompt is expected after Authelia reaches its
+two-hour inactivity timeout or 12-hour absolute maximum.
+
 ### `disabled`
 
 This is not SSO. It should be accepted only when exposure is explicitly private:

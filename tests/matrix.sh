@@ -178,6 +178,8 @@ fi
   source "$ROOT_DIR/install.sh"
   prepare_paths
   prepare_defaults
+  [[ "$HERMES_AUTH_SESSION_MAX_TTL_SECONDS" == 43200 ]]
+  [[ "$HERMES_AUTH_SESSION_IDLE_TTL_SECONDS" == 7200 ]]
   mkdir -p "$RENDER_DIR"
   API_SERVER_KEY_REVISION=test-resource-version
   export API_SERVER_KEY_REVISION
@@ -195,9 +197,44 @@ for name in ("hermes-dashboard", "hermes-webui"):
     assert "HERMES_DASHBOARD_BASIC_AUTH_USERNAME" not in env_names
     assert "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD" not in env_names
     assert "HERMES_WEBUI_PASSWORD" not in env_names
+webui_env = {
+    item["name"]: item.get("value")
+    for item in resources[("Deployment", "hermes-webui")]["spec"]["template"]["spec"]["containers"][0]["env"]
+}
+assert webui_env["HERMES_WEBUI_SESSION_TTL"] == "43200"
 assert resources[("Deployment", "hermes-dashboard")]["spec"]["template"]["spec"]["containers"][0]["env"]
 PY
 )
+
+# Session policy values fail closed before rendering. Idle may not exceed the
+# shared absolute maximum.
+for invalid_policy in \
+  'HERMES_AUTH_SESSION_MAX_TTL_SECONDS=invalid' \
+  'HERMES_AUTH_SESSION_MAX_TTL_SECONDS=59' \
+  'HERMES_AUTH_SESSION_MAX_TTL_SECONDS=31536001' \
+  'HERMES_AUTH_SESSION_MAX_TTL_SECONDS=18446744073709551676' \
+  'HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=invalid' \
+  'HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=59' \
+  'HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=43201'; do
+  if env -i PATH="$PATH" HOME="$HOME" HERMES_INSTALL_LIB_ONLY=true \
+    HERMES_BOOTSTRAP_PROFILE= HERMES_BOOTSTRAP_MODE=disabled \
+    HERMES_DASHBOARD_ENABLED=false HERMES_WEBUI_ENABLED=false HERMES_BROWSER_ENABLED=false \
+    "$invalid_policy" bash -c 'source "$1"; prepare_defaults' _ "$ROOT_DIR/install.sh" \
+    >/dev/null 2>&1; then
+    printf 'installer accepted invalid session policy: %s\n' "$invalid_policy" >&2
+    exit 1
+  fi
+done
+
+if env -i PATH="$PATH" HOME="$HOME" HERMES_INSTALL_LIB_ONLY=true \
+  HERMES_BOOTSTRAP_PROFILE= HERMES_BOOTSTRAP_MODE=disabled \
+  HERMES_DASHBOARD_ENABLED=false HERMES_WEBUI_ENABLED=false HERMES_BROWSER_ENABLED=false \
+  HERMES_AUTH_SESSION_MAX_TTL_SECONDS=18446744073709551676 \
+  HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=60 \
+  bash -c 'source "$1"; prepare_defaults' _ "$ROOT_DIR/install.sh" >/dev/null 2>&1; then
+  printf 'installer accepted overflowing session policy values\n' >&2
+  exit 1
+fi
 
 # Switching only HERMES_AUTH_MODE in the public example must fail before any
 # local authentication is removed; all installation-specific OIDC values are blank.

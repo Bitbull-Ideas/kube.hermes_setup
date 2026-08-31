@@ -386,6 +386,10 @@ source "$config_oidc/hermes.env"
 [[ "$HERMES_WEBUI_OIDC_REDIRECT_URI" == https://chat.example.com/api/auth/oidc/callback ]]
 [[ "$HERMES_WEBUI_OIDC_ALLOW_CLAIM" == groups ]]
 [[ "$HERMES_WEBUI_OIDC_ALLOW_VALUES" == hermes-users ]]
+[[ "$HERMES_AUTH_SESSION_MAX_TTL_SECONDS" == 43200 ]]
+[[ "$HERMES_AUTH_SESSION_IDLE_TTL_SECONDS" == 7200 ]]
+grep -Fqx 'HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200' "$answers_oidc"
+grep -Fqx 'HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200' "$answers_oidc"
 (
   export HERMES_INSTALL_LIB_ONLY=true
   export ENV_FILE="$config_oidc/hermes.env"
