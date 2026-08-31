@@ -113,7 +113,7 @@ HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200
 |---|---:|---:|---|
 | Authelia SSO cookie | 2h | 12h | External Authelia configuration; `remember_me` disabled |
 | Hermes WebUI application cookie | Not supported | 12h | Installer maps maximum to `HERMES_WEBUI_SESSION_TTL` |
-| Hermes Dashboard OIDC session | Not supported | 12h | External Authelia client ID-token lifespan |
+| Hermes Dashboard OIDC ID-token contract | Not supported | 12h | External Authelia client ID-token lifespan; application-session behavior depends on Dashboard refresh handling |
 
 The maximum variable is one shared policy value, but this installer directly
 controls only WebUI. Operators must apply the same duration to the separately

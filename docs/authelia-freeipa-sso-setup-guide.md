@@ -750,10 +750,11 @@ Then use a real browser to verify:
 3. A user outside the allowed claim/group is rejected.
 4. Dashboard and WebUI authenticated content loads.
 5. WebUI chat/WebSocket works.
-6. WebUI and Dashboard application sessions expire after 12 hours even with activity.
-7. The Authelia SSO session requires authentication after two hours of inactivity or 12 hours absolute.
-8. Authelia does not offer or honor remember-me for this policy.
-9. The former local password is rejected and no password-login route is available.
+6. The WebUI application session expires after 12 hours even with activity.
+7. The Dashboard OIDC ID token reaches its configured 12-hour lifetime and Dashboard follows its documented refresh or reauthentication path; do not report this as a proven Dashboard application-session timeout.
+8. The Authelia SSO session requires authentication after two hours of inactivity or 12 hours absolute.
+9. Authelia does not offer or honor remember-me for this policy.
+10. The former local password is rejected and no password-login route is available.
 
 Finally rerun the installer unchanged and repeat the no-local-auth checks. This proves that the migration is durable rather than a one-time live patch.
 
