@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Enforce the supported v2.7.3 release shape and reject experimental PoC artifacts.
+# Enforce the supported v2.7.4 release shape and reject experimental PoC artifacts.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-[[ "$(<VERSION)" == 2.7.3 ]]
+[[ "$(<VERSION)" == 2.7.4 ]]
+grep -Fq '## [v2.7.4] - 2026-08-31' CHANGELOG.md
 grep -Fq '## [v2.7.3] - 2026-08-29' CHANGELOG.md
 grep -Fq '## [v2.7.2] - 2026-08-29' CHANGELOG.md
 grep -Fq '## [v2.7.1] - 2026-08-28' CHANGELOG.md
@@ -54,4 +55,13 @@ grep -Fq 'DATA_ONLY_PATHS' maintain.sh
 grep -Fq -- '--data-only' maintain.sh
 grep -Fq -- '--data-only' docs/operations.md
 
-printf 'v2.7.3 final-state contract passed\n'
+# v2.7.4 session policy must remain wired and described with precise semantics.
+grep -Fq 'HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200' examples/hermes.env.example
+grep -Fq 'HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200' examples/hermes.env.example
+grep -Fq 'value: "${HERMES_AUTH_SESSION_MAX_TTL_SECONDS}"' manifests/hermes.yaml.tpl
+grep -Fq 'HERMES_WEBUI_SESSION_TTL "$HERMES_AUTH_SESSION_MAX_TTL_SECONDS"' doctor.sh
+grep -Fq '| Hermes Dashboard OIDC ID-token contract | Not supported | 12h |' docs/authelia-freeipa-sso-overview.md
+grep -Fq 'Dashboard OIDC ID token reaches its configured 12-hour lifetime' docs/authelia-freeipa-sso-setup-guide.md
+! grep -Fq 'WebUI and Dashboard application sessions expire after 12 hours' docs/authelia-freeipa-sso-setup-guide.md
+
+printf 'v2.7.4 final-state contract passed\n'

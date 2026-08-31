@@ -199,6 +199,7 @@ Agent's `PATH` also includes the Agent image runtime, and WebUI's `PATH` additio
 | `HERMES_WEBUI_HOST` | `0.0.0.0` |
 | `HERMES_WEBUI_PORT` | `8787` |
 | `HERMES_WEBUI_STATE_DIR` | `/opt/data/webui` |
+| `HERMES_WEBUI_SESSION_TTL` | `HERMES_AUTH_SESSION_MAX_TTL_SECONDS` (default `43200`, an absolute lifetime) |
 | `HERMES_WEBUI_AGENT_DIR` | `/home/hermeswebui/.hermes/hermes-agent` (read-only `emptyDir` mount populated by an init container) |
 | `HERMES_WEBUI_AUTO_INSTALL` | `1` |
 | `HERMES_NIX_BUILD` | `1` |

@@ -376,6 +376,28 @@ HERMES_WEBUI_PASSWORD <- secret/hermes-dashboard-auth:password
 
 So the WebUI login password is the same value as `DASHBOARD_AUTH_PASSWORD`. This avoids the remote first-password setup gate safely because WebUI auth is enabled at startup. When `maintain.sh rotate-passwords` rotates the dashboard password, it also restarts `hermes-webui` so the env-backed Secret value is reloaded.
 
+## Authentication session lifetimes
+
+The default policy is:
+
+```dotenv
+HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200
+HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200
+```
+
+The 12-hour maximum is injected into WebUI as
+`HERMES_WEBUI_SESSION_TTL`. For external OIDC, apply the same 12-hour value to
+Authelia's session expiration and the Dashboard client's ID-token lifespan.
+The two-hour idle value applies only to Authelia; Dashboard and WebUI currently
+use absolute/token lifetimes rather than sliding inactivity. Disable Authelia
+remember-me with `remember_me: -1`.
+
+After changing either value, rerun `./install.sh` and `./doctor.sh`. Because
+Authelia is externally managed, update and verify it through its own deployment
+process as well. Existing WebUI sessions retain the expiry assigned when they
+were created; log out or invalidate existing sessions when an immediate policy
+cutover is required.
+
 
 ## WebUI upload size
 

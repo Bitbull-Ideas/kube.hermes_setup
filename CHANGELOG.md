@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.7.4] - 2026-08-31
+
+### Added
+
+- Adds `HERMES_AUTH_SESSION_MAX_TTL_SECONDS`, defaulting to `43200`, as the shared 12-hour absolute session maximum. The installer maps it directly to WebUI's upstream `HERMES_WEBUI_SESSION_TTL`; the external Authelia contract uses the same value for SSO cookie expiration and the Dashboard/WebUI OIDC client ID-token lifespan.
+- Adds `HERMES_AUTH_SESSION_IDLE_TTL_SECONDS`, defaulting to `7200`, for the externally managed Authelia two-hour sliding inactivity policy. Documentation explicitly distinguishes this from the absolute/token lifetimes used by Dashboard and WebUI.
+- Adds `doctor.sh` drift detection for the rendered WebUI session TTL and persists both policy values through interactive configuration and answer replay.
+
+### Security
+
+- Disables Authelia remember-me in the documented chart configuration so it cannot override the 12-hour maximum.
+- Fails closed on malformed, below-minimum, above-maximum, idle-greater-than-maximum, and oversized numeric timeout values before Bash arithmetic; this prevents integer-overflow values from bypassing the declared range.
+
+### Verification
+
+- Extends configurator, render-matrix, and authentication-diagnostic tests for defaults, persistence, rendered WebUI TTL, drift, invalid boundaries, and oversized integer regression coverage.
+- Passes the complete repository shell/Python and local test suite, external-OIDC manifest rendering, secret/private-host scanning, and independent code review.
+- Lints and renders the pinned Authelia chart `0.11.6`, structurally verifying two-hour inactivity, 12-hour expiration, disabled remember-me, and the named 12-hour OIDC client lifespan.
+- Passes the mandatory clean-storage live K3s matrix on Ubuntu 24.04 with K3s `v1.31.12+k3s1`: Agent-only, Dashboard, WebUI, Browserless, and full-stack cases each reached Ready with zero restarts, no previous crash logs, and no fatal/traceback log matches. The WebUI and full-stack cases rendered `HERMES_WEBUI_SESSION_TTL=43200`.
+- Passes unchanged full-stack reinstall with stable application and Browserless Secret hashes, stable PVC identities, a preserved workspace canary, all four rollouts Ready, Browserless pressure and CDP handshakes healthy from Agent/Dashboard/WebUI, and the WebUI timeout still `43200`. Real Chromium before and after reinstall rejected invalid WebUI/Dashboard credentials, accepted valid credentials, rendered authenticated interfaces with clean consoles, and measured 43,197 seconds remaining on the new WebUI cookie.
+
 ## [v2.7.3] - 2026-08-29
 
 ### Added

@@ -324,17 +324,22 @@ configMap:
       enabled: true
       filename: /config/notification.txt
   session:
+    remember_me: -1
     cookies:
       - subdomain: sso
         domain: example.com
         default_redirection_url: https://hermes.example.com
         same_site: lax
-        inactivity: 15m
-        expiration: 1h
+        inactivity: 2h
+        expiration: 12h
 
   identity_providers:
     oidc:
       enabled: true
+      lifespans:
+        custom:
+          hermes-session-12h:
+            id_token: 12h
       hmac_secret:
         value: ''
       jwks:
@@ -366,6 +371,7 @@ configMap:
           scopes: [openid, profile, email, groups]
           authorization_policy: hermes_users
           claims_policy: hermes
+          lifespan: hermes-session-12h
           consent_mode: auto
         - client_id: hermes-webui
           client_name: Hermes WebUI QA
@@ -375,6 +381,7 @@ configMap:
           scopes: [openid, profile, email, groups]
           authorization_policy: hermes_users
           claims_policy: hermes
+          lifespan: hermes-session-12h
           consent_mode: auto
 
 pod:
@@ -492,6 +499,8 @@ The intended SSO-relevant environment is:
 
 ```dotenv
 HERMES_AUTH_MODE=external-oidc
+HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200
+HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200
 
 HERMES_DASHBOARD_OIDC_ISSUER=https://sso.example.com
 HERMES_DASHBOARD_OIDC_CLIENT_ID=hermes-dashboard
@@ -505,6 +514,14 @@ HERMES_WEBUI_OIDC_SCOPES="openid profile email groups"
 HERMES_WEBUI_OIDC_ALLOW_CLAIM=groups
 HERMES_WEBUI_OIDC_ALLOW_VALUES=hermes-qa-users
 ```
+
+`HERMES_AUTH_SESSION_MAX_TTL_SECONDS` is the shared 12-hour maximum. The
+installer injects it into WebUI as `HERMES_WEBUI_SESSION_TTL`; configure the
+same duration as Authelia's cookie `expiration` and the Dashboard client's OIDC
+ID-token lifespan. `HERMES_AUTH_SESSION_IDLE_TTL_SECONDS` documents the
+Authelia-only two-hour inactivity policy. Dashboard and WebUI do not currently
+provide equivalent sliding-idle controls. Keep Authelia `remember_me: -1` so a
+remember-me selection cannot override the 12-hour maximum.
 
 The installer implementation must omit these local-password variables in this mode:
 
@@ -596,6 +613,8 @@ Edit the same private `hermes.env` used for the current installation. Keep the N
 
 ```dotenv
 HERMES_AUTH_MODE=external-oidc
+HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200
+HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200
 
 HERMES_OIDC_ISSUER=https://sso.example.com
 HERMES_DASHBOARD_OIDC_CLIENT_ID=hermes-dashboard
@@ -631,14 +650,18 @@ HERMES_INSTALL_LIB_ONLY=true \
   bash -c 'source ./install.sh; load_env; prepare_paths; prepare_defaults; validate; export API_SERVER_KEY_REVISION=preflight-resource-version; render_manifest'
 
 for deploy in hermes-dashboard hermes-webui; do
-  python3 - "$render_dir/hermes.yaml" "$deploy" <<'PY'
+  python3 - "$render_dir/hermes.yaml" "$deploy" "$HERMES_AUTH_SESSION_MAX_TTL_SECONDS" <<'PY'
 import sys
 import yaml
 
-manifest, wanted = sys.argv[1:]
+manifest, wanted, expected_session_ttl = sys.argv[1:]
 for document in yaml.safe_load_all(open(manifest)):
     if document and document.get("kind") == "Deployment" and document["metadata"]["name"] == wanted:
-        names = [item["name"] for item in document["spec"]["template"]["spec"]["containers"][0].get("env", [])]
+        env = {
+            item["name"]: item.get("value")
+            for item in document["spec"]["template"]["spec"]["containers"][0].get("env", [])
+        }
+        names = set(env)
         forbidden = {
             "HERMES_DASHBOARD_BASIC_AUTH_USERNAME",
             "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD",
@@ -647,6 +670,11 @@ for document in yaml.safe_load_all(open(manifest)):
         overlap = forbidden.intersection(names)
         if overlap:
             raise SystemExit(f"local authentication still rendered for {wanted}: {sorted(overlap)}")
+        if wanted == "hermes-webui" and env.get("HERMES_WEBUI_SESSION_TTL") != expected_session_ttl:
+            raise SystemExit(
+                "WebUI session maximum does not match "
+                "HERMES_AUTH_SESSION_MAX_TTL_SECONDS"
+            )
         print(f"{wanted}: local password variables absent")
         break
 else:
@@ -722,8 +750,11 @@ Then use a real browser to verify:
 3. A user outside the allowed claim/group is rejected.
 4. Dashboard and WebUI authenticated content loads.
 5. WebUI chat/WebSocket works.
-6. Logout and session expiry behave as expected.
-7. The former local password is rejected and no password-login route is available.
+6. The WebUI application session expires after 12 hours even with activity.
+7. The Dashboard OIDC ID token reaches its configured 12-hour lifetime and Dashboard follows its documented refresh or reauthentication path; do not report this as a proven Dashboard application-session timeout.
+8. The Authelia SSO session requires authentication after two hours of inactivity or 12 hours absolute.
+9. Authelia does not offer or honor remember-me for this policy.
+10. The former local password is rejected and no password-login route is available.
 
 Finally rerun the installer unchanged and repeat the no-local-auth checks. This proves that the migration is durable rather than a one-time live patch.
 

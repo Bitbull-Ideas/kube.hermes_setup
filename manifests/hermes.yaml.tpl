@@ -1123,6 +1123,8 @@ spec:
           value: "8787"
         - name: HERMES_WEBUI_STATE_DIR
           value: /opt/data/webui
+        - name: HERMES_WEBUI_SESSION_TTL
+          value: "${HERMES_AUTH_SESSION_MAX_TTL_SECONDS}"
         - name: HERMES_WEBUI_AGENT_DIR
           value: /home/hermeswebui/.hermes/hermes-agent
         - name: HERMES_WEBUI_AUTO_INSTALL

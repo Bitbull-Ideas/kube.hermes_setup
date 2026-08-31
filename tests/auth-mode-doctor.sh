@@ -23,14 +23,15 @@ JSON
   exit 0
 fi
 if [[ "$args" == *'get deployment hermes-webui -o json'* ]]; then
-  cat <<'JSON'
+  cat <<JSON
 {"spec":{"template":{"spec":{"containers":[{"env":[
 {"name":"HERMES_WEBUI_OIDC_ISSUER","value":"https://sso.example.com"},
 {"name":"HERMES_WEBUI_OIDC_CLIENT_ID","value":"hermes-webui"},
 {"name":"HERMES_WEBUI_OIDC_SCOPES","value":"openid profile email groups"},
 {"name":"HERMES_WEBUI_OIDC_REDIRECT_URI","value":"https://hermes.example.com/api/auth/oidc/callback"},
 {"name":"HERMES_WEBUI_OIDC_ALLOW_CLAIM","value":"groups"},
-{"name":"HERMES_WEBUI_OIDC_ALLOW_VALUES","value":"hermes-qa-users"}
+{"name":"HERMES_WEBUI_OIDC_ALLOW_VALUES","value":"hermes-qa-users"},
+{"name":"HERMES_WEBUI_SESSION_TTL","value":"${FAKE_WEBUI_SESSION_TTL:-43200}"}
 ]}]}}}}
 JSON
   exit 0
@@ -62,6 +63,8 @@ common_env=(
   HERMES_WEBUI_ENABLED=true
   HERMES_BROWSER_ENABLED=false
   HERMES_OIDC_ISSUER=https://sso.example.com
+  HERMES_DASHBOARD_OIDC_ISSUER=https://sso.example.com
+  HERMES_WEBUI_OIDC_ISSUER=https://sso.example.com
   HERMES_DASHBOARD_OIDC_CLIENT_ID=hermes-dashboard
   HERMES_DASHBOARD_OIDC_SCOPES="openid profile email groups"
   HERMES_WEBUI_OIDC_CLIENT_ID=hermes-webui
@@ -70,13 +73,24 @@ common_env=(
   HERMES_WEBUI_OIDC_REDIRECT_URI=https://hermes.example.com/api/auth/oidc/callback
   HERMES_WEBUI_OIDC_ALLOW_CLAIM=groups
   HERMES_WEBUI_OIDC_ALLOW_VALUES=hermes-qa-users
+  HERMES_AUTH_SESSION_MAX_TTL_SECONDS=43200
+  HERMES_AUTH_SESSION_IDLE_TTL_SECONDS=7200
 )
 
-env PATH="$TMP_DIR/bin:$PATH" "${common_env[@]}" \
+if ! env PATH="$TMP_DIR/bin:$PATH" "${common_env[@]}" \
   bash -c 'source "$1"; check_auth_mode; [[ "$fail_count" == 0 ]]' _ "$ROOT_DIR/doctor.sh" \
-  > "$TMP_DIR/clean.out"
+  > "$TMP_DIR/clean.out"; then
+  cat "$TMP_DIR/clean.out" >&2
+  exit 1
+fi
 grep -Fq 'external-oidc local application password Secret absent' "$TMP_DIR/clean.out"
 grep -Fq 'hermes-webui HERMES_WEBUI_OIDC_REDIRECT_URI matches configured auth mode' "$TMP_DIR/clean.out"
+grep -Fq 'hermes-webui HERMES_WEBUI_SESSION_TTL matches configured auth mode' "$TMP_DIR/clean.out"
+
+env PATH="$TMP_DIR/bin:$PATH" FAKE_WEBUI_SESSION_TTL=43199 "${common_env[@]}" \
+  bash -c 'source "$1"; check_auth_mode; [[ "$fail_count" == 1 ]]' _ "$ROOT_DIR/doctor.sh" \
+  > "$TMP_DIR/session-ttl-drift.out"
+grep -Fq 'hermes-webui HERMES_WEBUI_SESSION_TTL missing or drifted' "$TMP_DIR/session-ttl-drift.out"
 
 env PATH="$TMP_DIR/bin:$PATH" "${common_env[@]}" \
   bash -c 'unset HERMES_DASHBOARD_OIDC_SCOPES HERMES_WEBUI_OIDC_SCOPES; source "$1"; check_auth_mode; [[ "$fail_count" == 0 ]]' _ "$ROOT_DIR/doctor.sh" \

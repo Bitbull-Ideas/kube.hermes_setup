@@ -12,6 +12,14 @@ AGENTS="$ROOT_DIR/AGENTS.md"
 QA_DOC="$ROOT_DIR/docs/qa.md"
 MANIFEST="$ROOT_DIR/manifests/hermes.yaml.tpl"
 SOFTWARE_DOC="$ROOT_DIR/docs/persistent-software.md"
+SSO_SETUP_DOC="$ROOT_DIR/docs/authelia-freeipa-sso-setup-guide.md"
+
+# The executable external-OIDC migration preflight must honor an operator's
+# configured session maximum instead of silently assuming the default 43200.
+grep -Fq 'python3 - "$render_dir/hermes.yaml" "$deploy" "$HERMES_AUTH_SESSION_MAX_TTL_SECONDS"' "$SSO_SETUP_DOC"
+grep -Fq 'manifest, wanted, expected_session_ttl = sys.argv[1:]' "$SSO_SETUP_DOC"
+grep -Fq 'env.get("HERMES_WEBUI_SESSION_TTL") != expected_session_ttl' "$SSO_SETUP_DOC"
+! grep -Fq 'env.get("HERMES_WEBUI_SESSION_TTL") != "43200"' "$SSO_SETUP_DOC"
 
 # The WebUI image must receive a complete, runnable Node/npm/npx toolchain
 # from the Agent image without replacing the WebUI image's own loader path.
