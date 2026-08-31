@@ -20,7 +20,8 @@ All notable changes to this project are documented in this file.
 - Extends configurator, render-matrix, and authentication-diagnostic tests for defaults, persistence, rendered WebUI TTL, drift, invalid boundaries, and oversized integer regression coverage.
 - Passes the complete repository shell/Python and local test suite, external-OIDC manifest rendering, secret/private-host scanning, and independent code review.
 - Lints and renders the pinned Authelia chart `0.11.6`, structurally verifying two-hour inactivity, 12-hour expiration, disabled remember-me, and the named 12-hour OIDC client lifespan.
-- Passes live K3s deployment of Agent, Dashboard, and WebUI with zero restarts and the WebUI Deployment reporting `HERMES_WEBUI_SESSION_TTL=43200`; browser and unchanged-reinstall evidence are recorded in the pull request.
+- Passes the mandatory clean-storage live K3s matrix on Ubuntu 24.04 with K3s `v1.31.12+k3s1`: Agent-only, Dashboard, WebUI, Browserless, and full-stack cases each reached Ready with zero restarts, no previous crash logs, and no fatal/traceback log matches. The WebUI and full-stack cases rendered `HERMES_WEBUI_SESSION_TTL=43200`.
+- Passes unchanged full-stack reinstall with stable application and Browserless Secret hashes, stable PVC identities, a preserved workspace canary, all four rollouts Ready, Browserless pressure and CDP handshakes healthy from Agent/Dashboard/WebUI, and the WebUI timeout still `43200`. Real Chromium before and after reinstall rejected invalid WebUI/Dashboard credentials, accepted valid credentials, rendered authenticated interfaces with clean consoles, and measured 43,197 seconds remaining on the new WebUI cookie.
 
 ## [v2.7.3] - 2026-08-29
 
