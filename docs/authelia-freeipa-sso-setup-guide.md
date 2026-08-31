@@ -650,11 +650,11 @@ HERMES_INSTALL_LIB_ONLY=true \
   bash -c 'source ./install.sh; load_env; prepare_paths; prepare_defaults; validate; export API_SERVER_KEY_REVISION=preflight-resource-version; render_manifest'
 
 for deploy in hermes-dashboard hermes-webui; do
-  python3 - "$render_dir/hermes.yaml" "$deploy" <<'PY'
+  python3 - "$render_dir/hermes.yaml" "$deploy" "$HERMES_AUTH_SESSION_MAX_TTL_SECONDS" <<'PY'
 import sys
 import yaml
 
-manifest, wanted = sys.argv[1:]
+manifest, wanted, expected_session_ttl = sys.argv[1:]
 for document in yaml.safe_load_all(open(manifest)):
     if document and document.get("kind") == "Deployment" and document["metadata"]["name"] == wanted:
         env = {
@@ -670,8 +670,11 @@ for document in yaml.safe_load_all(open(manifest)):
         overlap = forbidden.intersection(names)
         if overlap:
             raise SystemExit(f"local authentication still rendered for {wanted}: {sorted(overlap)}")
-        if wanted == "hermes-webui" and env.get("HERMES_WEBUI_SESSION_TTL") != "43200":
-            raise SystemExit("WebUI session maximum is not 12 hours")
+        if wanted == "hermes-webui" and env.get("HERMES_WEBUI_SESSION_TTL") != expected_session_ttl:
+            raise SystemExit(
+                "WebUI session maximum does not match "
+                "HERMES_AUTH_SESSION_MAX_TTL_SECONDS"
+            )
         print(f"{wanted}: local password variables absent")
         break
 else:
