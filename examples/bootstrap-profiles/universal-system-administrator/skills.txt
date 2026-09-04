@@ -1,6 +1,7 @@
 # Shared skills selected for this profile. One canonical source exists under
 # examples/bootstrap-shared/skills; install.sh copies only these entries.
 ansible-fleet-change
+ansible-role-template
 github-setup-access
 graylog-api-search
 hermes-workspace-ansible

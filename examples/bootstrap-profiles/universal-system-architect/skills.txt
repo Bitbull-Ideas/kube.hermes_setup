@@ -1,5 +1,6 @@
 # Shared skills selected for this profile. One canonical source exists under
 # examples/bootstrap-shared/skills; install.sh copies only these entries.
+ansible-role-template
 github-setup-access
 hermes-workspace-ansible
 hermes-workspace-git

@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [v2.7.5] - 2026-09-04
+
+### Added
+
+- Adds the `ansible-role-template` bootstrap skill to the shared skill library.
+  It documents how to create and maintain reusable OS-aware Ansible roles from
+  `joe-speedboat/ansible.template`, including deterministic distribution/version
+  dispatch, `rhelAll` grouping, numbered task basenames, first-match shadowing,
+  strict shared-task neutrality, certificate handling, role-path test harnesses,
+  live QA, and disposable lab cleanup.
+- Enables `ansible-role-template` for both the `universal-system-administrator`
+  and `universal-system-architect` bootstrap profiles.
+
+### Verification
+
+- Validates the new skill frontmatter, related-skill classifications, and
+  non-empty body through the repository profile-composition contract.
+- Validates that both profiles compose the new skill from the canonical shared
+  skill tree without duplicate or profile-local copies.
+- Passes the release-final-state contract for v2.7.5.
+
 ## [v2.7.4] - 2026-08-31
 
 ### Added
