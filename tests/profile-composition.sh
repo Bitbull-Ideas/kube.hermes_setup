@@ -64,7 +64,7 @@ HERMES_BOOTSTRAP_PROFILE=universal-system-architect
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 architect_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$architect_stage" github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab markdown-pdf
+assert_skill_set "$architect_stage" ansible-role-template github-setup-access hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab markdown-pdf
 assert_file "$architect_stage/workspace/POST_SETUP.md"
 assert_absent "$architect_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$architect_stage/workspace/POST_SETUP.md"
@@ -112,7 +112,7 @@ HERMES_BOOTSTRAP_PROFILE=universal-system-administrator
 apply_profile_defaults "$HERMES_BOOTSTRAP_PROFILE"
 compose_profile_bootstrap "$HERMES_BOOTSTRAP_PROFILE"
 admin_stage="$HERMES_BOOTSTRAP_DIR"
-assert_skill_set "$admin_stage" ansible-fleet-change github-setup-access graylog-api-search hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab linux-change-safety linux-triage markdown-pdf
+assert_skill_set "$admin_stage" ansible-fleet-change ansible-role-template github-setup-access graylog-api-search hermes-log-watchdog hermes-workspace-ansible hermes-workspace-git hermes-workspace-manager hetzner-ansible-lab linux-change-safety linux-triage markdown-pdf
 assert_file "$admin_stage/workspace/POST_SETUP.md"
 assert_absent "$admin_stage/POST_SETUP.md"
 cmp -s "$ROOT_DIR/examples/bootstrap-shared/workspace/POST_SETUP.md" "$admin_stage/workspace/POST_SETUP.md"
@@ -127,6 +127,8 @@ grep -q 'Do not administer the runtime as a target host' "$admin_stage/SOUL.md"
 grep -q 'Do \*\*not\*\* use this skill for routine self-maintenance' "$admin_stage/skills/linux-change-safety/SKILL.md"
 grep -q 'Do not require `kubectl`, root, `/srv/backup`, `/CHANGES.md`' "$admin_stage/skills/github-setup-access/SKILL.md"
 grep -q 'Routine self-maintenance of the active Hermes runtime' "$admin_stage/workspace/AGENTS.md"
+grep -q 'Claiming multi-OS coverage from syntax checks alone' "$admin_stage/skills/ansible-role-template/SKILL.md"
+grep -q 'Claiming multi-OS coverage from syntax checks alone' "$architect_stage/skills/ansible-role-template/SKILL.md"
 
 for shared_admin_skill in ansible-fleet-change linux-change-safety linux-triage; do
   assert_file "$ROOT_DIR/examples/bootstrap-shared/skills/$shared_admin_skill/SKILL.md"
