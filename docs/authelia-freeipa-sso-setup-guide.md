@@ -312,25 +312,23 @@ kubectl -n hermes-auth create secret generic authelia-smtp \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Add the Secret as a read-only file mount and expose the file to Authelia through its documented secret environment variable:
+The pinned Authelia chart can mount this dedicated Secret through `secret.additionalSecrets`; do not hand-patch the rendered Deployment. Add the following entry to the `secret` section of the Helm values below:
 
 ```yaml
-# Deployment container environment
-- name: AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE
-  value: /secrets/smtp/password
+secret:
+  additionalSecrets:
+    authelia-smtp:
+      path: smtp
+      items:
+        - key: password
+          path: password
+```
 
-# Deployment container volume mount
-- name: smtp-secret
-  mountPath: /secrets/smtp
-  readOnly: true
+The chart mounts that Secret below its configured secret mount path. Reference the resulting file explicitly in the Authelia configuration:
 
-# Deployment pod volume
-- name: smtp-secret
-  secret:
-    secretName: authelia-smtp
-    items:
-      - key: password
-        path: password
+```yaml
+password:
+  path: /secrets/smtp/password
 ```
 
 Replace the filesystem notifier block in `configuration.yaml` with a sanitized SMTP block:
@@ -351,9 +349,9 @@ The `sender` must be a valid RFC 5322 address and should normally be permitted b
 After applying the Secret, configuration, and Deployment, verify without printing the password or message contents:
 
 ```bash
-kubectl -n hermes-auth rollout status deploy/authelia --timeout=180s
+kubectl -n hermes-auth rollout status deploy/authelia-qa --timeout=180s
 kubectl -n hermes-auth get pod -l app.kubernetes.io/name=authelia -o wide
-kubectl -n hermes-auth logs deploy/authelia --since=10m \\
+kubectl -n hermes-auth logs deploy/authelia-qa --since=10m \\
   | grep -Ei 'smtp|notifier|startup|error|warn'
 ```
 
@@ -369,7 +367,86 @@ kubectl -n hermes-auth get secret authelia-smtp \\
 
 Because this repository does not manage an installation-specific Authelia Deployment, the Secret, mount, and SMTP configuration remain operator-owned and must be backed up and upgraded separately from the Hermes resources.
 
-### 3.5 Configure Authelia values
+### 3.5 Standalone local users with a YubiKey (no LDAP/AD)
+
+If the installation should not depend on FreeIPA, Active Directory, or any LDAP service, use Authelia's local **file authentication backend**. The YubiKey is then registered as a WebAuthn security key for the local Authelia user. This is a separate deployment mode; do not configure the LDAP backend and file backend as interchangeable fragments.
+
+Important distinction: a normal YubiKey WebAuthn registration is a **second factor**, so the normal flow is local username/password plus YubiKey. Enabling `enable_passkey_login` allows a passkey login instead of username/password, but Authelia documents that this counts as one factor; it must not be described as equivalent to a `two_factor` policy. Keep it disabled when the requirement is password plus hardware key.
+
+Create a local user database with an Argon2 password hash. Generate the hash without putting the real password in Git, shell history, or a command line:
+
+```bash
+authelia crypto hash generate argon2 --password
+```
+
+Store the resulting hash in a local-only `users.yml` file, for example:
+
+```yaml
+users:
+  operator:
+    disabled: false
+    displayname: 'Operator'
+    email: 'operator@example.com'
+    password: '$argon2id$REPLACE_WITH_GENERATED_DIGEST'
+```
+
+Create the file as a Kubernetes Secret and use the chart's additional-secret mount. The Secret contains a password hash, not the cleartext password, but it remains sensitive authentication state:
+
+```bash
+kubectl -n hermes-auth create secret generic authelia-users \
+  --from-file=users.yml=authelia-sso/users.yml \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Add this to the Helm values:
+
+```yaml
+configMap:
+  authentication_backend:
+    file:
+      enabled: true
+      path: /secrets/users/users.yml
+      watch: true
+  webauthn:
+    disable: false
+    enable_passkey_login: false
+    display_name: 'Hermes Authelia'
+    selection_criteria:
+      attachment: cross-platform
+      discoverability: preferred
+      user_verification: preferred
+    filtering:
+      prohibit_backup_eligibility: true
+
+secret:
+  additionalSecrets:
+    authelia-users:
+      path: users
+      items:
+        - key: users.yml
+          path: users.yml
+```
+
+Use the standalone file-backend values instead of the LDAP section, and retain the SMTP notifier from the previous section if enrollment or password-reset mail is required. The local user must have an email attribute for identity-validation messages. Protect the Authelia storage PVC and encryption keys because WebAuthn credential state is stored there.
+
+Verify the standalone mode before using it as the only login path:
+
+```bash
+helm lint authelia-sso/chart/authelia-0.11.6.tgz \\
+  --values authelia-sso/values.yaml
+helm template authelia-qa authelia-sso/chart/authelia-0.11.6.tgz \\
+  --namespace hermes-auth \\
+  --values authelia-sso/values.yaml \\
+  > authelia-sso/rendered.yaml
+kubectl apply --dry-run=server -f authelia-sso/rendered.yaml >/dev/null
+kubectl -n hermes-auth rollout status deploy/authelia-qa --timeout=180s
+```
+
+Then test with a disposable local user and a real YubiKey: password-only access must fail under `two_factor`, the registered YubiKey must succeed, a second unregistered key must fail, and recovery after loss of the key must follow the documented Authelia recovery process. Do not silently enable passkey login as a recovery workaround.
+
+Authelia references: [file authentication](https://www.authelia.com/configuration/first-factor/file/), [password hash generation](https://www.authelia.com/reference/guides/passwords), and [WebAuthn](https://www.authelia.com/configuration/second-factor/webauthn).
+
+### 3.6 Configure Authelia values
 
 Create a local `authelia-sso/values.yaml` with sanitized structure like this:
 
@@ -406,8 +483,8 @@ configMap:
       sender: authelia@example.com
       identifier: authelia.example.com
       password:
-        value: ''
-        path: notifier.smtp.password.txt
+        secret_name: authelia-smtp
+        path: /secrets/smtp/password
   session:
     remember_me: -1
     cookies:
@@ -480,6 +557,11 @@ secret:
       items:
         - key: oidc-jwk.pem
           path: oidc-jwk.pem
+    authelia-smtp:
+      path: smtp
+      items:
+        - key: password
+          path: password
 
 certificates:
   existingSecret: authelia-freeipa-ca
@@ -505,7 +587,7 @@ kubectl apply --dry-run=server -f authelia-sso/rendered.yaml >/dev/null
 
 Review object names, Secret references, volume mounts, callback URLs, and image tags. Do not commit `rendered.yaml` if it contains installation-specific values.
 
-### 3.5 Configure the Authelia Ingress
+### 3.7 Configure the Authelia Ingress
 
 ```yaml
 apiVersion: networking.k8s.io/v1
