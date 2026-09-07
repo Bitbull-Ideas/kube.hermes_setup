@@ -291,7 +291,85 @@ kubectl -n hermes-auth create secret generic authelia-secrets \
 
 The `trap` removes the temporary files when the block exits. Do not source a file containing these values from shell history or commit it.
 
-### 3.4 Configure Authelia values
+### 3.4 Configure the SMTP notifier
+
+Authelia uses the filesystem notifier by default in the example above. That notifier is useful for local diagnostics, but it does not deliver registration or password-reset messages. For production-style operation, configure the SMTP notifier and keep its password in a separate Kubernetes Secret.
+
+The following example uses SMTP Submission with STARTTLS on port 587. Use `submissions://` only for an implicit-TLS service such as port 465. Keep the relay hostname, sender address, and credentials installation-specific; do not commit them to this repository.
+
+```bash
+set -euo pipefail
+umask 077
+mkdir -p authelia-sso
+: "${SMTP_USERNAME:?set SMTP_USERNAME in a protected shell}"
+: "${SMTP_PASSWORD:?set SMTP_PASSWORD in a protected shell}"
+
+trap 'rm -f authelia-sso/smtp.password' EXIT
+printf '%s' "$SMTP_PASSWORD" > authelia-sso/smtp.password
+
+kubectl -n hermes-auth create secret generic authelia-smtp \
+  --from-file=password=authelia-sso/smtp.password \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Add the Secret as a read-only file mount and expose the file to Authelia through its documented secret environment variable:
+
+```yaml
+# Deployment container environment
+- name: AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE
+  value: /secrets/smtp/password
+
+# Deployment container volume mount
+- name: smtp-secret
+  mountPath: /secrets/smtp
+  readOnly: true
+
+# Deployment pod volume
+- name: smtp-secret
+  secret:
+    secretName: authelia-smtp
+    items:
+      - key: password
+        path: password
+```
+
+Replace the filesystem notifier block in `configuration.yaml` with a sanitized SMTP block:
+
+```yaml
+notifier:
+  disable_startup_check: false
+  smtp:
+    address: 'submission://smtp.example.com:587'
+    timeout: '5s'
+    username: 'authelia@example.com'
+    sender: 'authelia@example.com'
+    identifier: 'authelia.example.com'
+```
+
+The `sender` must be a valid RFC 5322 address and should normally be permitted by the relay. Do not set `disable_require_tls` or `disable_starttls` merely to bypass a relay problem; fix the relay or certificate configuration instead. Authelia validates the SMTP connection during startup, but that check does not replace an end-to-end registration test.
+
+After applying the Secret, configuration, and Deployment, verify without printing the password or message contents:
+
+```bash
+kubectl -n hermes-auth rollout status deploy/authelia --timeout=180s
+kubectl -n hermes-auth get pod -l app.kubernetes.io/name=authelia -o wide
+kubectl -n hermes-auth logs deploy/authelia --since=10m \\
+  | grep -Ei 'smtp|notifier|startup|error|warn'
+```
+
+Then trigger a disposable WebAuthn/TOTP enrollment or password-reset notification. A successful TCP connection alone is insufficient: confirm receipt at the intended mailbox and inspect sanitized Authelia logs for SMTP authentication, TLS, recipient, or timeout errors. If the Pod cannot connect while the node can, inspect Kubernetes egress policy and the relay firewall before changing Authelia settings.
+
+Remove the local password file after Secret creation and ensure it is not tracked:
+
+```bash
+rm -f authelia-sso/smtp.password
+kubectl -n hermes-auth get secret authelia-smtp \\
+  -o custom-columns=NAME:.metadata.name,TYPE:.type,CREATED:.metadata.creationTimestamp
+```
+
+Because this repository does not manage an installation-specific Authelia Deployment, the Secret, mount, and SMTP configuration remain operator-owned and must be backed up and upgraded separately from the Hermes resources.
+
+### 3.5 Configure Authelia values
 
 Create a local `authelia-sso/values.yaml` with sanitized structure like this:
 
@@ -320,9 +398,16 @@ configMap:
       enabled: true
       path: /config/db.sqlite3
   notifier:
-    filesystem:
+    smtp:
       enabled: true
-      filename: /config/notification.txt
+      address: submission://smtp.example.com:587
+      timeout: 5s
+      username: authelia@example.com
+      sender: authelia@example.com
+      identifier: authelia.example.com
+      password:
+        value: ''
+        path: notifier.smtp.password.txt
   session:
     remember_me: -1
     cookies:
