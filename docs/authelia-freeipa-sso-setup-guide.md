@@ -295,6 +295,13 @@ The `trap` removes the temporary files when the block exits. Do not source a fil
 
 Authelia uses the filesystem notifier by default in the example above. That notifier is useful for local diagnostics, but it does not deliver registration or password-reset messages. For production-style operation, configure the SMTP notifier and keep its password in a separate Kubernetes Secret.
 
+The filesystem notifier writes Authelia's plain-text notification message to
+the configured file, such as `/config/notification.txt`. In this example,
+`/config` is the Authelia storage mount, so the file survives a Pod restart.
+Treat it as sensitive authentication state: it may contain password-reset or
+identity-validation content. Authelia's notification providers are mutually
+exclusive; configure exactly one of `filesystem` or `smtp`.
+
 The following example uses SMTP Submission with STARTTLS on port 587. Use `submissions://` only for an implicit-TLS service such as port 465. Keep the relay hostname, sender address, and credentials installation-specific; do not commit them to this repository.
 
 ```bash
@@ -366,6 +373,32 @@ kubectl -n hermes-auth get secret authelia-smtp \\
 ```
 
 Because this repository does not manage an installation-specific Authelia Deployment, the Secret, mount, and SMTP configuration remain operator-owned and must be backed up and upgraded separately from the Hermes resources.
+
+#### Reconcile the complete PodSpec when changing providers
+
+Do not rely on a Kubernetes strategic-merge patch to switch notification
+providers. Environment-variable and volume lists can retain entries from the
+previous provider. For example, leaving
+`AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE` or an `smtp-secret` volume in a
+filesystem configuration makes newer Authelia versions detect both SMTP and
+filesystem, even when the rendered configuration contains only `filesystem`.
+
+Use the authoritative Helm values or manifest and reconcile the complete
+resource so obsolete list entries are removed. Before rollout, check the
+rendered and live PodSpec without printing secret values:
+
+```bash
+kubectl -n hermes-auth apply --dry-run=server -f rendered.yaml >/dev/null
+kubectl -n hermes-auth get deploy authelia-qa -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{"\n"}{end}'
+kubectl -n hermes-auth get deploy authelia-qa -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}'
+```
+
+For a filesystem deployment, neither the SMTP password-file environment
+variable nor the SMTP Secret volume should be present. For an SMTP deployment,
+the filesystem notifier block should be absent and the dedicated SMTP Secret
+must be mounted through the supported chart mechanism. Verify the rollout,
+startup log, and an end-to-end notification without displaying the message
+body or credentials.
 
 ### 3.5 Standalone local users with a YubiKey (no LDAP/AD)
 
