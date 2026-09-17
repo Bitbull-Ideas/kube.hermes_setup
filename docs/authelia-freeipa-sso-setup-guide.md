@@ -384,11 +384,49 @@ filesystem configuration makes newer Authelia versions detect both SMTP and
 filesystem, even when the rendered configuration contains only `filesystem`.
 
 Use the authoritative Helm values or manifest and reconcile the complete
-resource so obsolete list entries are removed. Before rollout, check the
-rendered and live PodSpec without printing secret values:
+resource so obsolete list entries are removed. First render the manifest to
+the path used throughout this guide, then server-side validate it:
 
 ```bash
-kubectl -n hermes-auth apply --dry-run=server -f rendered.yaml >/dev/null
+helm template authelia-qa authelia-sso/chart/authelia-0.11.6.tgz \
+  --namespace hermes-auth \
+  --values authelia-sso/values.yaml \
+  > authelia-sso/rendered.yaml
+kubectl apply --dry-run=server -f authelia-sso/rendered.yaml >/dev/null
+```
+
+An ordinary apply or Helm three-way merge may retain list entries introduced
+by another field manager. For a filesystem deployment, explicitly remove the
+stale entries before applying the authoritative file. This removes only the
+named SMTP entries and preserves all unrelated environment variables and
+volumes; it is safe to rerun when the entries are already absent:
+
+```bash
+PATCH=$(python3 - <<'PY'
+import json, subprocess
+d=json.loads(subprocess.check_output([
+    "kubectl", "-n", "hermes-auth", "get", "deploy", "authelia-qa", "-o", "json"
+]))
+c=d["spec"]["template"]["spec"]["containers"][0]
+ops=[]
+for i in reversed(range(len(c.get("env", [])))):
+    if c["env"][i].get("name") == "AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE":
+        ops.append({"op":"remove", "path":f"/spec/template/spec/containers/0/env/{i}"})
+for i in reversed(range(len(d["spec"]["template"]["spec"].get("volumes", [])))):
+    if d["spec"]["template"]["spec"]["volumes"][i].get("name") in {"smtp-secret", "authelia-smtp"}:
+        ops.append({"op":"remove", "path":f"/spec/template/spec/volumes/{i}"})
+print(json.dumps(ops))
+PY
+)
+kubectl -n hermes-auth patch deploy authelia-qa --type=json -p "$PATCH"
+
+# Reconcile the complete authoritative resource after the cleanup.
+kubectl apply -f authelia-sso/rendered.yaml
+```
+
+Then check the rendered and live PodSpec without printing secret values:
+
+```bash
 kubectl -n hermes-auth get deploy authelia-qa -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{"\n"}{end}'
 kubectl -n hermes-auth get deploy authelia-qa -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}'
 ```
