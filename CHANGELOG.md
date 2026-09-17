@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Documentation
+
+- Documents Authelia's filesystem notifier as a test/diagnostic provider that
+  writes plain-text notification bodies to the configured storage file rather
+  than sending email.
+- Documents the mutual exclusion of filesystem and SMTP notification providers
+  and the need to reconcile complete Kubernetes environment and volume lists so
+  stale SMTP wiring cannot survive a provider change and prevent startup.
+
 ## [v2.7.5] - 2026-09-04
 
 ### Added

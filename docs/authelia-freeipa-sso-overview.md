@@ -201,6 +201,28 @@ Back up separately:
 - FreeIPA CA certificate;
 - OPNsense routing/TLS configuration.
 
+#### Notification provider boundary
+
+Authelia requires exactly one notification provider: `filesystem` or `smtp`.
+The filesystem notifier writes the plain-text email body to the configured file
+(for example, `/config/notification.txt`) instead of delivering it through a
+mail relay. This is useful for isolated tests and diagnostics, but it is not a
+production delivery mechanism; the file can contain sensitive password-reset
+or identity-validation content and must be protected with the Authelia storage
+permissions and backup controls.
+
+When changing from the filesystem notifier to SMTP, update the complete
+authoritative Deployment or Helm release rather than applying a partial merge.
+Remove obsolete SMTP environment variables, Secret references, and volume
+entries when selecting filesystem, and remove the filesystem configuration when
+selecting SMTP. Kubernetes list merges can otherwise leave stale SMTP wiring in
+the live PodSpec. Authelia then sees both providers and refuses to start.
+
+After a notifier change, render and server-side validate the result, confirm
+the selected provider's startup check, and test the actual notification path.
+Do not treat TCP connectivity to an SMTP relay as proof that a message was
+delivered.
+
 Authelia's OIDC provider is documented by the project as an open-beta feature. Pin the image/chart, read the release notes, and test the exact Dashboard/WebUI callbacks before making it the only production login path.[9]
 
 ### Restore order
